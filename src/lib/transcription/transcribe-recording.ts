@@ -93,12 +93,19 @@ export async function transcribeRecording(
         );
 
         const model = credentials.defaultModel || "whisper-1";
-        const transcriptionParams: OpenAI.Audio.Transcriptions.CreateTranscriptionParams =
-            {
-                file: audioFile,
-                model,
-                response_format: "verbose_json",
-            };
+
+        type TranscriptionParams = {
+            file: File;
+            model: string;
+            response_format: "verbose_json";
+            language?: string;
+        };
+
+        const transcriptionParams: TranscriptionParams = {
+            file: audioFile,
+            model,
+            response_format: "verbose_json",
+        };
 
         if (defaultLanguage) {
             transcriptionParams.language = defaultLanguage;

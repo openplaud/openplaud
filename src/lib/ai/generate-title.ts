@@ -106,7 +106,7 @@ export async function generateTitleFromTranscription(
         const maxTranscriptionLength = 2000;
         const truncatedTranscription =
             transcriptionText.length > maxTranscriptionLength
-                ? transcriptionText.substring(0, maxTranscriptionLength) + "..."
+                ? `${transcriptionText.substring(0, maxTranscriptionLength)}...`
                 : transcriptionText;
 
         const prompt = promptTemplate.replace(
@@ -145,7 +145,7 @@ export async function generateTitleFromTranscription(
 
         // Enforce 60 character limit
         if (cleanedTitle.length > 60) {
-            cleanedTitle = cleanedTitle.substring(0, 57) + "...";
+            cleanedTitle = `${cleanedTitle.substring(0, 57)}...`;
         }
 
         return cleanedTitle || null;

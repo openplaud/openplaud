@@ -44,7 +44,7 @@ import {
 } from "@/components/ui/sidebar";
 import { SettingsContent } from "./settings-content";
 
-interface Provider {
+export interface Provider {
     id: string;
     provider: string;
     baseUrl: string | null;

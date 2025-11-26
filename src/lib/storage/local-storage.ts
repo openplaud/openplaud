@@ -1,5 +1,5 @@
-import { access, mkdir, readFile, unlink, writeFile } from "fs/promises";
-import { dirname, join, relative, resolve } from "path";
+import { access, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { dirname, join, relative, resolve } from "node:path";
 import { env } from "../env";
 import type { StorageProvider } from "./types";
 
@@ -70,6 +70,7 @@ export class LocalStorage implements StorageProvider {
                 await mkdir(fileDir, { recursive: true });
             }
 
+            void contentType;
             await writeFile(filePath, buffer);
             return key;
         } catch (error) {
@@ -91,6 +92,7 @@ export class LocalStorage implements StorageProvider {
     }
 
     async getSignedUrl(key: string, expiresIn: number): Promise<string> {
+        void expiresIn;
         return `/api/recordings/audio/${encodeURIComponent(key)}`;
     }
 

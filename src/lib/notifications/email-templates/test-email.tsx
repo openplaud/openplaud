@@ -11,7 +11,6 @@ import {
     Section,
     Text,
 } from "@react-email/components";
-import { brandColors } from "./brand-colors";
 import { emailStyles } from "./styles";
 
 interface TestEmailProps {

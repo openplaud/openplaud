@@ -1,8 +1,8 @@
 "use client";
 
+import { Slot } from "@radix-ui/react-slot";
 import { ChevronRight } from "lucide-react";
 import * as React from "react";
-import { Slot } from "@radix-ui/react-slot";
 import { cn } from "@/lib/utils";
 
 function Breadcrumb({ className, ...props }: React.ComponentProps<"nav">) {
@@ -52,8 +52,6 @@ BreadcrumbLink.displayName = "BreadcrumbLink";
 function BreadcrumbPage({ className, ...props }: React.ComponentProps<"span">) {
     return (
         <span
-            role="link"
-            aria-disabled="true"
             aria-current="page"
             className={cn("font-normal text-foreground", className)}
             {...props}

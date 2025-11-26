@@ -128,7 +128,7 @@ export function AddProviderDialog({
             setDefaultModel("");
             setIsDefaultTranscription(false);
             setIsDefaultEnhancement(false);
-        } catch (error) {
+        } catch {
             toast.error("Failed to add AI provider");
         } finally {
             setIsLoading(false);

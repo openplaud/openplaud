@@ -5,6 +5,12 @@ import type {
     PlaudTempUrlResponse,
 } from "@/types/plaud";
 
+export interface PlaudUpdateFilenameResponse {
+    status: number;
+    msg: string;
+    data_file?: unknown;
+}
+
 const PLAUD_API_BASE = "https://api.plaud.ai";
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY = 1000; // 1 second
@@ -200,14 +206,11 @@ export class PlaudClient {
     async updateFilename(
         fileId: string,
         filename: string,
-    ): Promise<{ status: number; msg: string; data_file?: any }> {
-        return this.request<{ status: number; msg: string; data_file?: any }>(
-            `/file/${fileId}`,
-            {
-                method: "PATCH",
-                body: JSON.stringify({ filename }),
-            },
-        );
+    ): Promise<PlaudUpdateFilenameResponse> {
+        return this.request<PlaudUpdateFilenameResponse>(`/file/${fileId}`, {
+            method: "PATCH",
+            body: JSON.stringify({ filename }),
+        });
     }
 }
 

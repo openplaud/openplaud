@@ -4,7 +4,6 @@ import {
     integer,
     jsonb,
     pgTable,
-    primaryKey,
     real,
     text,
     timestamp,

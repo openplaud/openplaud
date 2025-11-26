@@ -35,7 +35,7 @@ export function OnboardingForm() {
 
             toast.success("Plaud device connected");
             setStep("complete");
-        } catch (error) {
+        } catch {
             toast.error("Failed to connect to Plaud");
         } finally {
             setIsLoading(false);

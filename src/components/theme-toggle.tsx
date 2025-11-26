@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { ToggleSwitch } from "./toggle-switch";
 
 export function ThemeToggle({ className }: { className?: string }) {
-    const { theme, setTheme, resolvedTheme } = useTheme();
+    const { setTheme, resolvedTheme } = useTheme();
     const [mounted, setMounted] = useState(false);
 
     useEffect(() => {

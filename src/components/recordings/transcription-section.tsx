@@ -54,7 +54,7 @@ export function TranscriptionSection({
             setDetectedLanguage(data.detectedLanguage);
             setTranscriptionType("server");
             toast.success("Transcription complete");
-        } catch (error) {
+        } catch {
             toast.error("Transcription failed. Please try again.");
         } finally {
             setIsProcessing(false);

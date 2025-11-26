@@ -70,6 +70,8 @@ export async function transcribeRecording(
         const autoGenerateTitle = settings?.autoGenerateTitle ?? true;
         const syncTitleToPlaud = settings?.syncTitleToPlaud ?? false;
 
+        void quality;
+
         const apiKey = decrypt(credentials.apiKey);
         const openai = new OpenAI({
             apiKey,
@@ -91,11 +93,12 @@ export async function transcribeRecording(
         );
 
         const model = credentials.defaultModel || "whisper-1";
-        const transcriptionParams: any = {
-            file: audioFile,
-            model,
-            response_format: "verbose_json",
-        };
+        const transcriptionParams: OpenAI.Audio.Transcriptions.CreateTranscriptionParams =
+            {
+                file: audioFile,
+                model,
+                response_format: "verbose_json",
+            };
 
         if (defaultLanguage) {
             transcriptionParams.language = defaultLanguage;
@@ -107,9 +110,12 @@ export async function transcribeRecording(
         const transcriptionText =
             typeof transcription === "string"
                 ? transcription
-                : (transcription as any).text;
+                : (transcription.text ?? "");
 
-        const detectedLanguage = (transcription as any).language || null;
+        const detectedLanguage =
+            typeof transcription === "string"
+                ? null
+                : (transcription.language ?? null);
 
         if (existingTranscription) {
             await db

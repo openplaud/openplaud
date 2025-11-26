@@ -2,10 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { SettingsDialog } from "@/components/settings-dialog";
+import { type Provider, SettingsDialog } from "@/components/settings-dialog";
 
 interface SettingsPageContentProps {
-    initialProviders?: any[];
+    initialProviders?: Provider[];
 }
 
 export function SettingsPageContent({

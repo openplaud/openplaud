@@ -23,7 +23,7 @@ export function NotificationsSection() {
     const [notificationSound, setNotificationSound] = useState(true);
     const [notificationEmail, setNotificationEmail] = useState<string>("");
     const [barkPushUrl, setBarkPushUrl] = useState<string>("");
-    const [barkPushUrlSet, setBarkPushUrlSet] = useState(false);
+    const [, setBarkPushUrlSet] = useState(false);
     const [userEmail, setUserEmail] = useState<string>("");
     const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
     const [testEmailStatus, setTestEmailStatus] = useState<{

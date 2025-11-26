@@ -134,15 +134,15 @@ export async function DELETE(
 
         const { id } = await params;
 
-            // Verify ownership and delete
-            await db
-                .delete(apiCredentials)
-                .where(
-                    and(
-                        eq(apiCredentials.id, id),
-                        eq(apiCredentials.userId, session.user.id),
-                    ),
-                );
+        // Verify ownership and delete
+        await db
+            .delete(apiCredentials)
+            .where(
+                and(
+                    eq(apiCredentials.id, id),
+                    eq(apiCredentials.userId, session.user.id),
+                ),
+            );
 
         return NextResponse.json({ success: true });
     } catch (error) {

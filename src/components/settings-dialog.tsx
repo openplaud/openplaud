@@ -61,7 +61,7 @@ interface SettingsDialogProps {
     onReRunOnboarding?: () => void;
 }
 
-export type { SettingsSection } from "@/types/settings";
+import type { SettingsSection } from "@/types/settings";
 
 const settingsNav = [
     { name: "AI", id: "providers" as SettingsSection, icon: Bot },

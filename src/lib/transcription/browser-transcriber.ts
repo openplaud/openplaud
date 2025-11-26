@@ -3,10 +3,12 @@
  * Runs Whisper models in the browser via WebAssembly
  */
 
-export type {
+import type {
     TranscriptionModel,
     TranscriptionResult,
 } from "@/types/transcription";
+
+export type { TranscriptionModel, TranscriptionResult };
 
 const MODEL_MAP: Record<TranscriptionModel, string> = {
     "whisper-tiny": "Xenova/whisper-tiny",

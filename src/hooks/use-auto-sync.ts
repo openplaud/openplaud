@@ -71,7 +71,7 @@ export function useAutoSync(options: UseAutoSyncOptions = {}) {
         lastSyncResult: null,
     });
 
-    const intervalRef = useRef<NodeJS.Timeout>();
+    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const isSyncingRef = useRef(false);
     const lastSyncTimeRef = useRef<number>(0);
     const onSuccessRef = useRef(onSuccess);

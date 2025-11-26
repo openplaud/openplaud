@@ -2,11 +2,13 @@
  * Title generation prompt presets for different use cases
  */
 
-export type {
+import type {
     CustomPrompt,
     PromptConfiguration,
     PromptPreset,
 } from "@/types/ai";
+
+export type { CustomPrompt, PromptConfiguration, PromptPreset };
 
 export interface PromptConfig {
     id: PromptPreset;

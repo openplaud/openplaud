@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Install dependencies
 FROM base AS deps
-COPY package.json bun.lock ./
+COPY package.json pnpm-lock.yaml ./
 RUN bun install --frozen-lockfile
 
 # Build Next.js

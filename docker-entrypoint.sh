@@ -4,7 +4,7 @@ set -e
 echo "🚀 Starting OpenPlaud..."
 
 echo "⏳ Running database migrations..."
-bun src/db/migrate.ts
+bun migrate.js
 
 echo "🚀 Starting application..."
 exec "$@"

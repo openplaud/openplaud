@@ -18,6 +18,9 @@ ENV NODE_ENV=production
 
 RUN bun run build
 
+# Bundle migration script with all dependencies
+RUN bun build src/db/migrate.ts --target=bun --outfile=migrate.js
+
 # Final runtime image
 FROM base AS runner
 WORKDIR /app
@@ -30,8 +33,11 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-# Copy entire source so Bun can run migrations in TS
-COPY --from=builder /app/src ./src
+# Copy bundled migration script (no node_modules needed!)
+COPY --from=builder /app/migrate.js ./migrate.js
+
+# Copy migrations folder
+COPY --from=builder /app/src/db/migrations ./src/db/migrations
 
 # Copy entrypoint
 COPY docker-entrypoint.sh ./docker-entrypoint.sh

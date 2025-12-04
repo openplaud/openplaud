@@ -18,8 +18,8 @@ ENV NODE_ENV=production
 
 RUN bun run build
 
-# Bundle migration script with all dependencies
-RUN bun build src/db/migrate.ts --target=bun --outfile=migrate.js
+# Bundle idempotent migration script with all dependencies
+RUN bun build src/db/migrate-idempotent.ts --target=bun --outfile=migrate-idempotent.js
 
 # Final runtime image
 FROM base AS runner
@@ -33,8 +33,8 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-# Copy bundled migration script (no node_modules needed!)
-COPY --from=builder /app/migrate.js ./migrate.js
+# Copy bundled idempotent migration script (no node_modules needed!)
+COPY --from=builder /app/migrate-idempotent.js ./migrate-idempotent.js
 
 # Copy migrations folder
 COPY --from=builder /app/src/db/migrations ./src/db/migrations

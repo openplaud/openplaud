@@ -45,4 +45,5 @@ RUN chmod +x docker-entrypoint.sh
 
 EXPOSE 3000
 ENTRYPOINT ["./docker-entrypoint.sh"]
+ENV HOSTNAME="0.0.0.0"
 CMD ["bun", "server.js"]

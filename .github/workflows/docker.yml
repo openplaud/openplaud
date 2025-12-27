@@ -1,4 +1,4 @@
-name: Docker Build & Push
+name: Docker
 
 on:
   push:
@@ -42,7 +42,8 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          # PRs: single platform for fast verification; main: multi-platform for release
+          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

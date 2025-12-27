@@ -11,9 +11,11 @@ import {
 import { PlaudClient } from "../lib/plaud/client";
 
 const originalFetch = global.fetch;
+let mockFetch: Mock;
 
 beforeAll(() => {
-    global.fetch = vi.fn() as typeof global.fetch;
+    mockFetch = vi.fn() as Mock;
+    global.fetch = mockFetch as typeof global.fetch;
 });
 
 afterAll(() => {
@@ -23,7 +25,6 @@ afterAll(() => {
 describe("PlaudClient", () => {
     let client: PlaudClient;
     const mockBearerToken = "test-bearer-token";
-    const mockFetch = fetch as unknown as Mock;
 
     beforeEach(() => {
         client = new PlaudClient(mockBearerToken);
@@ -193,12 +194,13 @@ describe("PlaudClient", () => {
 
             mockFetch.mockResolvedValueOnce({
                 ok: false,
+                status: 400,
                 statusText: "Bad Request",
                 json: () => Promise.resolve(errorResponse),
             });
 
             await expect(client.listDevices()).rejects.toThrow(
-                "Plaud API error: Invalid request",
+                "Plaud API error (400): Invalid request",
             );
         });
 

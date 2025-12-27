@@ -370,7 +370,8 @@ export async function syncRecordingsForUser(
 
         return result;
     } catch (error) {
-        result.errors.push(`Sync failed: ${error}`);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        result.errors.push(`Sync failed: ${errorMessage}`);
         return result;
     }
 }

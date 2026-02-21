@@ -38,6 +38,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
     );
     const [isTranscribing, setIsTranscribing] = useState(false);
     const [isDeletingTranscription, setIsDeletingTranscription] = useState(false);
+    const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
     const [isSplitting, setIsSplitting] = useState(false);
     const [splitConflict, setSplitConflict] = useState<number | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
@@ -202,6 +203,31 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
             toast.error("Failed to remove transcription");
         } finally {
             setIsDeletingTranscription(false);
+        }
+    }, [currentRecording, router]);
+
+    const handleGenerateTitle = useCallback(async () => {
+        if (!currentRecording) return;
+
+        setIsGeneratingTitle(true);
+        try {
+            const response = await fetch(
+                `/api/recordings/${currentRecording.id}/generate-title`,
+                { method: "POST" },
+            );
+
+            if (response.ok) {
+                const data = await response.json();
+                toast.success(`Title generated: "${data.title}"`);
+                router.refresh();
+            } else {
+                const error = await response.json();
+                toast.error(error.error || "Failed to generate title");
+            }
+        } catch {
+            toast.error("Failed to generate title");
+        } finally {
+            setIsGeneratingTitle(false);
         }
     }, [currentRecording, router]);
 
@@ -499,6 +525,8 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                             onTranscribe={handleTranscribe}
                                             isDeletingTranscription={isDeletingTranscription}
                                             onDeleteTranscription={handleDeleteTranscription}
+                                            isGeneratingTitle={isGeneratingTitle}
+                                            onGenerateTitle={handleGenerateTitle}
                                         />
                                     </>
                                 ) : (

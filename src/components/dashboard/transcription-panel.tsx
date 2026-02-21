@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, Languages, Sparkles, Trash2 } from "lucide-react";
+import { FileText, Languages, Sparkles, Tag, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Recording } from "@/types/recording";
@@ -17,6 +17,8 @@ interface TranscriptionPanelProps {
     onTranscribe: () => void;
     isDeletingTranscription?: boolean;
     onDeleteTranscription?: () => void;
+    isGeneratingTitle?: boolean;
+    onGenerateTitle?: () => void;
 }
 
 export function TranscriptionPanel({
@@ -26,6 +28,8 @@ export function TranscriptionPanel({
     onTranscribe,
     isDeletingTranscription,
     onDeleteTranscription,
+    isGeneratingTitle,
+    onGenerateTitle,
 }: TranscriptionPanelProps) {
     return (
         <Card>
@@ -36,18 +40,31 @@ export function TranscriptionPanel({
                         Transcription
                     </CardTitle>
                     {transcription?.text ? (
-                        <Button
-                            onClick={onDeleteTranscription}
-                            variant="outline"
-                            size="sm"
-                            disabled={isDeletingTranscription}
-                            className="text-destructive hover:text-destructive"
-                        >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            {isDeletingTranscription
-                                ? "Removing..."
-                                : "Remove Transcription"}
-                        </Button>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                onClick={onGenerateTitle}
+                                variant="outline"
+                                size="sm"
+                                disabled={isGeneratingTitle}
+                            >
+                                <Tag className="w-4 h-4 mr-2" />
+                                {isGeneratingTitle
+                                    ? "Generating..."
+                                    : "Generate Title"}
+                            </Button>
+                            <Button
+                                onClick={onDeleteTranscription}
+                                variant="outline"
+                                size="sm"
+                                disabled={isDeletingTranscription}
+                                className="text-destructive hover:text-destructive"
+                            >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                {isDeletingTranscription
+                                    ? "Removing..."
+                                    : "Remove Transcription"}
+                            </Button>
+                        </div>
                     ) : !isTranscribing ? (
                         <Button
                             onClick={onTranscribe}

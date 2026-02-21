@@ -2,9 +2,11 @@ import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { OpenAI } from "openai";
 import { db } from "@/db";
-import { apiCredentials, recordings, transcriptions } from "@/db/schema";
+import { apiCredentials, plaudConnections, recordings, transcriptions, userSettings } from "@/db/schema";
 import { auth } from "@/lib/auth";
+import { generateTitleFromTranscription } from "@/lib/ai/generate-title";
 import { decrypt } from "@/lib/encryption";
+import { createPlaudClient } from "@/lib/plaud/client";
 import { createUserStorageProvider } from "@/lib/storage/factory";
 
 export async function DELETE(
@@ -208,6 +210,57 @@ export async function POST(
                 provider: credentials.provider,
                 model: credentials.defaultModel || "whisper-1",
             });
+        }
+
+        // Run title generation if the user has it enabled
+        const [settings] = await db
+            .select()
+            .from(userSettings)
+            .where(eq(userSettings.userId, session.user.id))
+            .limit(1);
+
+        const autoGenerateTitle = settings?.autoGenerateTitle ?? true;
+        const syncTitleToPlaud = settings?.syncTitleToPlaud ?? false;
+
+        if (autoGenerateTitle && transcriptionText.trim()) {
+            try {
+                const generatedTitle = await generateTitleFromTranscription(
+                    session.user.id,
+                    transcriptionText,
+                );
+
+                if (generatedTitle) {
+                    await db
+                        .update(recordings)
+                        .set({ filename: generatedTitle, updatedAt: new Date() })
+                        .where(eq(recordings.id, id));
+
+                    if (syncTitleToPlaud) {
+                        try {
+                            const [connection] = await db
+                                .select()
+                                .from(plaudConnections)
+                                .where(eq(plaudConnections.userId, session.user.id))
+                                .limit(1);
+
+                            if (connection) {
+                                const plaudClient = await createPlaudClient(
+                                    connection.bearerToken,
+                                    connection.apiBase,
+                                );
+                                await plaudClient.updateFilename(
+                                    recording.plaudFileId,
+                                    generatedTitle,
+                                );
+                            }
+                        } catch (err) {
+                            console.error("Failed to sync title to Plaud:", err);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to generate title:", err);
+            }
         }
 
         return NextResponse.json({

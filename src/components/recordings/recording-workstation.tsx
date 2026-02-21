@@ -28,6 +28,7 @@ export function RecordingWorkstation({
     const router = useRouter();
     const [isTranscribing, setIsTranscribing] = useState(false);
     const [isDeletingTranscription, setIsDeletingTranscription] = useState(false);
+    const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
     const [isSplitting, setIsSplitting] = useState(false);
     const [splitConflict, setSplitConflict] = useState<number | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
@@ -84,6 +85,29 @@ export function RecordingWorkstation({
             toast.error("Failed to remove transcription");
         } finally {
             setIsDeletingTranscription(false);
+        }
+    }, [recording.id, router]);
+
+    const handleGenerateTitle = useCallback(async () => {
+        setIsGeneratingTitle(true);
+        try {
+            const response = await fetch(
+                `/api/recordings/${recording.id}/generate-title`,
+                { method: "POST" },
+            );
+
+            if (response.ok) {
+                const data = await response.json();
+                toast.success(`Title generated: "${data.title}"`);
+                router.refresh();
+            } else {
+                const error = await response.json();
+                toast.error(error.error || "Failed to generate title");
+            }
+        } catch {
+            toast.error("Failed to generate title");
+        } finally {
+            setIsGeneratingTitle(false);
         }
     }, [recording.id, router]);
 
@@ -257,6 +281,8 @@ export function RecordingWorkstation({
                         onTranscribe={handleTranscribe}
                         isDeletingTranscription={isDeletingTranscription}
                         onDeleteTranscription={handleDeleteTranscription}
+                        isGeneratingTitle={isGeneratingTitle}
+                        onGenerateTitle={handleGenerateTitle}
                     />
 
                     {/* Metadata */}

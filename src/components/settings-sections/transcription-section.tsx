@@ -3,6 +3,7 @@
 import { FileText } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
     Select,
@@ -56,6 +57,7 @@ export function TranscriptionSection() {
         useState("balanced");
     const [autoGenerateTitle, setAutoGenerateTitle] = useState(true);
     const [syncTitleToPlaud, setSyncTitleToPlaud] = useState(false);
+    const [splitSegmentMinutes, setSplitSegmentMinutes] = useState(60);
     const pendingChangesRef = useRef<Map<string, unknown>>(new Map());
 
     useEffect(() => {
@@ -73,6 +75,7 @@ export function TranscriptionSection() {
                     );
                     setAutoGenerateTitle(data.autoGenerateTitle ?? true);
                     setSyncTitleToPlaud(data.syncTitleToPlaud ?? false);
+                    setSplitSegmentMinutes(data.splitSegmentMinutes ?? 60);
                 }
             } catch (error) {
                 console.error("Failed to fetch settings:", error);
@@ -204,6 +207,24 @@ export function TranscriptionSection() {
                     pendingChangesRef.current.delete("syncTitleToPlaud");
                 }
             }
+            toast.error("Failed to save settings. Changes reverted.");
+        }
+    };
+
+    const handleSplitSegmentMinutesChange = async (value: number) => {
+        const previous = splitSegmentMinutes;
+        setSplitSegmentMinutes(value);
+        try {
+            const response = await fetch("/api/settings/user", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ splitSegmentMinutes: value }),
+            });
+            if (!response.ok) {
+                throw new Error("Failed to save settings");
+            }
+        } catch {
+            setSplitSegmentMinutes(previous);
             toast.error("Failed to save settings. Changes reverted.");
         }
     };
@@ -383,6 +404,36 @@ export function TranscriptionSection() {
                         />
                     </div>
                 )}
+                <div className="space-y-2">
+                    <Label htmlFor="split-segment-minutes">
+                        Recording split segment duration (minutes)
+                    </Label>
+                    <Input
+                        id="split-segment-minutes"
+                        type="number"
+                        min={1}
+                        max={360}
+                        value={splitSegmentMinutes}
+                        onChange={(e) => {
+                            const val = parseInt(e.target.value, 10);
+                            if (!isNaN(val) && val >= 1 && val <= 360) {
+                                setSplitSegmentMinutes(val);
+                            }
+                        }}
+                        onBlur={(e) => {
+                            const val = parseInt(e.target.value, 10);
+                            if (!isNaN(val) && val >= 1 && val <= 360) {
+                                handleSplitSegmentMinutesChange(val);
+                            }
+                        }}
+                        disabled={isSavingSettings}
+                        className="w-32"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                        When splitting a recording, each segment will be at most
+                        this many minutes long. Default: 60 minutes.
+                    </p>
+                </div>
             </div>
 
             <div className="pt-4 border-t">

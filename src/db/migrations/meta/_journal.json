@@ -78,6 +78,13 @@
             "when": 1771632000000,
             "tag": "0010_plaud_api_base",
             "breakpoints": true
+        },
+        {
+            "idx": 11,
+            "version": "7",
+            "when": 1771718400000,
+            "tag": "0011_recording_split_setting",
+            "breakpoints": true
         }
     ]
 }

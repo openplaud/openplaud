@@ -1,8 +1,8 @@
 "use client";
 
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Scissors, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { RecordingPlayer } from "@/components/dashboard/recording-player";
 import { TranscriptionPanel } from "@/components/dashboard/transcription-panel";
@@ -27,6 +27,16 @@ export function RecordingWorkstation({
 }: RecordingWorkstationProps) {
     const router = useRouter();
     const [isTranscribing, setIsTranscribing] = useState(false);
+    const [isSplitting, setIsSplitting] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [splitSegmentMinutes, setSplitSegmentMinutes] = useState(60);
+
+    useEffect(() => {
+        fetch("/api/settings/user")
+            .then((res) => res.json())
+            .then((data) => setSplitSegmentMinutes(data.splitSegmentMinutes ?? 60))
+            .catch(() => {});
+    }, []);
 
     const handleTranscribe = useCallback(async () => {
         setIsTranscribing(true);
@@ -52,6 +62,52 @@ export function RecordingWorkstation({
         }
     }, [recording.id, router]);
 
+    const handleSplit = useCallback(async () => {
+        setIsSplitting(true);
+        try {
+            const response = await fetch(
+                `/api/recordings/${recording.id}/split`,
+                { method: "POST" },
+            );
+
+            if (response.ok) {
+                const data = await response.json();
+                toast.success(
+                    `Recording split into ${data.segmentCount} segments`,
+                );
+                router.push("/dashboard");
+            } else {
+                const error = await response.json();
+                toast.error(error.error || "Failed to split recording");
+            }
+        } catch {
+            toast.error("Failed to split recording");
+        } finally {
+            setIsSplitting(false);
+        }
+    }, [recording.id, router]);
+
+    const handleDelete = useCallback(async () => {
+        setIsDeleting(true);
+        try {
+            const response = await fetch(`/api/recordings/${recording.id}`, {
+                method: "DELETE",
+            });
+
+            if (response.ok) {
+                toast.success("Recording deleted");
+                router.push("/dashboard");
+            } else {
+                const error = await response.json();
+                toast.error(error.error || "Failed to delete recording");
+            }
+        } catch {
+            toast.error("Failed to delete recording");
+        } finally {
+            setIsDeleting(false);
+        }
+    }, [recording.id, router]);
+
     return (
         <div className="bg-background">
             <div className="container mx-auto px-4 py-6 max-w-4xl">
@@ -72,6 +128,27 @@ export function RecordingWorkstation({
                             {new Date(recording.startTime).toLocaleString()}
                         </p>
                     </div>
+                    {recording.duration > splitSegmentMinutes * 60 * 1000 && (
+                        <Button
+                            onClick={handleSplit}
+                            variant="outline"
+                            disabled={isSplitting}
+                        >
+                            <Scissors className="w-4 h-4 mr-2" />
+                            {isSplitting ? "Splitting..." : "Split Recording"}
+                        </Button>
+                    )}
+                    {recording.plaudFileId.startsWith("split-") && (
+                        <Button
+                            onClick={handleDelete}
+                            variant="outline"
+                            disabled={isDeleting}
+                            className="text-destructive hover:text-destructive"
+                        >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            {isDeleting ? "Deleting..." : "Delete Segment"}
+                        </Button>
+                    )}
                 </div>
 
                 {/* Content */}

@@ -55,7 +55,7 @@ export async function syncRecordingsForUser(
             settings?.notificationEmail || user?.email || null;
         const barkPushUrl = settings?.barkPushUrl || null;
 
-        const plaudClient = await createPlaudClient(connection.bearerToken);
+        const plaudClient = await createPlaudClient(connection.bearerToken, connection.apiBase);
         const storage = await createUserStorageProvider(userId);
         const recordingsResponse = await plaudClient.getRecordings();
         const newRecordingNames: string[] = [];

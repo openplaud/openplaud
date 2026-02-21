@@ -8,7 +8,7 @@ import {
     type Mock,
     vi,
 } from "vitest";
-import { PlaudClient } from "../lib/plaud/client";
+import { DEFAULT_PLAUD_API_BASE, PlaudClient } from "../lib/plaud/client";
 
 const originalFetch = global.fetch;
 let mockFetch: Mock;
@@ -35,6 +35,11 @@ describe("PlaudClient", () => {
         it("should create client with bearer token", () => {
             expect(client).toBeInstanceOf(PlaudClient);
         });
+
+        it("should use custom apiBase when provided", () => {
+            const euClient = new PlaudClient(mockBearerToken, "https://api-euc1.plaud.ai");
+            expect(euClient).toBeInstanceOf(PlaudClient);
+        });
     });
 
     describe("listDevices", () => {
@@ -60,7 +65,7 @@ describe("PlaudClient", () => {
             const result = await client.listDevices();
 
             expect(fetch).toHaveBeenCalledWith(
-                "https://api.plaud.ai/device/list",
+                `${DEFAULT_PLAUD_API_BASE}/device/list`,
                 expect.objectContaining({
                     headers: expect.objectContaining({
                         Authorization: `Bearer ${mockBearerToken}`,
@@ -69,6 +74,21 @@ describe("PlaudClient", () => {
                 }),
             );
             expect(result).toEqual(mockResponse);
+        });
+
+        it("should use custom apiBase for requests", async () => {
+            const euClient = new PlaudClient(mockBearerToken, "https://api-euc1.plaud.ai");
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ status: 0, msg: "success", data_devices: [] }),
+            });
+
+            await euClient.listDevices();
+
+            expect(fetch).toHaveBeenCalledWith(
+                "https://api-euc1.plaud.ai/device/list",
+                expect.any(Object),
+            );
         });
     });
 
@@ -89,7 +109,7 @@ describe("PlaudClient", () => {
             const result = await client.getRecordings();
 
             expect(fetch).toHaveBeenCalledWith(
-                "https://api.plaud.ai/file/simple/web?skip=0&limit=99999&is_trash=0&sort_by=edit_time&is_desc=true",
+                `${DEFAULT_PLAUD_API_BASE}/file/simple/web?skip=0&limit=99999&is_trash=0&sort_by=edit_time&is_desc=true`,
                 expect.any(Object),
             );
             expect(result).toEqual(mockResponse);
@@ -111,7 +131,7 @@ describe("PlaudClient", () => {
             await client.getRecordings(10, 50, 1, "create_time", false);
 
             expect(fetch).toHaveBeenCalledWith(
-                "https://api.plaud.ai/file/simple/web?skip=10&limit=50&is_trash=1&sort_by=create_time&is_desc=false",
+                `${DEFAULT_PLAUD_API_BASE}/file/simple/web?skip=10&limit=50&is_trash=1&sort_by=create_time&is_desc=false`,
                 expect.any(Object),
             );
         });
@@ -136,7 +156,7 @@ describe("PlaudClient", () => {
             const result = await client.getTempUrl("file-123");
 
             expect(fetch).toHaveBeenCalledWith(
-                "https://api.plaud.ai/file/temp-url/file-123?is_opus=1",
+                `${DEFAULT_PLAUD_API_BASE}/file/temp-url/file-123?is_opus=1`,
                 expect.any(Object),
             );
             expect(result).toEqual(mockResponse);
@@ -159,7 +179,7 @@ describe("PlaudClient", () => {
             await client.getTempUrl("file-123", false);
 
             expect(fetch).toHaveBeenCalledWith(
-                "https://api.plaud.ai/file/temp-url/file-123?is_opus=0",
+                `${DEFAULT_PLAUD_API_BASE}/file/temp-url/file-123?is_opus=0`,
                 expect.any(Object),
             );
         });

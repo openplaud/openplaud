@@ -11,7 +11,7 @@ export interface PlaudUpdateFilenameResponse {
     data_file?: unknown;
 }
 
-const PLAUD_API_BASE = "https://api.plaud.ai";
+export const DEFAULT_PLAUD_API_BASE = "https://api.plaud.ai";
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY = 1000; // 1 second
 
@@ -28,9 +28,11 @@ function sleep(ms: number): Promise<void> {
  */
 export class PlaudClient {
     private bearerToken: string;
+    private apiBase: string;
 
-    constructor(bearerToken: string) {
+    constructor(bearerToken: string, apiBase: string = DEFAULT_PLAUD_API_BASE) {
         this.bearerToken = bearerToken;
+        this.apiBase = apiBase;
     }
 
     /**
@@ -41,7 +43,7 @@ export class PlaudClient {
         options?: RequestInit,
         retryCount = 0,
     ): Promise<T> {
-        const url = `${PLAUD_API_BASE}${endpoint}`;
+        const url = `${this.apiBase}${endpoint}`;
 
         try {
             const response = await fetch(url, {
@@ -219,10 +221,11 @@ export class PlaudClient {
  */
 export async function createPlaudClient(
     encryptedToken: string,
+    apiBase: string = DEFAULT_PLAUD_API_BASE,
 ): Promise<PlaudClient> {
     const { decrypt } = await import("../encryption");
     const bearerToken = decrypt(encryptedToken);
-    return new PlaudClient(bearerToken);
+    return new PlaudClient(bearerToken, apiBase);
 }
 
 export * from "./types";

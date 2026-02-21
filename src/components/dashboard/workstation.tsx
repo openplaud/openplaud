@@ -218,6 +218,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
 
             if (response.ok) {
                 toast.success("Recording deleted");
+                setCurrentRecording(null);
                 router.refresh();
             } else {
                 const error = await response.json();

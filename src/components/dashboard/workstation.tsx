@@ -37,6 +37,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
         recordings.length > 0 ? recordings[0] : null,
     );
     const [isTranscribing, setIsTranscribing] = useState(false);
+    const [isDeletingTranscription, setIsDeletingTranscription] = useState(false);
     const [isSplitting, setIsSplitting] = useState(false);
     const [splitConflict, setSplitConflict] = useState<number | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
@@ -177,6 +178,30 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
             toast.error("Failed to transcribe recording");
         } finally {
             setIsTranscribing(false);
+        }
+    }, [currentRecording, router]);
+
+    const handleDeleteTranscription = useCallback(async () => {
+        if (!currentRecording) return;
+
+        setIsDeletingTranscription(true);
+        try {
+            const response = await fetch(
+                `/api/recordings/${currentRecording.id}/transcribe`,
+                { method: "DELETE" },
+            );
+
+            if (response.ok) {
+                toast.success("Transcription removed");
+                router.refresh();
+            } else {
+                const error = await response.json();
+                toast.error(error.error || "Failed to remove transcription");
+            }
+        } catch {
+            toast.error("Failed to remove transcription");
+        } finally {
+            setIsDeletingTranscription(false);
         }
     }, [currentRecording, router]);
 
@@ -472,6 +497,8 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                             transcription={currentTranscription}
                                             isTranscribing={isTranscribing}
                                             onTranscribe={handleTranscribe}
+                                            isDeletingTranscription={isDeletingTranscription}
+                                            onDeleteTranscription={handleDeleteTranscription}
                                         />
                                     </>
                                 ) : (

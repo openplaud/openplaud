@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, Languages, Sparkles } from "lucide-react";
+import { FileText, Languages, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Recording } from "@/types/recording";
@@ -15,6 +15,8 @@ interface TranscriptionPanelProps {
     transcription?: Transcription;
     isTranscribing: boolean;
     onTranscribe: () => void;
+    isDeletingTranscription?: boolean;
+    onDeleteTranscription?: () => void;
 }
 
 export function TranscriptionPanel({
@@ -22,6 +24,8 @@ export function TranscriptionPanel({
     transcription,
     isTranscribing,
     onTranscribe,
+    isDeletingTranscription,
+    onDeleteTranscription,
 }: TranscriptionPanelProps) {
     return (
         <Card>
@@ -31,7 +35,20 @@ export function TranscriptionPanel({
                         <FileText className="w-5 h-5" />
                         Transcription
                     </CardTitle>
-                    {!transcription?.text && !isTranscribing && (
+                    {transcription?.text ? (
+                        <Button
+                            onClick={onDeleteTranscription}
+                            variant="outline"
+                            size="sm"
+                            disabled={isDeletingTranscription}
+                            className="text-destructive hover:text-destructive"
+                        >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            {isDeletingTranscription
+                                ? "Removing..."
+                                : "Remove Transcription"}
+                        </Button>
+                    ) : !isTranscribing ? (
                         <Button
                             onClick={onTranscribe}
                             size="sm"
@@ -49,7 +66,7 @@ export function TranscriptionPanel({
                                 </>
                             )}
                         </Button>
-                    )}
+                    ) : null}
                 </div>
             </CardHeader>
             <CardContent>

@@ -27,6 +27,7 @@ export function RecordingWorkstation({
 }: RecordingWorkstationProps) {
     const router = useRouter();
     const [isTranscribing, setIsTranscribing] = useState(false);
+    const [isDeletingTranscription, setIsDeletingTranscription] = useState(false);
     const [isSplitting, setIsSplitting] = useState(false);
     const [splitConflict, setSplitConflict] = useState<number | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
@@ -61,6 +62,28 @@ export function RecordingWorkstation({
             toast.error("Failed to transcribe recording");
         } finally {
             setIsTranscribing(false);
+        }
+    }, [recording.id, router]);
+
+    const handleDeleteTranscription = useCallback(async () => {
+        setIsDeletingTranscription(true);
+        try {
+            const response = await fetch(
+                `/api/recordings/${recording.id}/transcribe`,
+                { method: "DELETE" },
+            );
+
+            if (response.ok) {
+                toast.success("Transcription removed");
+                router.refresh();
+            } else {
+                const error = await response.json();
+                toast.error(error.error || "Failed to remove transcription");
+            }
+        } catch {
+            toast.error("Failed to remove transcription");
+        } finally {
+            setIsDeletingTranscription(false);
         }
     }, [recording.id, router]);
 
@@ -232,6 +255,8 @@ export function RecordingWorkstation({
                         transcription={transcription}
                         isTranscribing={isTranscribing}
                         onTranscribe={handleTranscribe}
+                        isDeletingTranscription={isDeletingTranscription}
+                        onDeleteTranscription={handleDeleteTranscription}
                     />
 
                     {/* Metadata */}

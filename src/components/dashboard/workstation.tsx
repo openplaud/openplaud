@@ -38,6 +38,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
     );
     const [isTranscribing, setIsTranscribing] = useState(false);
     const [isSplitting, setIsSplitting] = useState(false);
+    const [splitConflict, setSplitConflict] = useState<number | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
     const [isRemovingSilence, setIsRemovingSilence] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
@@ -179,32 +180,40 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
         }
     }, [currentRecording, router]);
 
-    const handleSplit = useCallback(async () => {
-        if (!currentRecording) return;
+    const runSplit = useCallback(
+        async (force: boolean) => {
+            if (!currentRecording) return;
 
-        setIsSplitting(true);
-        try {
-            const response = await fetch(
-                `/api/recordings/${currentRecording.id}/split`,
-                { method: "POST" },
-            );
+            setIsSplitting(true);
+            try {
+                const url = `/api/recordings/${currentRecording.id}/split${force ? "?force=true" : ""}`;
+                const response = await fetch(url, { method: "POST" });
 
-            if (response.ok) {
-                const data = await response.json();
-                toast.success(
-                    `Recording split into ${data.segmentCount} segments`,
-                );
-                router.refresh();
-            } else {
-                const error = await response.json();
-                toast.error(error.error || "Failed to split recording");
+                if (response.ok) {
+                    const data = await response.json();
+                    setSplitConflict(null);
+                    toast.success(
+                        `Recording split into ${data.segmentCount} segments`,
+                    );
+                    router.refresh();
+                } else if (response.status === 409) {
+                    const data = await response.json();
+                    setSplitConflict(data.existingCount as number);
+                } else {
+                    const error = await response.json();
+                    toast.error(error.error || "Failed to split recording");
+                }
+            } catch {
+                toast.error("Failed to split recording");
+            } finally {
+                setIsSplitting(false);
             }
-        } catch {
-            toast.error("Failed to split recording");
-        } finally {
-            setIsSplitting(false);
-        }
-    }, [currentRecording, router]);
+        },
+        [currentRecording, router],
+    );
+
+    const handleSplit = useCallback(() => runSplit(false), [runSplit]);
+    const handleSplitForce = useCallback(() => runSplit(true), [runSplit]);
 
     const handleDelete = useCallback(async () => {
         if (!currentRecording) return;
@@ -342,60 +351,99 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                 <RecordingList
                                     recordings={recordings}
                                     currentRecording={currentRecording}
-                                    onSelect={setCurrentRecording}
+                                    onSelect={(r) => {
+                                        setSplitConflict(null);
+                                        setCurrentRecording(r);
+                                    }}
                                 />
                             </div>
 
                             <div className="lg:col-span-2 space-y-6">
                                 {currentRecording ? (
                                     <>
-                                        <div className="flex justify-end gap-2 flex-wrap">
-                                            <Button
-                                                onClick={handleRemoveSilence}
-                                                variant="outline"
-                                                size="sm"
-                                                disabled={isRemovingSilence}
-                                            >
-                                                <VolumeX className="w-4 h-4 mr-2" />
-                                                {isRemovingSilence
-                                                    ? "Processing..."
-                                                    : "Remove Silence"}
-                                            </Button>
-                                            {currentRecording.duration >
-                                                splitSegmentMinutes *
-                                                    60 *
-                                                    1000 && (
+                                        <div className="space-y-2">
+                                            {splitConflict !== null && (
+                                                <div className="flex items-center justify-end gap-3 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm">
+                                                    <span className="text-destructive">
+                                                        {splitConflict === 1
+                                                            ? "1 existing segment"
+                                                            : `${splitConflict} existing segments`}{" "}
+                                                        will be deleted.
+                                                        Continue?
+                                                    </span>
+                                                    <Button
+                                                        onClick={() =>
+                                                            setSplitConflict(
+                                                                null,
+                                                            )
+                                                        }
+                                                        variant="outline"
+                                                        size="sm"
+                                                    >
+                                                        Cancel
+                                                    </Button>
+                                                    <Button
+                                                        onClick={
+                                                            handleSplitForce
+                                                        }
+                                                        variant="destructive"
+                                                        size="sm"
+                                                        disabled={isSplitting}
+                                                    >
+                                                        {isSplitting
+                                                            ? "Splitting..."
+                                                            : "Delete & Re-split"}
+                                                    </Button>
+                                                </div>
+                                            )}
+                                            <div className="flex justify-end gap-2 flex-wrap">
                                                 <Button
-                                                    onClick={handleSplit}
+                                                    onClick={handleRemoveSilence}
                                                     variant="outline"
                                                     size="sm"
-                                                    disabled={isSplitting}
+                                                    disabled={isRemovingSilence}
                                                 >
-                                                    <Scissors className="w-4 h-4 mr-2" />
-                                                    {isSplitting
-                                                        ? "Splitting..."
-                                                        : "Split Recording"}
+                                                    <VolumeX className="w-4 h-4 mr-2" />
+                                                    {isRemovingSilence
+                                                        ? "Processing..."
+                                                        : "Remove Silence"}
                                                 </Button>
-                                            )}
-                                            {(currentRecording.plaudFileId.startsWith(
-                                                "split-",
-                                            ) ||
-                                                currentRecording.plaudFileId.startsWith(
-                                                    "silence-removed-",
-                                                )) && (
-                                                <Button
-                                                    onClick={handleDelete}
-                                                    variant="outline"
-                                                    size="sm"
-                                                    disabled={isDeleting}
-                                                    className="text-destructive hover:text-destructive"
-                                                >
-                                                    <Trash2 className="w-4 h-4 mr-2" />
-                                                    {isDeleting
-                                                        ? "Deleting..."
-                                                        : "Delete"}
-                                                </Button>
-                                            )}
+                                                {currentRecording.duration >
+                                                    splitSegmentMinutes *
+                                                        60 *
+                                                        1000 && (
+                                                    <Button
+                                                        onClick={handleSplit}
+                                                        variant="outline"
+                                                        size="sm"
+                                                        disabled={isSplitting}
+                                                    >
+                                                        <Scissors className="w-4 h-4 mr-2" />
+                                                        {isSplitting
+                                                            ? "Splitting..."
+                                                            : "Split Recording"}
+                                                    </Button>
+                                                )}
+                                                {(currentRecording.plaudFileId.startsWith(
+                                                    "split-",
+                                                ) ||
+                                                    currentRecording.plaudFileId.startsWith(
+                                                        "silence-removed-",
+                                                    )) && (
+                                                    <Button
+                                                        onClick={handleDelete}
+                                                        variant="outline"
+                                                        size="sm"
+                                                        disabled={isDeleting}
+                                                        className="text-destructive hover:text-destructive"
+                                                    >
+                                                        <Trash2 className="w-4 h-4 mr-2" />
+                                                        {isDeleting
+                                                            ? "Deleting..."
+                                                            : "Delete"}
+                                                    </Button>
+                                                )}
+                                            </div>
                                         </div>
                                         <RecordingPlayer
                                             recording={currentRecording}

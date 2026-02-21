@@ -64,18 +64,26 @@ export async function POST(
         const storage = await createUserStorageProvider(session.user.id);
         const audioBuffer = await storage.downloadFile(recording.storagePath);
 
-        // Determine file extension from storage path
-        const ext = recording.storagePath.endsWith(".mp3") ? ".mp3" : ".opus";
-        const contentType = ext === ".mp3" ? "audio/mpeg" : "audio/ogg";
+        // Plaud files always contain OGG/Opus audio regardless of the stored
+        // file extension (storagePath may end in .mp3 but the container is OGG).
+        // Always write input with its original extension so ffmpeg can probe it,
+        // but always output segments as .ogg which is the correct container.
+        const inputExt = recording.storagePath.endsWith(".mp3") ? ".mp3" : ".ogg";
+        const outputExt = ".ogg";
+        const contentType = "audio/ogg";
 
         // Write original to temp dir
-        const inputPath = path.join(tmpDir, `input${ext}`);
+        const inputPath = path.join(tmpDir, `input${inputExt}`);
         await fs.writeFile(inputPath, audioBuffer);
 
-        // Run ffmpeg to split into segments
-        const outputPattern = path.join(tmpDir, `part_%03d${ext}`);
+        // Run ffmpeg to split into segments.
+        // -map 0:a  — select only the audio stream; Plaud OGG files contain an
+        //             unknown metadata stream (stream #0:1) that ffmpeg cannot
+        //             copy and which would otherwise cause "Conversion failed".
+        const outputPattern = path.join(tmpDir, `part_%03d${outputExt}`);
         await execFileAsync("ffmpeg", [
             "-i", inputPath,
+            "-map", "0:a",
             "-f", "segment",
             "-segment_time", String(segmentSeconds),
             "-c", "copy",
@@ -86,7 +94,7 @@ export async function POST(
         // Read generated segment files (sorted)
         const allFiles = await fs.readdir(tmpDir);
         const segmentFiles = allFiles
-            .filter((f) => f.startsWith("part_") && f.endsWith(ext))
+            .filter((f) => f.startsWith("part_") && f.endsWith(outputExt))
             .sort();
 
         if (segmentFiles.length <= 1) {
@@ -108,8 +116,8 @@ export async function POST(
             const segBuffer = await fs.readFile(path.join(tmpDir, segFile));
             const partNum = i + 1;
 
-            // Build storage key
-            const storageKey = `${storagePathBase}_part${String(partNum).padStart(3, "0")}${ext}`;
+            // Build storage key (always .ogg for segments)
+            const storageKey = `${storagePathBase}_part${String(partNum).padStart(3, "0")}${outputExt}`;
 
             // Upload segment
             await storage.uploadFile(storageKey, segBuffer, contentType);

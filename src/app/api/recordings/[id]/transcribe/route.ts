@@ -44,21 +44,27 @@ export async function DELETE(
             );
         }
 
-        const result = await db
-            .delete(transcriptions)
+        const [existing] = await db
+            .select({ id: transcriptions.id })
+            .from(transcriptions)
             .where(
                 and(
                     eq(transcriptions.recordingId, id),
                     eq(transcriptions.userId, session.user.id),
                 ),
-            );
+            )
+            .limit(1);
 
-        if (result.rowCount === 0) {
+        if (!existing) {
             return NextResponse.json(
                 { error: "No transcription found" },
                 { status: 404 },
             );
         }
+
+        await db
+            .delete(transcriptions)
+            .where(eq(transcriptions.id, existing.id));
 
         return NextResponse.json({ success: true });
     } catch (error) {

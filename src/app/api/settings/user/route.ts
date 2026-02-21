@@ -36,6 +36,8 @@ const DEFAULT_SETTINGS = {
     autoGenerateTitle: true,
     syncTitleToPlaud: false,
     splitSegmentMinutes: 60,
+    silenceThresholdDb: -40,
+    silenceDurationSeconds: 1.0,
 } as const;
 
 // Settings field names (excluding userId, id, createdAt, updatedAt)
@@ -70,6 +72,8 @@ const SETTINGS_FIELDS = [
     "autoGenerateTitle",
     "syncTitleToPlaud",
     "splitSegmentMinutes",
+    "silenceThresholdDb",
+    "silenceDurationSeconds",
 ] as const;
 
 // Extract settings from database row to response format

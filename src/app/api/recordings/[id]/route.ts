@@ -97,9 +97,13 @@ export async function DELETE(
             );
         }
 
-        if (!recording.plaudFileId.startsWith("split-")) {
+        const isLocallyCreated =
+            recording.plaudFileId.startsWith("split-") ||
+            recording.plaudFileId.startsWith("silence-removed-");
+
+        if (!isLocallyCreated) {
             return NextResponse.json(
-                { error: "Only split recordings can be deleted" },
+                { error: "Only locally created recordings can be deleted" },
                 { status: 403 },
             );
         }

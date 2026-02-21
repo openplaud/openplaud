@@ -1,6 +1,6 @@
 "use client";
 
-import { Mic, RefreshCw, Scissors, Settings, Trash2 } from "lucide-react";
+import { Mic, RefreshCw, Scissors, Settings, Trash2, VolumeX } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -39,6 +39,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
     const [isTranscribing, setIsTranscribing] = useState(false);
     const [isSplitting, setIsSplitting] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [isRemovingSilence, setIsRemovingSilence] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [onboardingOpen, setOnboardingOpen] = useState(false);
     const [providers, setProviders] = useState<
@@ -229,6 +230,33 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
         }
     }, [currentRecording, router]);
 
+    const handleRemoveSilence = useCallback(async () => {
+        if (!currentRecording) return;
+
+        setIsRemovingSilence(true);
+        try {
+            const response = await fetch(
+                `/api/recordings/${currentRecording.id}/remove-silence`,
+                { method: "POST" },
+            );
+
+            if (response.ok) {
+                const data = await response.json();
+                toast.success(
+                    `Silence removed — ${data.originalSizeMb} MB → ${data.newSizeMb} MB (${data.reductionPercent}% smaller)`,
+                );
+                router.refresh();
+            } else {
+                const error = await response.json();
+                toast.error(error.error || "Failed to remove silence");
+            }
+        } catch {
+            toast.error("Failed to remove silence");
+        } finally {
+            setIsRemovingSilence(false);
+        }
+    }, [currentRecording, router]);
+
     return (
         <>
             <div className="bg-background">
@@ -320,46 +348,54 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                             <div className="lg:col-span-2 space-y-6">
                                 {currentRecording ? (
                                     <>
-                                        {(currentRecording.duration >
-                                            splitSegmentMinutes * 60 * 1000 ||
-                                            currentRecording.plaudFileId.startsWith(
+                                        <div className="flex justify-end gap-2 flex-wrap">
+                                            <Button
+                                                onClick={handleRemoveSilence}
+                                                variant="outline"
+                                                size="sm"
+                                                disabled={isRemovingSilence}
+                                            >
+                                                <VolumeX className="w-4 h-4 mr-2" />
+                                                {isRemovingSilence
+                                                    ? "Processing..."
+                                                    : "Remove Silence"}
+                                            </Button>
+                                            {currentRecording.duration >
+                                                splitSegmentMinutes *
+                                                    60 *
+                                                    1000 && (
+                                                <Button
+                                                    onClick={handleSplit}
+                                                    variant="outline"
+                                                    size="sm"
+                                                    disabled={isSplitting}
+                                                >
+                                                    <Scissors className="w-4 h-4 mr-2" />
+                                                    {isSplitting
+                                                        ? "Splitting..."
+                                                        : "Split Recording"}
+                                                </Button>
+                                            )}
+                                            {(currentRecording.plaudFileId.startsWith(
                                                 "split-",
-                                            )) && (
-                                            <div className="flex justify-end gap-2">
-                                                {currentRecording.duration >
-                                                    splitSegmentMinutes *
-                                                        60 *
-                                                        1000 && (
-                                                    <Button
-                                                        onClick={handleSplit}
-                                                        variant="outline"
-                                                        size="sm"
-                                                        disabled={isSplitting}
-                                                    >
-                                                        <Scissors className="w-4 h-4 mr-2" />
-                                                        {isSplitting
-                                                            ? "Splitting..."
-                                                            : "Split Recording"}
-                                                    </Button>
-                                                )}
-                                                {currentRecording.plaudFileId.startsWith(
-                                                    "split-",
-                                                ) && (
-                                                    <Button
-                                                        onClick={handleDelete}
-                                                        variant="outline"
-                                                        size="sm"
-                                                        disabled={isDeleting}
-                                                        className="text-destructive hover:text-destructive"
-                                                    >
-                                                        <Trash2 className="w-4 h-4 mr-2" />
-                                                        {isDeleting
-                                                            ? "Deleting..."
-                                                            : "Delete Segment"}
-                                                    </Button>
-                                                )}
-                                            </div>
-                                        )}
+                                            ) ||
+                                                currentRecording.plaudFileId.startsWith(
+                                                    "silence-removed-",
+                                                )) && (
+                                                <Button
+                                                    onClick={handleDelete}
+                                                    variant="outline"
+                                                    size="sm"
+                                                    disabled={isDeleting}
+                                                    className="text-destructive hover:text-destructive"
+                                                >
+                                                    <Trash2 className="w-4 h-4 mr-2" />
+                                                    {isDeleting
+                                                        ? "Deleting..."
+                                                        : "Delete"}
+                                                </Button>
+                                            )}
+                                        </div>
                                         <RecordingPlayer
                                             recording={currentRecording}
                                             onEnded={() => {

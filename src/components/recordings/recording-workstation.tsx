@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Scissors, Trash2 } from "lucide-react";
+import { ArrowLeft, Scissors, Trash2, VolumeX } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -29,6 +29,7 @@ export function RecordingWorkstation({
     const [isTranscribing, setIsTranscribing] = useState(false);
     const [isSplitting, setIsSplitting] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [isRemovingSilence, setIsRemovingSilence] = useState(false);
     const [splitSegmentMinutes, setSplitSegmentMinutes] = useState(60);
 
     useEffect(() => {
@@ -108,6 +109,31 @@ export function RecordingWorkstation({
         }
     }, [recording.id, router]);
 
+    const handleRemoveSilence = useCallback(async () => {
+        setIsRemovingSilence(true);
+        try {
+            const response = await fetch(
+                `/api/recordings/${recording.id}/remove-silence`,
+                { method: "POST" },
+            );
+
+            if (response.ok) {
+                const data = await response.json();
+                toast.success(
+                    `Silence removed — ${data.originalSizeMb} MB → ${data.newSizeMb} MB (${data.reductionPercent}% smaller)`,
+                );
+                router.push("/dashboard");
+            } else {
+                const error = await response.json();
+                toast.error(error.error || "Failed to remove silence");
+            }
+        } catch {
+            toast.error("Failed to remove silence");
+        } finally {
+            setIsRemovingSilence(false);
+        }
+    }, [recording.id, router]);
+
     return (
         <div className="bg-background">
             <div className="container mx-auto px-4 py-6 max-w-4xl">
@@ -128,6 +154,14 @@ export function RecordingWorkstation({
                             {new Date(recording.startTime).toLocaleString()}
                         </p>
                     </div>
+                    <Button
+                        onClick={handleRemoveSilence}
+                        variant="outline"
+                        disabled={isRemovingSilence}
+                    >
+                        <VolumeX className="w-4 h-4 mr-2" />
+                        {isRemovingSilence ? "Processing..." : "Remove Silence"}
+                    </Button>
                     {recording.duration > splitSegmentMinutes * 60 * 1000 && (
                         <Button
                             onClick={handleSplit}
@@ -138,7 +172,8 @@ export function RecordingWorkstation({
                             {isSplitting ? "Splitting..." : "Split Recording"}
                         </Button>
                     )}
-                    {recording.plaudFileId.startsWith("split-") && (
+                    {(recording.plaudFileId.startsWith("split-") ||
+                        recording.plaudFileId.startsWith("silence-removed-")) && (
                         <Button
                             onClick={handleDelete}
                             variant="outline"
@@ -146,7 +181,7 @@ export function RecordingWorkstation({
                             className="text-destructive hover:text-destructive"
                         >
                             <Trash2 className="w-4 h-4 mr-2" />
-                            {isDeleting ? "Deleting..." : "Delete Segment"}
+                            {isDeleting ? "Deleting..." : "Delete"}
                         </Button>
                     )}
                 </div>

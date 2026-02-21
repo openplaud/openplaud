@@ -1,8 +1,8 @@
 "use client";
 
-import { Mic, RefreshCw, Scissors, Settings, Trash2, VolumeX } from "lucide-react";
+import { Mic, RefreshCw, Scissors, Settings, Trash2, Upload, VolumeX } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { OnboardingDialog } from "@/components/onboarding-dialog";
 import { SettingsDialog } from "@/components/settings-dialog";
@@ -47,6 +47,8 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
     const [editTitleValue, setEditTitleValue] = useState("");
     const [isSavingTitle, setIsSavingTitle] = useState(false);
     const [isSyncingToPlaud, setIsSyncingToPlaud] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
+    const uploadInputRef = useRef<HTMLInputElement>(null);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [onboardingOpen, setOnboardingOpen] = useState(false);
     const [providers, setProviders] = useState<
@@ -297,6 +299,39 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
         }
     }, [currentRecording]);
 
+    const handleUpload = useCallback(
+        async (e: React.ChangeEvent<HTMLInputElement>) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            e.target.value = "";
+
+            setIsUploading(true);
+            try {
+                const formData = new FormData();
+                formData.append("file", file);
+
+                const response = await fetch("/api/recordings/upload", {
+                    method: "POST",
+                    body: formData,
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    toast.success(`"${data.filename}" uploaded`);
+                    router.refresh();
+                } else {
+                    const error = await response.json();
+                    toast.error(error.error || "Upload failed");
+                }
+            } catch {
+                toast.error("Failed to upload recording");
+            } finally {
+                setIsUploading(false);
+            }
+        },
+        [router],
+    );
+
     const runSplit = useCallback(
         async (force: boolean) => {
             if (!currentRecording) return;
@@ -423,6 +458,23 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                     </>
                                 )}
                             </Button>
+                            <input
+                                ref={uploadInputRef}
+                                type="file"
+                                accept="audio/*"
+                                className="hidden"
+                                onChange={handleUpload}
+                            />
+                            <Button
+                                onClick={() => uploadInputRef.current?.click()}
+                                disabled={isUploading}
+                                variant="outline"
+                                size="sm"
+                                className="h-9"
+                            >
+                                <Upload className="w-4 h-4 mr-2" />
+                                {isUploading ? "Uploading..." : "Upload Audio"}
+                            </Button>
                             <Button
                                 onClick={() => setSettingsOpen(true)}
                                 variant="outline"
@@ -546,6 +598,9 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                                 ) ||
                                                     currentRecording.plaudFileId.startsWith(
                                                         "silence-removed-",
+                                                    ) ||
+                                                    currentRecording.plaudFileId.startsWith(
+                                                        "uploaded-",
                                                     )) && (
                                                     <Button
                                                         onClick={handleDelete}

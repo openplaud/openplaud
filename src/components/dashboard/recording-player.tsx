@@ -289,9 +289,8 @@ export function RecordingPlayer({
                     )}
                     {onSyncToPlaud &&
                         !recording.plaudFileId.startsWith("split-") &&
-                        !recording.plaudFileId.startsWith(
-                            "silence-removed-",
-                        ) &&
+                        !recording.plaudFileId.startsWith("silence-removed-") &&
+                        !recording.plaudFileId.startsWith("uploaded-") &&
                         recording.filenameModified && (
                             <Button
                                 variant="ghost"

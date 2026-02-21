@@ -296,6 +296,7 @@ export function RecordingWorkstation({
                                 !recording.plaudFileId.startsWith(
                                     "silence-removed-",
                                 ) &&
+                                !recording.plaudFileId.startsWith("uploaded-") &&
                                 recording.filenameModified && (
                                     <Button
                                         variant="ghost"
@@ -361,7 +362,8 @@ export function RecordingWorkstation({
                         </div>
                     )}
                     {(recording.plaudFileId.startsWith("split-") ||
-                        recording.plaudFileId.startsWith("silence-removed-")) && (
+                        recording.plaudFileId.startsWith("silence-removed-") ||
+                        recording.plaudFileId.startsWith("uploaded-")) && (
                         <Button
                             onClick={handleDelete}
                             variant="outline"

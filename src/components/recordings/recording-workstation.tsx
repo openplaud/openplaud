@@ -1,13 +1,14 @@
 "use client";
 
-import { ArrowLeft, Scissors, Trash2, VolumeX } from "lucide-react";
+import { ArrowLeft, CloudUpload, Pencil, Scissors, Trash2, VolumeX } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { RecordingPlayer } from "@/components/dashboard/recording-player";
 import { TranscriptionPanel } from "@/components/dashboard/transcription-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import type { Recording } from "@/types/recording";
 
 interface Transcription {
@@ -29,6 +30,10 @@ export function RecordingWorkstation({
     const [isTranscribing, setIsTranscribing] = useState(false);
     const [isDeletingTranscription, setIsDeletingTranscription] = useState(false);
     const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
+    const [isEditingTitle, setIsEditingTitle] = useState(false);
+    const [editTitleValue, setEditTitleValue] = useState("");
+    const [isSavingTitle, setIsSavingTitle] = useState(false);
+    const [isSyncingToPlaud, setIsSyncingToPlaud] = useState(false);
     const [isSplitting, setIsSplitting] = useState(false);
     const [splitConflict, setSplitConflict] = useState<number | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
@@ -110,6 +115,56 @@ export function RecordingWorkstation({
             setIsGeneratingTitle(false);
         }
     }, [recording.id, router]);
+
+    const handleSaveTitle = useCallback(async () => {
+        const trimmed = editTitleValue.trim();
+        if (!trimmed || trimmed === recording.filename) {
+            setIsEditingTitle(false);
+            return;
+        }
+
+        setIsSavingTitle(true);
+        try {
+            const response = await fetch(`/api/recordings/${recording.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ filename: trimmed }),
+            });
+
+            if (response.ok) {
+                setIsEditingTitle(false);
+                router.refresh();
+            } else {
+                const error = await response.json();
+                toast.error(error.error || "Failed to save title");
+            }
+        } catch {
+            toast.error("Failed to save title");
+        } finally {
+            setIsSavingTitle(false);
+        }
+    }, [editTitleValue, recording.filename, recording.id, router]);
+
+    const handleSyncToPlaud = useCallback(async () => {
+        setIsSyncingToPlaud(true);
+        try {
+            const response = await fetch(
+                `/api/recordings/${recording.id}/sync-title`,
+                { method: "POST" },
+            );
+
+            if (response.ok) {
+                toast.success("Title synced to Plaud");
+            } else {
+                const error = await response.json();
+                toast.error(error.error || "Failed to sync title");
+            }
+        } catch {
+            toast.error("Failed to sync title");
+        } finally {
+            setIsSyncingToPlaud(false);
+        }
+    }, [recording.id]);
 
     const runSplit = useCallback(
         async (force: boolean) => {
@@ -203,9 +258,57 @@ export function RecordingWorkstation({
                         <ArrowLeft className="w-4 h-4" />
                     </Button>
                     <div className="flex-1 min-w-0">
-                        <h1 className="text-3xl font-bold truncate">
-                            {recording.filename}
-                        </h1>
+                        <div className="flex items-center gap-1 min-w-0">
+                            {isEditingTitle ? (
+                                <Input
+                                    value={editTitleValue}
+                                    onChange={(e) =>
+                                        setEditTitleValue(e.target.value)
+                                    }
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter") handleSaveTitle();
+                                        if (e.key === "Escape")
+                                            setIsEditingTitle(false);
+                                    }}
+                                    onBlur={handleSaveTitle}
+                                    disabled={isSavingTitle}
+                                    className="text-2xl font-bold h-auto py-0.5 flex-1"
+                                    autoFocus
+                                />
+                            ) : (
+                                <h1 className="text-3xl font-bold truncate flex-1">
+                                    {recording.filename}
+                                </h1>
+                            )}
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="shrink-0"
+                                onClick={() => {
+                                    setEditTitleValue(recording.filename);
+                                    setIsEditingTitle(true);
+                                }}
+                                title="Edit title"
+                            >
+                                <Pencil className="w-4 h-4" />
+                            </Button>
+                            {!recording.plaudFileId.startsWith("split-") &&
+                                !recording.plaudFileId.startsWith(
+                                    "silence-removed-",
+                                ) &&
+                                recording.filenameModified && (
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="shrink-0"
+                                        onClick={handleSyncToPlaud}
+                                        disabled={isSyncingToPlaud}
+                                        title="Sync title to Plaud device"
+                                    >
+                                        <CloudUpload className="w-4 h-4" />
+                                    </Button>
+                                )}
+                        </div>
                         <p className="text-muted-foreground text-sm mt-1">
                             {new Date(recording.startTime).toLocaleString()}
                         </p>

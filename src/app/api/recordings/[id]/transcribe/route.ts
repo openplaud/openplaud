@@ -232,7 +232,7 @@ export async function POST(
                 if (generatedTitle) {
                     await db
                         .update(recordings)
-                        .set({ filename: generatedTitle, updatedAt: new Date() })
+                        .set({ filename: generatedTitle, filenameModified: true, updatedAt: new Date() })
                         .where(eq(recordings.id, id));
 
                     if (syncTitleToPlaud) {

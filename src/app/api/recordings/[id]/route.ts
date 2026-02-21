@@ -61,6 +61,66 @@ export async function GET(
     }
 }
 
+export async function PATCH(
+    request: Request,
+    { params }: { params: Promise<{ id: string }> },
+) {
+    try {
+        const session = await auth.api.getSession({
+            headers: request.headers,
+        });
+
+        if (!session?.user) {
+            return NextResponse.json(
+                { error: "Unauthorized" },
+                { status: 401 },
+            );
+        }
+
+        const { id } = await params;
+        const body = await request.json();
+        const filename = (body?.filename ?? "").trim();
+
+        if (!filename) {
+            return NextResponse.json(
+                { error: "Filename is required" },
+                { status: 400 },
+            );
+        }
+
+        const [recording] = await db
+            .select({ id: recordings.id })
+            .from(recordings)
+            .where(
+                and(
+                    eq(recordings.id, id),
+                    eq(recordings.userId, session.user.id),
+                ),
+            )
+            .limit(1);
+
+        if (!recording) {
+            return NextResponse.json(
+                { error: "Recording not found" },
+                { status: 404 },
+            );
+        }
+
+        await db
+            .update(recordings)
+            .set({ filename, filenameModified: true, updatedAt: new Date() })
+            .where(eq(recordings.id, id));
+
+        return NextResponse.json({ success: true, filename });
+    } catch (error) {
+        console.error("Error updating recording:", error);
+        return NextResponse.json(
+            { error: "Failed to update recording" },
+            { status: 500 },
+        );
+    }
+}
+
 export async function DELETE(
     request: Request,
     { params }: { params: Promise<{ id: string }> },

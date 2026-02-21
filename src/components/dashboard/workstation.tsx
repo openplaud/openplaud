@@ -1,14 +1,15 @@
 "use client";
 
-import { Mic, RefreshCw, Scissors, Settings, Trash2, VolumeX } from "lucide-react";
+import { CloudUpload, Mic, Pencil, RefreshCw, Scissors, Settings, Trash2, VolumeX } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { OnboardingDialog } from "@/components/onboarding-dialog";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { SyncStatus } from "@/components/sync-status";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { useAutoSync } from "@/hooks/use-auto-sync";
 import {
     requestNotificationPermission,
@@ -43,6 +44,11 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
     const [splitConflict, setSplitConflict] = useState<number | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
     const [isRemovingSilence, setIsRemovingSilence] = useState(false);
+    const [isEditingTitle, setIsEditingTitle] = useState(false);
+    const [editTitleValue, setEditTitleValue] = useState("");
+    const [isSavingTitle, setIsSavingTitle] = useState(false);
+    const [isSyncingToPlaud, setIsSyncingToPlaud] = useState(false);
+    const titleInputRef = useRef<HTMLInputElement>(null);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [onboardingOpen, setOnboardingOpen] = useState(false);
     const [providers, setProviders] = useState<
@@ -71,6 +77,15 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
     const currentTranscription = currentRecording
         ? transcriptions.get(currentRecording.id)
         : undefined;
+
+    // Keep currentRecording in sync with the recordings prop (updated after router.refresh())
+    useEffect(() => {
+        setCurrentRecording((prev) => {
+            if (!prev) return prev;
+            const updated = recordings.find((r) => r.id === prev.id);
+            return updated ?? prev;
+        });
+    }, [recordings]);
 
     useEffect(() => {
         getSyncSettings().then(setSyncSettings);
@@ -230,6 +245,59 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
             setIsGeneratingTitle(false);
         }
     }, [currentRecording, router]);
+
+    const handleSaveTitle = useCallback(async () => {
+        if (!currentRecording) return;
+        const trimmed = editTitleValue.trim();
+        if (!trimmed || trimmed === currentRecording.filename) {
+            setIsEditingTitle(false);
+            return;
+        }
+
+        setIsSavingTitle(true);
+        try {
+            const response = await fetch(`/api/recordings/${currentRecording.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ filename: trimmed }),
+            });
+
+            if (response.ok) {
+                setIsEditingTitle(false);
+                router.refresh();
+            } else {
+                const error = await response.json();
+                toast.error(error.error || "Failed to save title");
+            }
+        } catch {
+            toast.error("Failed to save title");
+        } finally {
+            setIsSavingTitle(false);
+        }
+    }, [currentRecording, editTitleValue, router]);
+
+    const handleSyncToPlaud = useCallback(async () => {
+        if (!currentRecording) return;
+
+        setIsSyncingToPlaud(true);
+        try {
+            const response = await fetch(
+                `/api/recordings/${currentRecording.id}/sync-title`,
+                { method: "POST" },
+            );
+
+            if (response.ok) {
+                toast.success("Title synced to Plaud");
+            } else {
+                const error = await response.json();
+                toast.error(error.error || "Failed to sync title");
+            }
+        } catch {
+            toast.error("Failed to sync title");
+        } finally {
+            setIsSyncingToPlaud(false);
+        }
+    }, [currentRecording]);
 
     const runSplit = useCallback(
         async (force: boolean) => {
@@ -412,6 +480,73 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                             <div className="lg:col-span-2 space-y-6">
                                 {currentRecording ? (
                                     <>
+                                        {/* Title row */}
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            {isEditingTitle ? (
+                                                <Input
+                                                    ref={titleInputRef}
+                                                    value={editTitleValue}
+                                                    onChange={(e) =>
+                                                        setEditTitleValue(
+                                                            e.target.value,
+                                                        )
+                                                    }
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === "Enter")
+                                                            handleSaveTitle();
+                                                        if (e.key === "Escape")
+                                                            setIsEditingTitle(
+                                                                false,
+                                                            );
+                                                    }}
+                                                    onBlur={handleSaveTitle}
+                                                    disabled={isSavingTitle}
+                                                    className="font-semibold text-base flex-1"
+                                                    autoFocus
+                                                />
+                                            ) : (
+                                                <span className="font-semibold text-base truncate flex-1">
+                                                    {currentRecording.filename}
+                                                </span>
+                                            )}
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="shrink-0 h-8 w-8"
+                                                onClick={() => {
+                                                    setEditTitleValue(
+                                                        currentRecording.filename,
+                                                    );
+                                                    setIsEditingTitle(true);
+                                                }}
+                                                title="Edit title"
+                                            >
+                                                <Pencil className="w-3.5 h-3.5" />
+                                            </Button>
+                                            {!currentRecording.plaudFileId.startsWith(
+                                                "split-",
+                                            ) &&
+                                                !currentRecording.plaudFileId.startsWith(
+                                                    "silence-removed-",
+                                                ) &&
+                                                currentRecording.filenameModified && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="shrink-0 h-8 w-8"
+                                                        onClick={
+                                                            handleSyncToPlaud
+                                                        }
+                                                        disabled={
+                                                            isSyncingToPlaud
+                                                        }
+                                                        title="Sync title to Plaud device"
+                                                    >
+                                                        <CloudUpload className="w-3.5 h-3.5" />
+                                                    </Button>
+                                                )}
+                                        </div>
+
                                         <div className="space-y-2">
                                             {splitConflict !== null && (
                                                 <div className="flex items-center justify-end gap-3 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm">

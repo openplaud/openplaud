@@ -141,6 +141,8 @@ export const recordings = pgTable(
         zonemins: integer("zonemins"),
         scene: integer("scene"),
         isTrash: boolean("is_trash").notNull().default(false),
+        // Set to true whenever the filename is changed from the original Plaud value
+        filenameModified: boolean("filename_modified").notNull().default(false),
         createdAt: timestamp("created_at").notNull().defaultNow(),
         updatedAt: timestamp("updated_at").notNull().defaultNow(),
     },

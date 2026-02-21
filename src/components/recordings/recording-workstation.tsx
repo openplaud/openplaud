@@ -28,6 +28,7 @@ export function RecordingWorkstation({
     const router = useRouter();
     const [isTranscribing, setIsTranscribing] = useState(false);
     const [isSplitting, setIsSplitting] = useState(false);
+    const [splitConflict, setSplitConflict] = useState<number | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
     const [isRemovingSilence, setIsRemovingSilence] = useState(false);
     const [splitSegmentMinutes, setSplitSegmentMinutes] = useState(60);
@@ -63,30 +64,38 @@ export function RecordingWorkstation({
         }
     }, [recording.id, router]);
 
-    const handleSplit = useCallback(async () => {
-        setIsSplitting(true);
-        try {
-            const response = await fetch(
-                `/api/recordings/${recording.id}/split`,
-                { method: "POST" },
-            );
+    const runSplit = useCallback(
+        async (force: boolean) => {
+            setIsSplitting(true);
+            try {
+                const url = `/api/recordings/${recording.id}/split${force ? "?force=true" : ""}`;
+                const response = await fetch(url, { method: "POST" });
 
-            if (response.ok) {
-                const data = await response.json();
-                toast.success(
-                    `Recording split into ${data.segmentCount} segments`,
-                );
-                router.push("/dashboard");
-            } else {
-                const error = await response.json();
-                toast.error(error.error || "Failed to split recording");
+                if (response.ok) {
+                    const data = await response.json();
+                    setSplitConflict(null);
+                    toast.success(
+                        `Recording split into ${data.segmentCount} segments`,
+                    );
+                    router.push("/dashboard");
+                } else if (response.status === 409) {
+                    const data = await response.json();
+                    setSplitConflict(data.existingCount as number);
+                } else {
+                    const error = await response.json();
+                    toast.error(error.error || "Failed to split recording");
+                }
+            } catch {
+                toast.error("Failed to split recording");
+            } finally {
+                setIsSplitting(false);
             }
-        } catch {
-            toast.error("Failed to split recording");
-        } finally {
-            setIsSplitting(false);
-        }
-    }, [recording.id, router]);
+        },
+        [recording.id, router],
+    );
+
+    const handleSplit = useCallback(() => runSplit(false), [runSplit]);
+    const handleSplitForce = useCallback(() => runSplit(true), [runSplit]);
 
     const handleDelete = useCallback(async () => {
         setIsDeleting(true);
@@ -163,14 +172,43 @@ export function RecordingWorkstation({
                         {isRemovingSilence ? "Processing..." : "Remove Silence"}
                     </Button>
                     {recording.duration > splitSegmentMinutes * 60 * 1000 && (
-                        <Button
-                            onClick={handleSplit}
-                            variant="outline"
-                            disabled={isSplitting}
-                        >
-                            <Scissors className="w-4 h-4 mr-2" />
-                            {isSplitting ? "Splitting..." : "Split Recording"}
-                        </Button>
+                        <div className="flex flex-col items-end gap-2">
+                            {splitConflict !== null && (
+                                <div className="flex items-center gap-3 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm">
+                                    <span className="text-destructive">
+                                        {splitConflict === 1
+                                            ? "1 existing segment"
+                                            : `${splitConflict} existing segments`}{" "}
+                                        will be deleted. Continue?
+                                    </span>
+                                    <Button
+                                        onClick={() => setSplitConflict(null)}
+                                        variant="outline"
+                                        size="sm"
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        onClick={handleSplitForce}
+                                        variant="destructive"
+                                        size="sm"
+                                        disabled={isSplitting}
+                                    >
+                                        {isSplitting
+                                            ? "Splitting..."
+                                            : "Delete & Re-split"}
+                                    </Button>
+                                </div>
+                            )}
+                            <Button
+                                onClick={handleSplit}
+                                variant="outline"
+                                disabled={isSplitting}
+                            >
+                                <Scissors className="w-4 h-4 mr-2" />
+                                {isSplitting ? "Splitting..." : "Split Recording"}
+                            </Button>
+                        </div>
                     )}
                     {(recording.plaudFileId.startsWith("split-") ||
                         recording.plaudFileId.startsWith("silence-removed-")) && (

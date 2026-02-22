@@ -11,6 +11,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 
 interface SpeachesModel {
     id: string;
@@ -101,6 +102,9 @@ export function SpeachesModelManager({
     // Always refresh the parent list when the dialog closes
     const handleOpenChange = (isOpen: boolean) => {
         if (!isOpen) {
+            // Prevent closing while a download is in progress.
+            // Escape key and overlay clicks both fire onOpenChange(false).
+            if (installingId !== null) return;
             onModelsChanged();
         }
         onOpenChange(isOpen);
@@ -250,7 +254,7 @@ export function SpeachesModelManager({
                                     return (
                                         <div
                                             key={model.id}
-                                            className={`flex items-center justify-between gap-2 py-1.5 px-3 rounded-md border bg-card ${isInstalling ? "border-primary/40 bg-primary/5" : ""}`}
+                                            className={cn("flex items-center justify-between gap-2 py-1.5 px-3 rounded-md border", isInstalling ? "border-primary/40 bg-primary/5" : "bg-card")}
                                         >
                                             <span
                                                 className={`font-mono text-xs truncate ${isInstalling ? "text-muted-foreground" : ""}`}

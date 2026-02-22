@@ -141,6 +141,16 @@ export async function POST(
         // the input bitrate (e.g. re-encoding with libopus at a fixed 32 kbps).
         const estimatedDurationMs = await getAudioDurationMs(outputPath);
 
+        // Guard against a zero duration (e.g. if ffprobe fails to read the
+        // output).  A recording with duration 0 and endTime === startTime is
+        // misleading and makes it impossible to seek in the player.
+        if (estimatedDurationMs <= 0) {
+            return NextResponse.json(
+                { error: "Could not determine output duration — the file may be corrupt" },
+                { status: 422 },
+            );
+        }
+
         const baseFilename = recording.filename.replace(/\.[^.]+$/, "");
         const silencedPlaudFileId = `silence-removed-${recording.plaudFileId}`;
 
@@ -173,6 +183,10 @@ export async function POST(
             })
             .onConflictDoUpdate({
                 target: recordings.plaudFileId,
+                // Only update the row if it belongs to the current user —
+                // this prevents a collision with another user's recording that
+                // happens to have the same plaudFileId.
+                setWhere: eq(recordings.userId, session.user.id),
                 set: {
                     filename: `${baseFilename} (Silence Removed)`,
                     duration: estimatedDurationMs,

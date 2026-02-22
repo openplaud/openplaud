@@ -97,19 +97,9 @@ export async function POST(
             );
         }
 
-        if (existingSplits.length > 0 && force) {
-            // Delete storage files individually; log but do not abort on failure
-            for (const split of existingSplits) {
-                try {
-                    await storage.deleteFile(split.storagePath);
-                } catch (err) {
-                    console.error(
-                        `Failed to delete storage file ${split.storagePath}:`,
-                        err,
-                    );
-                }
-            }
-        }
+        // Storage-file deletion for force re-splits is deferred to after
+        // the DB transaction commits so a failed transaction never leaves
+        // orphaned DB rows pointing at deleted files.
 
         // From here on: download, split, upload, then insert atomically
         const tmpDir = await fs.mkdtemp(
@@ -155,7 +145,7 @@ export async function POST(
                 "-reset_timestamps",
                 "1",
                 outputPattern,
-            ]);
+            ], { timeout: 300_000 }); // 5-minute timeout for large files
 
             const allFiles = await fs.readdir(tmpDir);
             const segmentFiles = allFiles
@@ -251,6 +241,21 @@ export async function POST(
                 }
                 return ids;
             });
+
+            // Delete old split storage files only after the DB transaction
+            // has successfully committed, preserving consistency.
+            if (existingSplits.length > 0 && force) {
+                for (const split of existingSplits) {
+                    try {
+                        await storage.deleteFile(split.storagePath);
+                    } catch (err) {
+                        console.error(
+                            `Failed to delete old storage file ${split.storagePath}:`,
+                            err,
+                        );
+                    }
+                }
+            }
 
             return NextResponse.json({
                 success: true,

@@ -25,6 +25,7 @@ export async function GET(request: Request) {
 
         return NextResponse.json({
             connected: !!connection,
+            apiBase: connection?.apiBase ?? null,
         });
     } catch (error) {
         console.error("Error checking Plaud connection:", error);

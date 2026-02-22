@@ -93,6 +93,8 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
     // stale editing UI is never shown after switching recordings.
     useEffect(() => {
         setIsEditingTitle(false);
+        setEditTitleValue("");
+        setSplitConflict(null);
     }, [currentRecording?.id]);
 
     useEffect(() => {
@@ -360,6 +362,9 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                     const data = await response.json();
                     setSplitConflict(data.existingCount as number);
                 } else {
+                    // Clear any stale conflict banner so it doesn't show stale
+                    // data after a failed force re-split.
+                    setSplitConflict(null);
                     const error = await response.json();
                     toast.error(error.error || "Failed to split recording");
                 }

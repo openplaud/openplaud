@@ -11,6 +11,7 @@ import { recordings } from "@/db/schema";
 import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { createUserStorageProvider } from "@/lib/storage/factory";
+import { getAudioMimeType } from "@/lib/utils";
 
 const execFileAsync = promisify(execFile);
 
@@ -123,7 +124,10 @@ export async function POST(request: Request) {
         // Unique ID and storage key for this upload
         const fileId = `uploaded-${nanoid()}`;
         const storageKey = `${session.user.id}/${fileId}${ext}`;
-        const contentType = file.type || "audio/mpeg";
+        // Derive the content-type from the validated extension so that
+        // files without a browser-provided MIME type (e.g. .wav, .flac) are
+        // stored with the correct type instead of always defaulting to audio/mpeg.
+        const contentType = file.type || getAudioMimeType(storageKey);
 
         const storage = await createUserStorageProvider(session.user.id);
         await storage.uploadFile(storageKey, buffer, contentType);

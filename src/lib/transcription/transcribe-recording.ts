@@ -120,10 +120,12 @@ export async function transcribeRecording(
 
         if (supportsDiarizedJson) {
             const diarized = transcription as TranscriptionDiarized;
-            transcriptionText = (diarized.segments ?? [])
+            const rawDiarized = (diarized.segments ?? [])
                 .map((seg) => `${seg.speaker}: ${seg.text}`)
                 .join("\n");
-            // TranscriptionDiarized doesn't expose language
+            // Apply text-based repetition removal as safety net for diarized output
+            transcriptionText = postProcessTranscription(rawDiarized, undefined);
+            // TranscriptionDiarized does not expose language
         } else if (responseFormat === "verbose_json") {
             const verbose = transcription as TranscriptionVerbose;
             const segments = verbose.segments ?? undefined;
@@ -175,7 +177,12 @@ export async function transcribeRecording(
                         })
                         .where(eq(recordings.id, recordingId));
 
-                    if (syncTitleToPlaud) {
+                    const isLocallyCreated =
+                        recording.plaudFileId.startsWith("split-") ||
+                        recording.plaudFileId.startsWith("silence-removed-") ||
+                        recording.plaudFileId.startsWith("uploaded-");
+
+                    if (syncTitleToPlaud && !isLocallyCreated) {
                         try {
                             const [connection] = await db
                                 .select()

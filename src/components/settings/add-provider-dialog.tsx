@@ -129,7 +129,7 @@ export function AddProviderDialog({
         } finally {
             setIsLoadingModels(false);
         }
-    }, [baseUrl]);
+    }, []);  // fetchSpeachesModels only uses its url parameter
 
     useEffect(() => {
         if (isSpeaches && open) {
@@ -274,7 +274,7 @@ export function AddProviderDialog({
                                 onChange={(e) => setBaseUrl(e.target.value)}
                                 onBlur={(e) => {
                                     if (isSpeaches)
-                                        fetchSpeachesModels(e.target.value);
+                                        fetchSpeachesModels(e.target.value || "http://localhost:8000/v1");
                                 }}
                                 disabled={isLoading}
                                 className="font-mono text-sm"

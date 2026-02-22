@@ -232,7 +232,12 @@ export function postProcessTranscription(
         );
 
         if (hasMetrics) {
-            text = filterSegmentsByQuality(segments);
+            const filtered = filterSegmentsByQuality(segments);
+            // Fall back to rawText if the segment quality filter discards
+            // everything (e.g. the very first segment has compression_ratio > 5).
+            // An empty transcription is far less useful than a potentially
+            // hallucination-containing one that the user can review manually.
+            text = filtered.length > 0 ? filtered : rawText;
         }
     }
 

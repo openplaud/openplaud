@@ -59,6 +59,11 @@ export function OnboardingDialog({
                 .then((data) => {
                     if (data.connected) {
                         setHasPlaudConnection(true);
+                        // Pre-populate the server dropdown with the stored value
+                        // so EU users reconnecting don't accidentally switch to Global.
+                        if (data.apiBase) {
+                            setApiBase(data.apiBase);
+                        }
                     }
                 })
                 .catch(() => {});

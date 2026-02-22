@@ -288,7 +288,7 @@ export function RecordingPlayer({
                             {recording.filename}
                         </CardTitle>
                     )}
-                    {onEditTitle && (
+                    {onEditTitle && !isEditingTitle && (
                         <Button
                             variant="ghost"
                             size="icon"

@@ -1,5 +1,9 @@
 import { and, eq } from "drizzle-orm";
 import { OpenAI } from "openai";
+import type {
+    TranscriptionDiarized,
+    TranscriptionVerbose,
+} from "openai/resources/audio/transcriptions";
 import { db } from "@/db";
 import {
     apiCredentials,
@@ -94,43 +98,44 @@ export async function transcribeRecording(
 
         const model = credentials.defaultModel || "whisper-1";
 
-        type TranscriptionParams = {
-            file: File;
-            model: string;
-            response_format: "verbose_json";
-            language?: string;
-        };
+        const isGpt4o = model.startsWith("gpt-4o");
+        const supportsDiarizedJson =
+            model.includes("diarize") || model.includes("diarized");
 
-        const transcriptionParams: TranscriptionParams = {
+        const responseFormat = supportsDiarizedJson
+            ? ("diarized_json" as const)
+            : isGpt4o
+              ? ("json" as const)
+              : ("verbose_json" as const);
+
+        const transcription = await openai.audio.transcriptions.create({
             file: audioFile,
             model,
-            response_format: "verbose_json",
-        };
+            response_format: responseFormat,
+            ...(defaultLanguage ? { language: defaultLanguage } : {}),
+        });
 
-        if (defaultLanguage) {
-            transcriptionParams.language = defaultLanguage;
+        let transcriptionText: string;
+        let detectedLanguage: string | null = null;
+
+        if (supportsDiarizedJson) {
+            const diarized = transcription as TranscriptionDiarized;
+            transcriptionText = (diarized.segments ?? [])
+                .map((seg) => `${seg.speaker}: ${seg.text}`)
+                .join("\n");
+            // TranscriptionDiarized doesn't expose language
+        } else if (responseFormat === "verbose_json") {
+            const verbose = transcription as TranscriptionVerbose;
+            const segments = verbose.segments ?? undefined;
+            transcriptionText = postProcessTranscription(verbose.text, segments);
+            detectedLanguage = verbose.language ?? null;
+        } else {
+            const rawText =
+                typeof transcription === "string"
+                    ? transcription
+                    : (transcription.text ?? "");
+            transcriptionText = postProcessTranscription(rawText, undefined);
         }
-
-        const transcription =
-            await openai.audio.transcriptions.create(transcriptionParams);
-
-        const rawText =
-            typeof transcription === "string"
-                ? transcription
-                : (transcription.text ?? "");
-
-        const segments =
-            typeof transcription === "string"
-                ? undefined
-                : (transcription.segments ?? undefined);
-
-        const transcriptionText = postProcessTranscription(rawText, segments);
-
-        const detectedLanguage =
-            typeof transcription === "string"
-                ? null
-                : (transcription.language ?? null);
-
         if (existingTranscription) {
             await db
                 .update(transcriptions)

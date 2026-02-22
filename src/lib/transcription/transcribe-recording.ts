@@ -10,6 +10,7 @@ import {
 } from "@/db/schema";
 import { generateTitleFromTranscription } from "@/lib/ai/generate-title";
 import { decrypt } from "@/lib/encryption";
+import { postProcessTranscription } from "@/lib/transcription/post-process";
 import { createPlaudClient } from "@/lib/plaud/client";
 import { createUserStorageProvider } from "@/lib/storage/factory";
 
@@ -114,10 +115,17 @@ export async function transcribeRecording(
         const transcription =
             await openai.audio.transcriptions.create(transcriptionParams);
 
-        const transcriptionText =
+        const rawText =
             typeof transcription === "string"
                 ? transcription
                 : (transcription.text ?? "");
+
+        const segments =
+            typeof transcription === "string"
+                ? undefined
+                : (transcription.segments ?? undefined);
+
+        const transcriptionText = postProcessTranscription(rawText, segments);
 
         const detectedLanguage =
             typeof transcription === "string"

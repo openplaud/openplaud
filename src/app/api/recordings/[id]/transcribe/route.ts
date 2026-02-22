@@ -6,6 +6,7 @@ import { apiCredentials, plaudConnections, recordings, transcriptions, userSetti
 import { auth } from "@/lib/auth";
 import { generateTitleFromTranscription } from "@/lib/ai/generate-title";
 import { decrypt } from "@/lib/encryption";
+import { postProcessTranscription } from "@/lib/transcription/post-process";
 import { createPlaudClient } from "@/lib/plaud/client";
 import { createUserStorageProvider } from "@/lib/storage/factory";
 
@@ -169,13 +170,27 @@ export async function POST(
         type VerboseTranscription = {
             text: string;
             language?: string | null;
+            segments?: Array<{
+                text: string;
+                avg_logprob?: number;
+                compression_ratio?: number;
+                no_speech_prob?: number;
+            }>;
         };
 
-        // Extract text and detected language from response
-        const transcriptionText =
+        // Extract text, segments and detected language from response
+        const rawText =
             typeof transcription === "string"
                 ? transcription
                 : (transcription as VerboseTranscription).text;
+
+        const segments =
+            typeof transcription === "string"
+                ? undefined
+                : ((transcription as VerboseTranscription).segments ?? undefined);
+
+        // Filter out hallucination loops before saving
+        const transcriptionText = postProcessTranscription(rawText, segments);
 
         const detectedLanguage =
             typeof transcription === "string"

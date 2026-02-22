@@ -107,8 +107,11 @@ function removeTrailingHallucinations(
     }
 
     // Pass 3: remove tail segments with abnormally low speech density.
-    // Hallucinated segments during end-of-audio silence span many seconds
-    // but contain only a handful of words.
+    // Only applies to very short phrases (≤ 4 words): legitimate song
+    // endings almost always contain more words than hallucinated fillers
+    // ("For Three", "Thank you", "Mmm"). A slow singer can produce 6 words
+    // in 12 seconds (0.5 w/s) — the same density as silence hallucinations
+    // — so we must not penalise longer phrases.
     while (end > 0) {
         const seg = segments[end - 1];
         const segStart = seg.start;
@@ -119,7 +122,7 @@ function removeTrailingHallucinations(
                 .trim()
                 .split(/\s+/)
                 .filter((w) => w.length > 0).length;
-            if (duration >= 5 && wordCount / duration < 0.5) {
+            if (wordCount <= 4 && duration >= 5 && wordCount / duration < 0.5) {
                 end--;
                 continue;
             }

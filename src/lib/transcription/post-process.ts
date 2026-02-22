@@ -10,7 +10,12 @@
  *    where Whisper enters a hallucination loop. Everything from the
  *    first loop segment onwards is discarded; content before it is kept.
  *
- * 2. Text-based repetition removal: a sliding-window scan detects
+ * 2. Trailing hallucination removal: segments at the end of the audio
+ *    with both high no_speech_prob and very negative avg_logprob are
+ *    stripped. This catches the single nonsensical phrases Whisper
+ *    generates when audio ends with silence or low-energy content.
+ *
+ * 3. Text-based repetition removal: a sliding-window scan detects
  *    consecutive phrase repetitions in the final text and truncates
  *    at the first loop, acting as a safety net when quality metrics
  *    are absent or insufficient.
@@ -44,18 +49,39 @@ function findLoopStartIndex(segments: TranscriptionSegment[]): number {
 }
 
 /**
- * Truncates the segment list at the first detected hallucination loop and
- * joins the remaining segments into a single string.
+ * Removes trailing segments that are almost certainly hallucinated during
+ * end-of-audio silence or low-energy audio. These segments typically have
+ * both a high no_speech_prob (model thinks there is no speech) and a very
+ * negative avg_logprob (model was very uncertain about what it generated).
+ */
+function removeTrailingNoSpeechSegments(
+    segments: TranscriptionSegment[],
+): TranscriptionSegment[] {
+    let end = segments.length;
+    while (end > 0) {
+        const seg = segments[end - 1];
+        const ns = seg.no_speech_prob ?? 0;
+        const lp = seg.avg_logprob ?? 0;
+        if (ns > 0.6 && lp < -1.0) {
+            end--;
+        } else {
+            break;
+        }
+    }
+    return segments.slice(0, end);
+}
+
+/**
+ * Truncates the segment list at the first detected hallucination loop,
+ * then strips any trailing end-of-audio hallucination segments.
  */
 export function filterSegmentsByQuality(
     segments: TranscriptionSegment[],
 ): string {
     const loopStart = findLoopStartIndex(segments);
-    return segments
-        .slice(0, loopStart)
-        .map((s) => s.text)
-        .join("")
-        .trim();
+    const beforeLoop = segments.slice(0, loopStart);
+    const cleaned = removeTrailingNoSpeechSegments(beforeLoop);
+    return cleaned.map((s) => s.text).join("").trim();
 }
 
 /**

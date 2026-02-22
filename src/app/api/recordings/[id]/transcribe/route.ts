@@ -170,6 +170,8 @@ export async function POST(
             language?: string | null;
             segments?: Array<{
                 text: string;
+                start?: number;
+                end?: number;
                 avg_logprob?: number;
                 compression_ratio?: number;
                 no_speech_prob?: number;

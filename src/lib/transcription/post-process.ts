@@ -2,7 +2,7 @@
  * Post-processing for Whisper/faster-whisper transcription output.
  *
  * Whisper (and compatible models) can enter "hallucination loops" where
- * a phrase is repeated hundreds of times. Two complementary strategies
+ * a phrase is repeated hundreds of times. Three complementary strategies
  * are applied:
  *
  * 1. Segment loop truncation: verbose_json segments include a
@@ -10,12 +10,14 @@
  *    where Whisper enters a hallucination loop. Everything from the
  *    first loop segment onwards is discarded; content before it is kept.
  *
- * 2. Trailing hallucination removal: two passes over the final segments.
- *    Pass 1 detects consecutive duplicate segment texts (mini-loop) and
- *    removes everything from the start of that run to the end. Pass 2
- *    then removes any remaining tail segments with very negative
- *    avg_logprob (model was highly uncertain), which catches short
- *    nonsensical phrases that follow the mini-loop.
+ * 2. Trailing hallucination removal: two signal-based passes over the
+ *    final segments:
+ *    Pass 1 – consecutive duplicate text (mini-loop detection).
+ *    Pass 2 – very negative avg_logprob (high model uncertainty).
+ *    Pass 3 – low speech density: segments that span many seconds but
+ *    contain very few words indicate the model was filling silence.
+ *    Normal speech runs at ~1.5–3 words/second; trailing hallucinations
+ *    during end-of-audio silence are typically well below 0.5 w/s.
  *
  * 3. Text-based repetition removal: a sliding-window scan detects
  *    consecutive phrase repetitions in the final text and truncates
@@ -25,24 +27,12 @@
 
 interface TranscriptionSegment {
     text: string;
+    start?: number;
+    end?: number;
     avg_logprob?: number;
     compression_ratio?: number;
     no_speech_prob?: number;
 }
-
-// Whisper reliably hallucinates one of these closing phrases when the audio
-// ends or fades out. Every phrase the model produces ends with one of these
-// patterns, making them safe to strip from the tail of any transcription.
-const CLOSING_HALLUCINATION_PATTERNS = [
-    /\bthank\s+you\b\.?\s*$/i,
-    /\bthanks?\s+for\s+(watching|listening|joining|your\s+time)\b/i,
-    /\bplease\s+(like\s+and\s+)?subscribe\b/i,
-    /\bsee\s+you\s+(next\s+time|later|soon)\b/i,
-    /\bgoodbye\b\.?\s*$/i,
-    /\bbye[-\s]*bye\b\.?\s*$/i,
-    // Short non-verbal filler sounds Whisper generates during end-of-audio silence
-    /^(m{2,}|h?m{2,}|u+h*|u+m+|a+h+)\.?\s*$/i,
-];
 
 // A compression_ratio this high reliably indicates a hallucination loop
 // (normal speech segments stay well below 3; looping segments jump to 5+).
@@ -74,9 +64,10 @@ function findLoopStartIndex(segments: TranscriptionSegment[]): number {
  * Pass 2 – Low-confidence sweep: removes remaining tail segments with
  * avg_logprob < -1.5 (model was highly uncertain).
  *
- * Pass 3 – Closing phrase detection: removes segments whose text ends
- * with a known Whisper end-of-audio hallucination phrase ("Thank you",
- * "Thanks for watching", etc.).
+ * Pass 3 – Speech density: removes tail segments where the model
+ * generated very few words over a long time span (< 0.5 words/second
+ * over at least 5 seconds), which indicates hallucination during
+ * end-of-audio silence or music.
  */
 function removeTrailingHallucinations(
     segments: TranscriptionSegment[],
@@ -115,15 +106,25 @@ function removeTrailingHallucinations(
         }
     }
 
-    // Pass 3: remove segments whose text ends with a known Whisper
-    // end-of-audio hallucination phrase, regardless of logprob.
+    // Pass 3: remove tail segments with abnormally low speech density.
+    // Hallucinated segments during end-of-audio silence span many seconds
+    // but contain only a handful of words.
     while (end > 0) {
-        const text = segments[end - 1].text.trim();
-        if (CLOSING_HALLUCINATION_PATTERNS.some((p) => p.test(text))) {
-            end--;
-        } else {
-            break;
+        const seg = segments[end - 1];
+        const segStart = seg.start;
+        const segEnd = seg.end;
+        if (segStart !== undefined && segEnd !== undefined) {
+            const duration = segEnd - segStart;
+            const wordCount = seg.text
+                .trim()
+                .split(/\s+/)
+                .filter((w) => w.length > 0).length;
+            if (duration >= 5 && wordCount / duration < 0.5) {
+                end--;
+                continue;
+            }
         }
+        break;
     }
 
     return segments.slice(0, end);
@@ -223,7 +224,8 @@ export function postProcessTranscription(
         const hasMetrics = segments.some(
             (s) =>
                 s.compression_ratio !== undefined ||
-                s.avg_logprob !== undefined,
+                s.avg_logprob !== undefined ||
+                s.start !== undefined,
         );
 
         if (hasMetrics) {

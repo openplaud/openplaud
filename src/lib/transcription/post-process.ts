@@ -40,6 +40,8 @@ const CLOSING_HALLUCINATION_PATTERNS = [
     /\bsee\s+you\s+(next\s+time|later|soon)\b/i,
     /\bgoodbye\b\.?\s*$/i,
     /\bbye[-\s]*bye\b\.?\s*$/i,
+    // Short non-verbal filler sounds Whisper generates during end-of-audio silence
+    /^(m{2,}|h?m{2,}|u+h*|u+m+|a+h+)\.?\s*$/i,
 ];
 
 // A compression_ratio this high reliably indicates a hallucination loop

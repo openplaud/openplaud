@@ -164,6 +164,7 @@ export function EditProviderDialog({
             setIsDefaultTranscription(false);
             setIsDefaultEnhancement(false);
             setSpeachesModels([]);
+            setShowModelManager(false);
         }
         // biome-ignore lint/correctness/useExhaustiveDependencies: fetchSpeachesModels is stable within render
     }, [open, provider]);

@@ -84,7 +84,12 @@ export async function POST(
             .where(eq(userSettings.userId, session.user.id))
             .limit(1);
 
-        if (settings?.syncTitleToPlaud) {
+        const isLocallyCreated =
+            recording.plaudFileId.startsWith("split-") ||
+            recording.plaudFileId.startsWith("silence-removed-") ||
+            recording.plaudFileId.startsWith("uploaded-");
+
+        if (settings?.syncTitleToPlaud && !isLocallyCreated) {
             try {
                 const [connection] = await db
                     .select()

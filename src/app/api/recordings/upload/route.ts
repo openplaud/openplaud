@@ -57,21 +57,22 @@ async function getAudioDurationMs(filePath: string): Promise<number> {
 }
 
 export async function POST(request: Request) {
+    const session = await auth.api.getSession({
+        headers: request.headers,
+    });
+
+    if (!session?.user) {
+        return NextResponse.json(
+            { error: "Unauthorized" },
+            { status: 401 },
+        );
+    }
+
     const tmpDir = await fs.mkdtemp(
         path.join(os.tmpdir(), "openplaud-upload-"),
     );
 
     try {
-        const session = await auth.api.getSession({
-            headers: request.headers,
-        });
-
-        if (!session?.user) {
-            return NextResponse.json(
-                { error: "Unauthorized" },
-                { status: 401 },
-            );
-        }
 
         const formData = await request.formData();
         const fileEntry = formData.get("file");

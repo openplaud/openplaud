@@ -29,11 +29,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-
-const PLAUD_SERVERS = [
-    { label: "Global (api.plaud.ai)", value: "https://api.plaud.ai" },
-    { label: "EU – Frankfurt (api-euc1.plaud.ai)", value: "https://api-euc1.plaud.ai" },
-] as const;
+import { PLAUD_SERVERS } from "@/lib/plaud/constants";
 
 type OnboardingStep = "welcome" | "plaud" | "ai-provider" | "complete";
 

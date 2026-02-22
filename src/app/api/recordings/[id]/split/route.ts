@@ -69,6 +69,10 @@ export async function POST(
         // Check for already-existing split segments in the DB.
         // Count only those that are actually still present — the user may have
         // already deleted some manually since the last split.
+        const escapedPlaudFileId = recording.plaudFileId
+            .replace(/%/g, "\\%")
+            .replace(/_/g, "\\_");
+
         const existingSplits = await db
             .select({ id: recordings.id, storagePath: recordings.storagePath })
             .from(recordings)
@@ -77,7 +81,7 @@ export async function POST(
                     eq(recordings.userId, session.user.id),
                     like(
                         recordings.plaudFileId,
-                        `split-${recording.plaudFileId}-part%`,
+                        `split-${escapedPlaudFileId}-part%`,
                     ),
                 ),
             );
@@ -114,7 +118,7 @@ export async function POST(
                         eq(recordings.userId, session.user.id),
                         like(
                             recordings.plaudFileId,
-                            `split-${recording.plaudFileId}-part%`,
+                            `split-${escapedPlaudFileId}-part%`,
                         ),
                     ),
                 );
@@ -130,13 +134,20 @@ export async function POST(
                 recording.storagePath,
             );
 
-            // Plaud files always contain OGG/Opus audio regardless of the stored
-            // file extension (storagePath may end in .mp3 but the container is OGG).
-            const inputExt = recording.storagePath.endsWith(".mp3")
-                ? ".mp3"
-                : ".ogg";
-            const outputExt = ".ogg";
-            const contentType = "audio/ogg";
+            // Detect the actual file extension from the storage path and use it
+            // for both input and output. OGG cannot hold MP3/AAC/PCM streams, so
+            // non-OGG files must keep their original container format.
+            const detectedExt = path.extname(recording.storagePath).toLowerCase() || ".ogg";
+            const NON_OGG_EXTS = new Set([".mp3", ".m4a", ".wav"]);
+            const inputExt = detectedExt;
+            const outputExt = NON_OGG_EXTS.has(detectedExt) ? detectedExt : ".ogg";
+            const contentType = outputExt === ".mp3"
+                ? "audio/mpeg"
+                : outputExt === ".m4a"
+                  ? "audio/mp4"
+                  : outputExt === ".wav"
+                    ? "audio/wav"
+                    : "audio/ogg";
 
             const inputPath = path.join(tmpDir, `input${inputExt}`);
             await fs.writeFile(inputPath, audioBuffer);

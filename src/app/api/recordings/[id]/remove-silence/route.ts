@@ -99,7 +99,7 @@ export async function POST(
         const audioBuffer = await storage.downloadFile(recording.storagePath);
 
         // Write original to temp dir (keep original extension for probing)
-        const inputExt = recording.storagePath.endsWith(".mp3") ? ".mp3" : ".ogg";
+        const inputExt = path.extname(recording.storagePath).toLowerCase() || ".ogg";
         const inputPath = path.join(tmpDir, `input${inputExt}`);
         await fs.writeFile(inputPath, audioBuffer);
 
@@ -124,7 +124,7 @@ export async function POST(
             "-c:a", "libopus",
             "-b:a", "32k",
             outputPath,
-        ]);
+        ], { timeout: 30_000 });
 
         const outputBuffer = await fs.readFile(outputPath);
 

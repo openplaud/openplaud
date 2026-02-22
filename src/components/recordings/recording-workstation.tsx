@@ -2,7 +2,7 @@
 
 import { ArrowLeft, CloudUpload, Pencil, Scissors, Trash2, VolumeX } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { RecordingPlayer } from "@/components/dashboard/recording-player";
 import { TranscriptionPanel } from "@/components/dashboard/transcription-panel";
@@ -39,6 +39,7 @@ export function RecordingWorkstation({
     const [isDeleting, setIsDeleting] = useState(false);
     const [isRemovingSilence, setIsRemovingSilence] = useState(false);
     const [splitSegmentMinutes, setSplitSegmentMinutes] = useState(60);
+    const titleEditCancelledRef = useRef(false);
 
     useEffect(() => {
         fetch("/api/settings/user")
@@ -117,6 +118,10 @@ export function RecordingWorkstation({
     }, [recording.id, router]);
 
     const handleSaveTitle = useCallback(async () => {
+        if (titleEditCancelledRef.current) {
+            titleEditCancelledRef.current = false;
+            return;
+        }
         const trimmed = editTitleValue.trim();
         if (!trimmed || trimmed === recording.filename) {
             setIsEditingTitle(false);
@@ -267,8 +272,10 @@ export function RecordingWorkstation({
                                     }
                                     onKeyDown={(e) => {
                                         if (e.key === "Enter") handleSaveTitle();
-                                        if (e.key === "Escape")
+                                        if (e.key === "Escape") {
+                                            titleEditCancelledRef.current = true;
                                             setIsEditingTitle(false);
+                                        }
                                     }}
                                     onBlur={handleSaveTitle}
                                     disabled={isSavingTitle}

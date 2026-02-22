@@ -58,7 +58,10 @@ export async function trimTrailingSilence(
                     ? resolve()
                     : reject(new Error(`ffmpeg exited with code ${code}`));
             });
-            proc.on("error", reject);
+            proc.on("error", (err) => {
+                clearTimeout(timeout);
+                reject(err);
+            });
         });
 
         return await fs.readFile(outputPath);

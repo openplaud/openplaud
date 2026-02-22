@@ -43,7 +43,8 @@ export async function POST(
 
         const isLocallyCreated =
             recording.plaudFileId.startsWith("split-") ||
-            recording.plaudFileId.startsWith("silence-removed-");
+            recording.plaudFileId.startsWith("silence-removed-") ||
+            recording.plaudFileId.startsWith("uploaded-");
 
         if (isLocallyCreated) {
             return NextResponse.json(
@@ -71,6 +72,11 @@ export async function POST(
         );
 
         await plaudClient.updateFilename(recording.plaudFileId, recording.filename);
+
+        await db
+            .update(recordings)
+            .set({ filenameModified: false, updatedAt: new Date() })
+            .where(eq(recordings.id, id));
 
         return NextResponse.json({ success: true });
     } catch (error) {

@@ -253,7 +253,12 @@ export async function POST(
                         .set({ filename: generatedTitle, filenameModified: true, updatedAt: new Date() })
                         .where(eq(recordings.id, id));
 
-                    if (syncTitleToPlaud) {
+                    const isLocallyCreated =
+                        recording.plaudFileId.startsWith("split-") ||
+                        recording.plaudFileId.startsWith("silence-removed-") ||
+                        recording.plaudFileId.startsWith("uploaded-");
+
+                    if (syncTitleToPlaud && !isLocallyCreated && recording.plaudFileId) {
                         try {
                             const [connection] = await db
                                 .select()

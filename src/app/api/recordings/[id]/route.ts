@@ -159,7 +159,8 @@ export async function DELETE(
 
         const isLocallyCreated =
             recording.plaudFileId.startsWith("split-") ||
-            recording.plaudFileId.startsWith("silence-removed-");
+            recording.plaudFileId.startsWith("silence-removed-") ||
+            recording.plaudFileId.startsWith("uploaded-");
 
         if (!isLocallyCreated) {
             return NextResponse.json(

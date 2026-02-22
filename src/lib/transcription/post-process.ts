@@ -10,10 +10,12 @@
  *    where Whisper enters a hallucination loop. Everything from the
  *    first loop segment onwards is discarded; content before it is kept.
  *
- * 2. Trailing hallucination removal: segments at the end of the audio
- *    with both high no_speech_prob and very negative avg_logprob are
- *    stripped. This catches the single nonsensical phrases Whisper
- *    generates when audio ends with silence or low-energy content.
+ * 2. Trailing hallucination removal: two passes over the final segments.
+ *    Pass 1 detects consecutive duplicate segment texts (mini-loop) and
+ *    removes everything from the start of that run to the end. Pass 2
+ *    then removes any remaining tail segments with very negative
+ *    avg_logprob (model was highly uncertain), which catches short
+ *    nonsensical phrases that follow the mini-loop.
  *
  * 3. Text-based repetition removal: a sliding-window scan detects
  *    consecutive phrase repetitions in the final text and truncates
@@ -49,25 +51,55 @@ function findLoopStartIndex(segments: TranscriptionSegment[]): number {
 }
 
 /**
- * Removes trailing segments that are almost certainly hallucinated during
- * end-of-audio silence or low-energy audio. These segments typically have
- * both a high no_speech_prob (model thinks there is no speech) and a very
- * negative avg_logprob (model was very uncertain about what it generated).
+ * Removes trailing hallucination segments using two passes.
+ *
+ * Pass 1 – Mini-loop detection: scans the last few segments for a
+ * consecutive pair with identical text. When found, everything from the
+ * start of that duplicate run to the end is removed. This handles patterns
+ * like " Oh Oh Oh Oh Thank you." where a short phrase loops and is followed
+ * by a common closing phrase.
+ *
+ * Pass 2 – Low-confidence sweep: walks backwards from the new end and
+ * removes any remaining segments with very negative avg_logprob (< -1.5),
+ * which indicates the model was highly uncertain about what it generated.
  */
-function removeTrailingNoSpeechSegments(
+function removeTrailingHallucinations(
     segments: TranscriptionSegment[],
 ): TranscriptionSegment[] {
+    const TAIL_WINDOW = 8;
     let end = segments.length;
+
+    // Pass 1: find the first consecutive duplicate pair in the tail window
+    // and truncate everything from the start of that run to the end.
+    const scanFrom = Math.max(0, end - TAIL_WINDOW);
+    for (let i = scanFrom; i < end - 1; i++) {
+        const a = segments[i].text.trim();
+        const b = segments[i + 1].text.trim();
+        if (a.length > 0 && a === b) {
+            // Walk back to include all leading repetitions of the same text
+            let runStart = i;
+            while (
+                runStart > 0 &&
+                segments[runStart - 1].text.trim() === a
+            ) {
+                runStart--;
+            }
+            end = runStart;
+            break;
+        }
+    }
+
+    // Pass 2: remove any remaining tail segments where the model was
+    // highly uncertain (avg_logprob very negative).
     while (end > 0) {
-        const seg = segments[end - 1];
-        const ns = seg.no_speech_prob ?? 0;
-        const lp = seg.avg_logprob ?? 0;
-        if (ns > 0.5 && lp < -0.8) {
+        const lp = segments[end - 1].avg_logprob ?? 0;
+        if (lp < -1.5) {
             end--;
         } else {
             break;
         }
     }
+
     return segments.slice(0, end);
 }
 
@@ -80,7 +112,7 @@ export function filterSegmentsByQuality(
 ): string {
     const loopStart = findLoopStartIndex(segments);
     const beforeLoop = segments.slice(0, loopStart);
-    const cleaned = removeTrailingNoSpeechSegments(beforeLoop);
+    const cleaned = removeTrailingHallucinations(beforeLoop);
     return cleaned.map((s) => s.text).join("").trim();
 }
 

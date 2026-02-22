@@ -117,7 +117,13 @@ export function AddProviderDialog({
             );
             if (!res.ok) throw new Error("Failed to fetch");
             const data = await res.json();
-            setSpeachesModels(data.data || []);
+            const models: SpeachesModel[] = data.data || [];
+            setSpeachesModels(models);
+            // If the previously selected model was removed, auto-select the first available one
+            setDefaultModel((prev) => {
+                if (prev && models.some((m) => m.id === prev)) return prev;
+                return models[0]?.id ?? "";
+            });
         } catch {
             setSpeachesModels([]);
         } finally {

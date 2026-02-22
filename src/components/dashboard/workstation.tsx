@@ -78,12 +78,14 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
         ? transcriptions.get(currentRecording.id)
         : undefined;
 
-    // Keep currentRecording in sync with the recordings prop (updated after router.refresh())
+    // Keep currentRecording in sync with the recordings prop (updated after router.refresh()).
+    // If the previously-selected recording is no longer present (e.g. just deleted),
+    // clear the selection rather than holding a stale reference.
     useEffect(() => {
         setCurrentRecording((prev) => {
             if (!prev) return prev;
             const updated = recordings.find((r) => r.id === prev.id);
-            return updated ?? prev;
+            return updated ?? null;
         });
     }, [recordings]);
 
@@ -367,6 +369,10 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
     const handleSplit = useCallback(() => runSplit(false), [runSplit]);
     const handleSplitForce = useCallback(() => runSplit(true), [runSplit]);
 
+    // True whenever any mutating operation is in flight — used to disable all
+    // action buttons and prevent concurrent conflicting requests.
+    const isProcessing = isSplitting || isDeleting || isRemovingSilence;
+
     const handleDelete = useCallback(async () => {
         if (!currentRecording) return;
 
@@ -557,7 +563,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                                         }
                                                         variant="destructive"
                                                         size="sm"
-                                                        disabled={isSplitting}
+                                                        disabled={isProcessing}
                                                     >
                                                         {isSplitting
                                                             ? "Splitting..."
@@ -570,7 +576,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                                     onClick={handleRemoveSilence}
                                                     variant="outline"
                                                     size="sm"
-                                                    disabled={isRemovingSilence}
+                                                    disabled={isProcessing}
                                                 >
                                                     <VolumeX className="w-4 h-4 mr-2" />
                                                     {isRemovingSilence
@@ -585,7 +591,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                                         onClick={handleSplit}
                                                         variant="outline"
                                                         size="sm"
-                                                        disabled={isSplitting}
+                                                        disabled={isProcessing || splitConflict !== null}
                                                     >
                                                         <Scissors className="w-4 h-4 mr-2" />
                                                         {isSplitting
@@ -606,7 +612,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                                         onClick={handleDelete}
                                                         variant="outline"
                                                         size="sm"
-                                                        disabled={isDeleting}
+                                                        disabled={isProcessing}
                                                         className="text-destructive hover:text-destructive"
                                                     >
                                                         <Trash2 className="w-4 h-4 mr-2" />

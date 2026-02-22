@@ -144,26 +144,36 @@ export async function POST(
         const baseFilename = recording.filename.replace(/\.[^.]+$/, "");
         const silencedPlaudFileId = `silence-removed-${recording.plaudFileId}`;
 
-        // Check if a silence-removed recording already exists for this source.
-        // If so, update it in place instead of inserting to avoid the unique
-        // constraint violation on plaud_file_id.
-        const [existing] = await db
-            .select({ id: recordings.id })
-            .from(recordings)
-            .where(
-                and(
-                    eq(recordings.userId, session.user.id),
-                    eq(recordings.plaudFileId, silencedPlaudFileId),
+        // Atomic upsert: insert the silence-removed recording, or update the
+        // existing row on conflict with the plaud_file_id unique constraint.
+        // This replaces the previous SELECT-then-INSERT/UPDATE pattern which
+        // was susceptible to a TOCTOU race under concurrent requests.
+        const [upserted] = await db
+            .insert(recordings)
+            .values({
+                userId: session.user.id,
+                deviceSn: recording.deviceSn,
+                plaudFileId: silencedPlaudFileId,
+                filename: `${baseFilename} (Silence Removed)`,
+                duration: estimatedDurationMs,
+                startTime: recording.startTime,
+                endTime: new Date(
+                    recording.startTime.getTime() + estimatedDurationMs,
                 ),
-            )
-            .limit(1);
-
-        let resultId: string;
-
-        if (existing) {
-            await db
-                .update(recordings)
-                .set({
+                filesize: outputBuffer.length,
+                fileMd5: md5,
+                storageType: recording.storageType,
+                storagePath: storageKey,
+                downloadedAt: new Date(),
+                plaudVersion: recording.plaudVersion,
+                timezone: recording.timezone,
+                zonemins: recording.zonemins,
+                scene: recording.scene,
+                isTrash: false,
+            })
+            .onConflictDoUpdate({
+                target: recordings.plaudFileId,
+                set: {
                     filename: `${baseFilename} (Silence Removed)`,
                     duration: estimatedDurationMs,
                     endTime: new Date(
@@ -174,36 +184,11 @@ export async function POST(
                     storagePath: storageKey,
                     downloadedAt: new Date(),
                     updatedAt: new Date(),
-                })
-                .where(eq(recordings.id, existing.id));
-            resultId = existing.id;
-        } else {
-            const [newRecording] = await db
-                .insert(recordings)
-                .values({
-                    userId: session.user.id,
-                    deviceSn: recording.deviceSn,
-                    plaudFileId: silencedPlaudFileId,
-                    filename: `${baseFilename} (Silence Removed)`,
-                    duration: estimatedDurationMs,
-                    startTime: recording.startTime,
-                    endTime: new Date(
-                        recording.startTime.getTime() + estimatedDurationMs,
-                    ),
-                    filesize: outputBuffer.length,
-                    fileMd5: md5,
-                    storageType: recording.storageType,
-                    storagePath: storageKey,
-                    downloadedAt: new Date(),
-                    plaudVersion: recording.plaudVersion,
-                    timezone: recording.timezone,
-                    zonemins: recording.zonemins,
-                    scene: recording.scene,
-                    isTrash: false,
-                })
-                .returning({ id: recordings.id });
-            resultId = newRecording.id;
-        }
+                },
+            })
+            .returning({ id: recordings.id });
+
+        const resultId = upserted.id;
 
         const originalSizeMb = (audioBuffer.length / 1024 / 1024).toFixed(1);
         const newSizeMb = (outputBuffer.length / 1024 / 1024).toFixed(1);

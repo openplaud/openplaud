@@ -109,22 +109,9 @@ export async function POST(
                     );
                 }
             }
-
-            // Remove all DB rows in one query
-            await db
-                .delete(recordings)
-                .where(
-                    and(
-                        eq(recordings.userId, session.user.id),
-                        like(
-                            recordings.plaudFileId,
-                            `split-${escapedPlaudFileId}-part%`,
-                        ),
-                    ),
-                );
         }
 
-        // From here on: download, split, upload, insert — same as before
+        // From here on: download, split, upload, then insert atomically
         const tmpDir = await fs.mkdtemp(
             path.join(os.tmpdir(), "openplaud-split-"),
         );
@@ -190,8 +177,10 @@ export async function POST(
             );
             const baseFilename = recording.filename.replace(/\.[^.]+$/, "");
             const durationPerSegmentMs = segmentSeconds * 1000;
-            const newRecordingIds: string[] = [];
 
+            // Prepare all segment buffers and storage uploads before touching
+            // the database, so the DB transaction is as short as possible.
+            const segmentRows: (typeof recordings.$inferInsert)[] = [];
             for (let i = 0; i < segmentFiles.length; i++) {
                 const segBuffer = await fs.readFile(
                     path.join(tmpDir, segmentFiles[i]),
@@ -209,35 +198,59 @@ export async function POST(
                         ? (i + 1) * durationPerSegmentMs
                         : Math.max(segStartMs, recording.duration);
 
-                const [newRecording] = await db
-                    .insert(recordings)
-                    .values({
-                        userId: session.user.id,
-                        deviceSn: recording.deviceSn,
-                        plaudFileId: `split-${recording.plaudFileId}-part${String(partNum).padStart(3, "0")}`,
-                        filename: `${baseFilename} (Part ${partNum})`,
-                        duration: segEndMs - segStartMs,
-                        startTime: new Date(
-                            recording.startTime.getTime() + segStartMs,
-                        ),
-                        endTime: new Date(
-                            recording.startTime.getTime() + segEndMs,
-                        ),
-                        filesize: segBuffer.length,
-                        fileMd5: md5,
-                        storageType: recording.storageType,
-                        storagePath: storageKey,
-                        downloadedAt: new Date(),
-                        plaudVersion: recording.plaudVersion,
-                        timezone: recording.timezone,
-                        zonemins: recording.zonemins,
-                        scene: recording.scene,
-                        isTrash: false,
-                    })
-                    .returning({ id: recordings.id });
-
-                newRecordingIds.push(newRecording.id);
+                segmentRows.push({
+                    userId: session.user.id,
+                    deviceSn: recording.deviceSn,
+                    plaudFileId: `split-${recording.plaudFileId}-part${String(partNum).padStart(3, "0")}`,
+                    filename: `${baseFilename} (Part ${partNum})`,
+                    duration: segEndMs - segStartMs,
+                    startTime: new Date(
+                        recording.startTime.getTime() + segStartMs,
+                    ),
+                    endTime: new Date(
+                        recording.startTime.getTime() + segEndMs,
+                    ),
+                    filesize: segBuffer.length,
+                    fileMd5: md5,
+                    storageType: recording.storageType,
+                    storagePath: storageKey,
+                    downloadedAt: new Date(),
+                    plaudVersion: recording.plaudVersion,
+                    timezone: recording.timezone,
+                    zonemins: recording.zonemins,
+                    scene: recording.scene,
+                    isTrash: false,
+                });
             }
+
+            // Wrap the DB delete (for force re-splits) and all inserts in a
+            // single transaction so that partial failures leave no orphaned rows
+            // and concurrent force=true requests cannot interleave their writes.
+            const newRecordingIds = await db.transaction(async (tx) => {
+                if (existingSplits.length > 0 && force) {
+                    await tx
+                        .delete(recordings)
+                        .where(
+                            and(
+                                eq(recordings.userId, session.user.id),
+                                like(
+                                    recordings.plaudFileId,
+                                    `split-${escapedPlaudFileId}-part%`,
+                                ),
+                            ),
+                        );
+                }
+
+                const ids: string[] = [];
+                for (const row of segmentRows) {
+                    const [newRecording] = await tx
+                        .insert(recordings)
+                        .values(row)
+                        .returning({ id: recordings.id });
+                    ids.push(newRecording.id);
+                }
+                return ids;
+            });
 
             return NextResponse.json({
                 success: true,

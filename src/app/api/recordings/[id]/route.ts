@@ -178,10 +178,14 @@ export async function DELETE(
             // Continue with DB deletion even if storage delete fails
         }
 
-        // Delete from DB — transcriptions cascade automatically
+        // Delete from DB — transcriptions cascade automatically.
+        // Include userId in the WHERE clause for defense-in-depth against
+        // TOCTOU races: the ownership check above is a separate SELECT, so
+        // repeating it here ensures we never delete a row we don't own even
+        // if the session changes between the two queries.
         await db
             .delete(recordings)
-            .where(eq(recordings.id, id));
+            .where(and(eq(recordings.id, id), eq(recordings.userId, session.user.id)));
 
         return NextResponse.json({ success: true });
     } catch (error) {

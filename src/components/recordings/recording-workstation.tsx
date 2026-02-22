@@ -43,7 +43,10 @@ export function RecordingWorkstation({
 
     useEffect(() => {
         fetch("/api/settings/user")
-            .then((res) => res.json())
+            .then((res) => {
+                if (!res.ok) throw new Error("Failed to fetch user settings");
+                return res.json();
+            })
             .then((data) => setSplitSegmentMinutes(data.splitSegmentMinutes ?? 60))
             .catch(() => {});
     }, []);
@@ -204,6 +207,10 @@ export function RecordingWorkstation({
     const handleSplit = useCallback(() => runSplit(false), [runSplit]);
     const handleSplitForce = useCallback(() => runSplit(true), [runSplit]);
 
+    // True whenever any mutating operation is in flight — used to disable all
+    // action buttons and prevent concurrent conflicting requests.
+    const isProcessing = isSplitting || isDeleting || isRemovingSilence;
+
     const handleDelete = useCallback(async () => {
         setIsDeleting(true);
         try {
@@ -324,7 +331,7 @@ export function RecordingWorkstation({
                     <Button
                         onClick={handleRemoveSilence}
                         variant="outline"
-                        disabled={isRemovingSilence}
+                        disabled={isProcessing}
                     >
                         <VolumeX className="w-4 h-4 mr-2" />
                         {isRemovingSilence ? "Processing..." : "Remove Silence"}
@@ -350,7 +357,7 @@ export function RecordingWorkstation({
                                         onClick={handleSplitForce}
                                         variant="destructive"
                                         size="sm"
-                                        disabled={isSplitting}
+                                        disabled={isProcessing}
                                     >
                                         {isSplitting
                                             ? "Splitting..."
@@ -361,7 +368,7 @@ export function RecordingWorkstation({
                             <Button
                                 onClick={handleSplit}
                                 variant="outline"
-                                disabled={isSplitting}
+                                disabled={isProcessing || splitConflict !== null}
                             >
                                 <Scissors className="w-4 h-4 mr-2" />
                                 {isSplitting ? "Splitting..." : "Split Recording"}
@@ -374,7 +381,7 @@ export function RecordingWorkstation({
                         <Button
                             onClick={handleDelete}
                             variant="outline"
-                            disabled={isDeleting}
+                            disabled={isProcessing}
                             className="text-destructive hover:text-destructive"
                         >
                             <Trash2 className="w-4 h-4 mr-2" />

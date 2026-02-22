@@ -58,6 +58,10 @@ export function TranscriptionSection() {
     const [autoGenerateTitle, setAutoGenerateTitle] = useState(true);
     const [syncTitleToPlaud, setSyncTitleToPlaud] = useState(false);
     const [splitSegmentMinutes, setSplitSegmentMinutes] = useState(60);
+    // String buffer so the user can clear the field before typing a new number.
+    // The numeric state (splitSegmentMinutes) is only updated on blur once the
+    // value is valid; the raw string is shown in the input while typing.
+    const [splitSegmentMinutesInput, setSplitSegmentMinutesInput] = useState("60");
     const [silenceThresholdDb, setSilenceThresholdDb] = useState(-40);
     const [silenceDurationSeconds, setSilenceDurationSeconds] = useState(1.0);
     const pendingChangesRef = useRef<Map<string, unknown>>(new Map());
@@ -83,6 +87,7 @@ export function TranscriptionSection() {
                     setAutoGenerateTitle(data.autoGenerateTitle ?? true);
                     setSyncTitleToPlaud(data.syncTitleToPlaud ?? false);
                     setSplitSegmentMinutes(data.splitSegmentMinutes ?? 60);
+                    setSplitSegmentMinutesInput(String(data.splitSegmentMinutes ?? 60));
                     setSilenceThresholdDb(data.silenceThresholdDb ?? -40);
                     setSilenceDurationSeconds(data.silenceDurationSeconds ?? 1.0);
                     savedSplitSegmentMinutesRef.current = data.splitSegmentMinutes ?? 60;
@@ -250,6 +255,7 @@ export function TranscriptionSection() {
 
     const handleSplitSegmentMinutesChange = async (value: number) => {
         setSplitSegmentMinutes(value);
+        setSplitSegmentMinutesInput(String(value));
         try {
             const response = await fetch("/api/settings/user", {
                 method: "PUT",
@@ -265,6 +271,7 @@ export function TranscriptionSection() {
             // Revert to the last-saved value (not the pre-optimistic-update
             // local state, which may itself be a previous unsaved value).
             setSplitSegmentMinutes(savedSplitSegmentMinutesRef.current);
+            setSplitSegmentMinutesInput(String(savedSplitSegmentMinutesRef.current));
             toast.error("Failed to save settings. Changes reverted.");
         }
     };
@@ -453,17 +460,19 @@ export function TranscriptionSection() {
                         type="number"
                         min={1}
                         max={360}
-                        value={splitSegmentMinutes}
+                        value={splitSegmentMinutesInput}
                         onChange={(e) => {
-                            const val = parseInt(e.target.value, 10);
-                            if (!isNaN(val) && val >= 1 && val <= 360) {
-                                setSplitSegmentMinutes(val);
-                            }
+                            // Allow the field to be cleared or partially edited
+                            // while the user is typing; validation happens on blur.
+                            setSplitSegmentMinutesInput(e.target.value);
                         }}
                         onBlur={(e) => {
                             const val = parseInt(e.target.value, 10);
                             if (!isNaN(val) && val >= 1 && val <= 360) {
                                 handleSplitSegmentMinutesChange(val);
+                            } else {
+                                // Revert the display to the last valid saved value
+                                setSplitSegmentMinutesInput(String(splitSegmentMinutes));
                             }
                         }}
                         disabled={isSavingSettings}

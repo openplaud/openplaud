@@ -112,7 +112,6 @@ export function OnboardingForm() {
                         <p className="text-xs text-muted-foreground">
                             {PLAUD_SERVERS.find((s) => s.value === apiBase)?.hint ?? ""}
                         </p>
-                        </p>
                     </div>
 
                     <div className="space-y-2">

@@ -139,22 +139,33 @@ export async function POST(request: Request) {
         const now = new Date();
         const endTime = new Date(now.getTime() + durationMs);
 
-        await db.insert(recordings).values({
-            userId: session.user.id,
-            deviceSn: "local",
-            plaudFileId: fileId,
-            filename: basename,
-            duration: durationMs,
-            startTime: now,
-            endTime,
-            filesize: buffer.length,
-            fileMd5: md5,
-            storageType: env.DEFAULT_STORAGE_TYPE,
-            storagePath: storageKey,
-            downloadedAt: now,
-            plaudVersion: "1",
-            isTrash: false,
-        });
+        try {
+            await db.insert(recordings).values({
+                userId: session.user.id,
+                deviceSn: "local",
+                plaudFileId: fileId,
+                filename: basename,
+                duration: durationMs,
+                startTime: now,
+                endTime,
+                filesize: buffer.length,
+                fileMd5: md5,
+                storageType: env.DEFAULT_STORAGE_TYPE,
+                storagePath: storageKey,
+                downloadedAt: now,
+                plaudVersion: "1",
+                isTrash: false,
+            });
+        } catch (dbError) {
+            // DB insert failed — clean up the already-uploaded storage file
+            // to avoid orphaned objects with no corresponding DB record.
+            try {
+                await storage.deleteFile(storageKey);
+            } catch (cleanupErr) {
+                console.error("Failed to clean up orphaned storage file after DB insert error:", cleanupErr);
+            }
+            throw dbError;
+        }
 
         return NextResponse.json({ success: true, filename: basename });
     } catch (error) {

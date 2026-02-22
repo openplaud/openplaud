@@ -404,6 +404,7 @@ export function RecordingWorkstation({
                         onDeleteTranscription={handleDeleteTranscription}
                         isGeneratingTitle={isGeneratingTitle}
                         onGenerateTitle={handleGenerateTitle}
+                        disabled={isProcessing}
                     />
 
                     {/* Metadata */}

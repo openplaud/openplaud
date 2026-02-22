@@ -75,7 +75,7 @@ export async function POST(
         await db
             .update(recordings)
             .set({ filename: generatedTitle, filenameModified: true, updatedAt: new Date() })
-            .where(eq(recordings.id, id));
+            .where(and(eq(recordings.id, id), eq(recordings.userId, session.user.id)));
 
         // Sync to Plaud device if the user has that option enabled
         const [settings] = await db

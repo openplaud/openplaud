@@ -19,6 +19,8 @@ interface TranscriptionPanelProps {
     onDeleteTranscription?: () => void;
     isGeneratingTitle?: boolean;
     onGenerateTitle?: () => void;
+    /** When true, disables all action buttons to prevent concurrent mutations */
+    disabled?: boolean;
 }
 
 export function TranscriptionPanel({
@@ -30,6 +32,7 @@ export function TranscriptionPanel({
     onDeleteTranscription,
     isGeneratingTitle,
     onGenerateTitle,
+    disabled,
 }: TranscriptionPanelProps) {
     return (
         <Card>
@@ -46,7 +49,7 @@ export function TranscriptionPanel({
                                     onClick={onGenerateTitle}
                                     variant="outline"
                                     size="sm"
-                                    disabled={isGeneratingTitle}
+                                    disabled={isGeneratingTitle || disabled}
                                 >
                                     <Tag className="w-4 h-4 mr-2" />
                                     {isGeneratingTitle
@@ -59,7 +62,7 @@ export function TranscriptionPanel({
                                     onClick={onDeleteTranscription}
                                     variant="outline"
                                     size="sm"
-                                    disabled={isDeletingTranscription}
+                                    disabled={isDeletingTranscription || disabled}
                                     className="text-destructive hover:text-destructive"
                                 >
                                     <Trash2 className="w-4 h-4 mr-2" />
@@ -73,7 +76,7 @@ export function TranscriptionPanel({
                         <Button
                             onClick={onTranscribe}
                             size="sm"
-                            disabled={isTranscribing}
+                            disabled={isTranscribing || disabled}
                         >
                             {isTranscribing ? (
                                 <>

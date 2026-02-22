@@ -79,7 +79,13 @@ export async function PATCH(
 
         const { id } = await params;
         const body = await request.json();
-        const filename = (body?.filename ?? "").trim();
+        if (typeof body?.filename !== "string") {
+            return NextResponse.json(
+                { error: "Filename must be a string" },
+                { status: 400 },
+            );
+        }
+        const filename = body.filename.trim();
 
         if (!filename) {
             return NextResponse.json(

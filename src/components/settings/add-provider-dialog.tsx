@@ -160,7 +160,7 @@ export function AddProviderDialog({
         }
 
         const isLocalProvider = selectedPreset?.localProvider ?? false;
-        if (!isLocalProvider && !apiKey) {
+        if (!isLocalProvider && !apiKey.trim()) {
             toast.error("API key is required for this provider");
             return;
         }

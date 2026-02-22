@@ -70,6 +70,8 @@ export async function POST(
         // Count only those that are actually still present — the user may have
         // already deleted some manually since the last split.
         const escapedPlaudFileId = recording.plaudFileId
+            // Escape backslash first (PostgreSQL LIKE default escape char), then % and _
+            .replace(/\\/g, "\\\\")
             .replace(/%/g, "\\%")
             .replace(/_/g, "\\_");
 

@@ -187,6 +187,17 @@ export async function POST(
                 ? undefined
                 : ((transcription as VerboseTranscription).segments ?? undefined);
 
+        // Debug: log last 3 segments to tune trailing-hallucination thresholds
+        if (segments && segments.length > 0) {
+            const tail = segments.slice(-3);
+            console.log("[transcribe] last segments:", tail.map((s, i) => ({
+                idx: segments.length - tail.length + i,
+                text: s.text?.slice(0, 60),
+                no_speech_prob: s.no_speech_prob,
+                avg_logprob: s.avg_logprob,
+            })));
+        }
+
         // Filter out hallucination loops before saving
         const transcriptionText = postProcessTranscription(rawText, segments);
 

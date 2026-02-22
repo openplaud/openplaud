@@ -5,9 +5,10 @@
  * a phrase is repeated hundreds of times. Two complementary strategies
  * are applied:
  *
- * 1. Segment quality filtering: verbose_json segments include metrics
- *    (compression_ratio, avg_logprob, no_speech_prob) that reliably
- *    identify looping/hallucinating segments before they are joined.
+ * 1. Segment loop truncation: verbose_json segments include a
+ *    compression_ratio metric that spikes sharply (5+) at the point
+ *    where Whisper enters a hallucination loop. Everything from the
+ *    first loop segment onwards is discarded; content before it is kept.
  *
  * 2. Text-based repetition removal: a sliding-window scan detects
  *    consecutive phrase repetitions in the final text and truncates
@@ -22,41 +23,39 @@ interface TranscriptionSegment {
     no_speech_prob?: number;
 }
 
-// Standard faster-whisper quality thresholds (same defaults as the
-// upstream Whisper library: github.com/openai/whisper/blob/main/whisper/transcribe.py)
-const COMPRESSION_RATIO_THRESHOLD = 2.4;
-const AVG_LOGPROB_THRESHOLD = -1.0;
-const NO_SPEECH_THRESHOLD = 0.6;
+// A compression_ratio this high reliably indicates a hallucination loop
+// (normal speech segments stay well below 3; looping segments jump to 5+).
+// Using a high threshold avoids false-positives on legitimately repetitive
+// content such as refrains that might reach cr ~2.5–3.0.
+const LOOP_COMPRESSION_RATIO_THRESHOLD = 5.0;
 
 /**
- * Filters out segments that look like hallucination/repetition loops
- * based on the per-segment quality metrics from verbose_json.
+ * Finds the index of the first segment that looks like the start of a
+ * hallucination loop, based on an unusually high compression ratio.
+ * Returns segments.length when no loop is detected.
+ */
+function findLoopStartIndex(segments: TranscriptionSegment[]): number {
+    for (let i = 0; i < segments.length; i++) {
+        if ((segments[i].compression_ratio ?? 0) > LOOP_COMPRESSION_RATIO_THRESHOLD) {
+            return i;
+        }
+    }
+    return segments.length;
+}
+
+/**
+ * Truncates the segment list at the first detected hallucination loop and
+ * joins the remaining segments into a single string.
  */
 export function filterSegmentsByQuality(
     segments: TranscriptionSegment[],
 ): string {
-    const validTexts: string[] = [];
-
-    for (const seg of segments) {
-        const cr = seg.compression_ratio ?? 0;
-        const lp = seg.avg_logprob ?? 0;
-        const ns = seg.no_speech_prob ?? 0;
-
-        // High compression ratio = the segment text compresses very well
-        // = it is highly repetitive (hallucination loop)
-        if (cr > COMPRESSION_RATIO_THRESHOLD) continue;
-
-        // Very negative log-probability = low-confidence output
-        if (lp < AVG_LOGPROB_THRESHOLD) continue;
-
-        // High no-speech probability combined with low confidence = silence
-        // that was filled with hallucinated content
-        if (ns > NO_SPEECH_THRESHOLD && lp < -0.5) continue;
-
-        validTexts.push(seg.text);
-    }
-
-    return validTexts.join("").trim();
+    const loopStart = findLoopStartIndex(segments);
+    return segments
+        .slice(0, loopStart)
+        .map((s) => s.text)
+        .join("")
+        .trim();
 }
 
 /**
@@ -144,12 +143,7 @@ export function postProcessTranscription(
         );
 
         if (hasMetrics) {
-            const filtered = filterSegmentsByQuality(segments);
-            // Only use filtered result if it retained a meaningful portion
-            // of the original text (guards against over-aggressive filtering)
-            if (filtered.length > 0 && filtered.length >= rawText.length * 0.2) {
-                text = filtered;
-            }
+            text = filterSegmentsByQuality(segments);
         }
     }
 

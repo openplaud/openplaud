@@ -30,7 +30,7 @@ export async function POST(request: Request) {
         }
 
         // Validate apiBase: must be a well-formed HTTPS URL on an allowed domain.
-        let apiBase = DEFAULT_PLAUD_API_BASE;
+        let apiBase: string = DEFAULT_PLAUD_API_BASE;
         if (rawApiBase != null) {
             let parsed: URL;
             try {

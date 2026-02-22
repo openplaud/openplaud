@@ -34,7 +34,7 @@ export async function POST(request: Request) {
         }
 
         const resolvedKey = (serverKey ?? DEFAULT_SERVER_KEY) as string;
-        if (!(resolvedKey in PLAUD_SERVERS)) {
+        if (!Object.hasOwn(PLAUD_SERVERS, resolvedKey)) {
             return NextResponse.json(
                 { error: `Unknown server: ${resolvedKey}` },
                 { status: 400 },

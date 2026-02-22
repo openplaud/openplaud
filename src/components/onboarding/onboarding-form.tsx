@@ -124,9 +124,7 @@ export function OnboardingForm() {
                             </SelectContent>
                         </Select>
                         <p className="text-xs text-muted-foreground">
-                            {server === "global"
-                                ? "Global server — used by most accounts (api.plaud.ai)"
-                                : "EU server — used by European accounts (api-euc1.plaud.ai)"}
+                            {PLAUD_SERVERS[server].description}
                         </p>
                     </div>
 

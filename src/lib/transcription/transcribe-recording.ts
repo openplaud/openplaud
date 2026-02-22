@@ -11,6 +11,7 @@ import {
 import { generateTitleFromTranscription } from "@/lib/ai/generate-title";
 import { decrypt } from "@/lib/encryption";
 import { postProcessTranscription } from "@/lib/transcription/post-process";
+import { trimTrailingSilence } from "@/lib/transcription/trim-silence";
 import { audioFilenameWithExt, getAudioMimeType } from "@/lib/utils";
 import { createPlaudClient } from "@/lib/plaud/client";
 import { createUserStorageProvider } from "@/lib/storage/factory";
@@ -81,7 +82,9 @@ export async function transcribeRecording(
         });
 
         const storage = await createUserStorageProvider(userId);
-        const audioBuffer = await storage.downloadFile(recording.storagePath);
+        const rawAudioBuffer = await storage.downloadFile(recording.storagePath);
+        // Trim trailing silence to prevent end-of-audio hallucinations
+        const audioBuffer = await trimTrailingSilence(rawAudioBuffer, recording.storagePath);
 
         const audioFile = new File(
             [new Uint8Array(audioBuffer)],

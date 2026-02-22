@@ -7,6 +7,7 @@ import { auth } from "@/lib/auth";
 import { generateTitleFromTranscription } from "@/lib/ai/generate-title";
 import { decrypt } from "@/lib/encryption";
 import { postProcessTranscription } from "@/lib/transcription/post-process";
+import { trimTrailingSilence } from "@/lib/transcription/trim-silence";
 import { audioFilenameWithExt, getAudioMimeType } from "@/lib/utils";
 import { createPlaudClient } from "@/lib/plaud/client";
 import { createUserStorageProvider } from "@/lib/storage/factory";
@@ -146,7 +147,9 @@ export async function POST(
 
         // Get storage provider and download audio
         const storage = await createUserStorageProvider(session.user.id);
-        const audioBuffer = await storage.downloadFile(recording.storagePath);
+        const rawAudioBuffer = await storage.downloadFile(recording.storagePath);
+        // Trim trailing silence to prevent end-of-audio hallucinations
+        const audioBuffer = await trimTrailingSilence(rawAudioBuffer, recording.storagePath);
 
         // Create a File object for the transcription API.
         // Use the correct MIME type and a filename that carries the right

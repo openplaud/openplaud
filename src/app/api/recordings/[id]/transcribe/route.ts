@@ -6,6 +6,9 @@ import { apiCredentials, plaudConnections, recordings, transcriptions, userSetti
 import { auth } from "@/lib/auth";
 import { generateTitleFromTranscription } from "@/lib/ai/generate-title";
 import { decrypt } from "@/lib/encryption";
+import { postProcessTranscription } from "@/lib/transcription/post-process";
+import { trimTrailingSilence } from "@/lib/transcription/trim-silence";
+import { audioFilenameWithExt, getAudioMimeType } from "@/lib/utils";
 import { createPlaudClient } from "@/lib/plaud/client";
 import { createUserStorageProvider } from "@/lib/storage/factory";
 
@@ -144,19 +147,18 @@ export async function POST(
 
         // Get storage provider and download audio
         const storage = await createUserStorageProvider(session.user.id);
-        const audioBuffer = await storage.downloadFile(recording.storagePath);
+        const rawAudioBuffer = await storage.downloadFile(recording.storagePath);
+        // Trim trailing silence to prevent end-of-audio hallucinations
+        const audioBuffer = await trimTrailingSilence(rawAudioBuffer, recording.storagePath);
 
-        // Create a File object for the transcription API
-        // Determine content type from storage path
-        const contentType = recording.storagePath.endsWith(".mp3")
-            ? "audio/mpeg"
-            : "audio/opus";
+        // Create a File object for the transcription API.
+        // Use the correct MIME type and a filename that carries the right
+        // extension — some servers (e.g. faster-whisper / Speaches) rely on
+        // the filename extension for audio format detection.
         const audioFile = new File(
             [new Uint8Array(audioBuffer)],
-            recording.filename,
-            {
-                type: contentType,
-            },
+            audioFilenameWithExt(recording.storagePath),
+            { type: getAudioMimeType(recording.storagePath) },
         );
 
         // Transcribe with verbose JSON to get language detection
@@ -169,13 +171,29 @@ export async function POST(
         type VerboseTranscription = {
             text: string;
             language?: string | null;
+            segments?: Array<{
+                text: string;
+                start?: number;
+                end?: number;
+                avg_logprob?: number;
+                compression_ratio?: number;
+                no_speech_prob?: number;
+            }>;
         };
 
-        // Extract text and detected language from response
-        const transcriptionText =
+        // Extract text, segments and detected language from response
+        const rawText =
             typeof transcription === "string"
                 ? transcription
                 : (transcription as VerboseTranscription).text;
+
+        const segments =
+            typeof transcription === "string"
+                ? undefined
+                : ((transcription as VerboseTranscription).segments ?? undefined);
+
+        // Filter out hallucination loops before saving
+        const transcriptionText = postProcessTranscription(rawText, segments);
 
         const detectedLanguage =
             typeof transcription === "string"

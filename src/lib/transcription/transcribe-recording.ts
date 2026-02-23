@@ -185,6 +185,7 @@ export async function transcribeRecording(
                             if (connection) {
                                 const plaudClient = await createPlaudClient(
                                     connection.bearerToken,
+                                    connection.apiBase,
                                 );
                                 await plaudClient.updateFilename(
                                     recording.plaudFileId,

@@ -22,6 +22,18 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import {
+    DEFAULT_SERVER_KEY,
+    PLAUD_SERVERS,
+    type PlaudServerKey,
+} from "@/lib/plaud/servers";
 
 type OnboardingStep = "welcome" | "plaud" | "ai-provider" | "complete";
 
@@ -39,6 +51,7 @@ export function OnboardingDialog({
     const router = useRouter();
     const [step, setStep] = useState<OnboardingStep>("welcome");
     const [bearerToken, setBearerToken] = useState("");
+    const [server, setServer] = useState<PlaudServerKey>(DEFAULT_SERVER_KEY);
     const [isLoading, setIsLoading] = useState(false);
     const [hasPlaudConnection, setHasPlaudConnection] = useState(false);
     const [hasAiProvider, setHasAiProvider] = useState(false);
@@ -50,6 +63,9 @@ export function OnboardingDialog({
                 .then((data) => {
                     if (data.connected) {
                         setHasPlaudConnection(true);
+                        if (data.server) {
+                            setServer(data.server as PlaudServerKey);
+                        }
                     }
                 })
                 .catch(() => {});
@@ -73,6 +89,7 @@ export function OnboardingDialog({
         if (!open) {
             setStep("welcome");
             setBearerToken("");
+            setServer(DEFAULT_SERVER_KEY);
             setIsLoading(false);
             setHasPlaudConnection(false);
             setHasAiProvider(false);
@@ -90,7 +107,7 @@ export function OnboardingDialog({
             const response = await fetch("/api/plaud/connect", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ bearerToken }),
+                body: JSON.stringify({ bearerToken, server }),
             });
 
             if (!response.ok) {
@@ -289,12 +306,64 @@ export function OnboardingDialog({
                                                     connected
                                                 </p>
                                             </div>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() =>
+                                                    setHasPlaudConnection(false)
+                                                }
+                                            >
+                                                Reconnect
+                                            </Button>
                                         </div>
                                     </CardContent>
                                 </Card>
                             ) : (
                                 <Card className="gap-0 py-4">
                                     <CardContent className="pt-6 space-y-4">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="api-server">
+                                                API Server
+                                            </Label>
+                                            <Select
+                                                value={server}
+                                                onValueChange={(v) =>
+                                                    setServer(
+                                                        v as PlaudServerKey,
+                                                    )
+                                                }
+                                            >
+                                                <SelectTrigger
+                                                    id="api-server"
+                                                    disabled={isLoading}
+                                                >
+                                                    <SelectValue placeholder="Select API server" />
+                                                </SelectTrigger>
+                                                <SelectContent className="z-[200]">
+                                                    {(
+                                                        Object.entries(
+                                                            PLAUD_SERVERS,
+                                                        ) as [
+                                                            PlaudServerKey,
+                                                            (typeof PLAUD_SERVERS)[PlaudServerKey],
+                                                        ][]
+                                                    ).map(([key, s]) => (
+                                                        <SelectItem
+                                                            key={key}
+                                                            value={key}
+                                                        >
+                                                            {s.label}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            <p className="text-xs text-muted-foreground">
+                                                {
+                                                    PLAUD_SERVERS[server]
+                                                        .description
+                                                }
+                                            </p>
+                                        </div>
                                         <div className="space-y-2">
                                             <Label htmlFor="bearer-token">
                                                 Bearer Token
@@ -312,8 +381,12 @@ export function OnboardingDialog({
                                                 disabled={isLoading}
                                             />
                                             <p className="text-xs text-muted-foreground">
-                                                You can find this in your Plaud
-                                                app settings
+                                                Open plaud.ai in a browser, log
+                                                in, open DevTools (F12) →
+                                                Network tab, refresh and copy
+                                                the Authorization header value
+                                                from any request to the Plaud
+                                                API server.
                                             </p>
                                         </div>
 

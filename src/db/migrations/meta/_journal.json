@@ -71,6 +71,13 @@
             "when": 1763774276514,
             "tag": "0009_yellow_newton_destine",
             "breakpoints": true
+        },
+        {
+            "idx": 10,
+            "version": "7",
+            "when": 1771632000000,
+            "tag": "0010_plaud_api_base",
+            "breakpoints": true
         }
     ]
 }

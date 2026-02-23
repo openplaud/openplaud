@@ -8,12 +8,25 @@ import { MetalButton } from "@/components/metal-button";
 import { Panel } from "@/components/panel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import {
+    DEFAULT_SERVER_KEY,
+    PLAUD_SERVERS,
+    type PlaudServerKey,
+} from "@/lib/plaud/servers";
 
 type Step = "plaud" | "complete";
 
 export function OnboardingForm() {
     const [step, setStep] = useState<Step>("plaud");
     const [bearerToken, setBearerToken] = useState("");
+    const [server, setServer] = useState<PlaudServerKey>(DEFAULT_SERVER_KEY);
     const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
 
@@ -28,7 +41,7 @@ export function OnboardingForm() {
             const response = await fetch("/api/plaud/connect", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ bearerToken }),
+                body: JSON.stringify({ bearerToken, server }),
             });
 
             if (!response.ok) throw new Error("Failed to connect");
@@ -78,13 +91,42 @@ export function OnboardingForm() {
                             <li>Go to plaud.ai and log in</li>
                             <li>Open DevTools (F12) → Network tab</li>
                             <li>Refresh the page</li>
-                            <li>Find any request to api.plaud.ai</li>
+                            <li>Find any request to the Plaud API server</li>
                             <li>
                                 Copy the Authorization header value (starts with
-                                "Bearer ")
+                                &quot;Bearer &quot;)
                             </li>
                         </ol>
                     </Panel>
+
+                    <div className="space-y-2">
+                        <Label htmlFor="apiBase">API Server</Label>
+                        <Select
+                            value={server}
+                            onValueChange={(v) =>
+                                setServer(v as PlaudServerKey)
+                            }
+                        >
+                            <SelectTrigger id="apiBase" disabled={isLoading}>
+                                <SelectValue placeholder="Select API server" />
+                            </SelectTrigger>
+                            <SelectContent className="z-[200]">
+                                {(
+                                    Object.entries(PLAUD_SERVERS) as [
+                                        PlaudServerKey,
+                                        (typeof PLAUD_SERVERS)[PlaudServerKey],
+                                    ][]
+                                ).map(([key, s]) => (
+                                    <SelectItem key={key} value={key}>
+                                        {s.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                            {PLAUD_SERVERS[server].description}
+                        </p>
+                    </div>
 
                     <div className="space-y-2">
                         <Label htmlFor="bearerToken">Bearer Token</Label>

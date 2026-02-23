@@ -63,6 +63,9 @@ export function OnboardingDialog({
                 .then((data) => {
                     if (data.connected) {
                         setHasPlaudConnection(true);
+                        if (data.server) {
+                            setServer(data.server as PlaudServerKey);
+                        }
                     }
                 })
                 .catch(() => {});

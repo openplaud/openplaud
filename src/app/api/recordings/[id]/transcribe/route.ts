@@ -7,6 +7,80 @@ import { auth } from "@/lib/auth";
 import { decrypt } from "@/lib/encryption";
 import { createUserStorageProvider } from "@/lib/storage/factory";
 
+export async function DELETE(
+    request: Request,
+    { params }: { params: Promise<{ id: string }> },
+) {
+    try {
+        const session = await auth.api.getSession({
+            headers: request.headers,
+        });
+
+        if (!session?.user) {
+            return NextResponse.json(
+                { error: "Unauthorized" },
+                { status: 401 },
+            );
+        }
+
+        const { id } = await params;
+
+        // Verify the recording belongs to the user
+        const [recording] = await db
+            .select({ id: recordings.id })
+            .from(recordings)
+            .where(
+                and(
+                    eq(recordings.id, id),
+                    eq(recordings.userId, session.user.id),
+                ),
+            )
+            .limit(1);
+
+        if (!recording) {
+            return NextResponse.json(
+                { error: "Recording not found" },
+                { status: 404 },
+            );
+        }
+
+        const [existing] = await db
+            .select({ id: transcriptions.id })
+            .from(transcriptions)
+            .where(
+                and(
+                    eq(transcriptions.recordingId, id),
+                    eq(transcriptions.userId, session.user.id),
+                ),
+            )
+            .limit(1);
+
+        if (!existing) {
+            return NextResponse.json(
+                { error: "No transcription found" },
+                { status: 404 },
+            );
+        }
+
+        await db
+            .delete(transcriptions)
+            .where(
+                and(
+                    eq(transcriptions.id, existing.id),
+                    eq(transcriptions.userId, session.user.id),
+                ),
+            );
+
+        return NextResponse.json({ success: true });
+    } catch (error) {
+        console.error("Error deleting transcription:", error);
+        return NextResponse.json(
+            { error: "Failed to delete transcription" },
+            { status: 500 },
+        );
+    }
+}
+
 export async function POST(
     request: Request,
     { params }: { params: Promise<{ id: string }> },

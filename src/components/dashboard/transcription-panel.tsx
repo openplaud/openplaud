@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, Languages, Sparkles } from "lucide-react";
+import { FileText, Languages, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Recording } from "@/types/recording";
@@ -15,6 +15,10 @@ interface TranscriptionPanelProps {
     transcription?: Transcription;
     isTranscribing: boolean;
     onTranscribe: () => void;
+    isDeletingTranscription?: boolean;
+    onDeleteTranscription?: () => void;
+    /** When true, disables all action buttons to prevent concurrent mutations */
+    disabled?: boolean;
 }
 
 export function TranscriptionPanel({
@@ -22,6 +26,9 @@ export function TranscriptionPanel({
     transcription,
     isTranscribing,
     onTranscribe,
+    isDeletingTranscription,
+    onDeleteTranscription,
+    disabled,
 }: TranscriptionPanelProps) {
     return (
         <Card>
@@ -31,25 +38,35 @@ export function TranscriptionPanel({
                         <FileText className="w-5 h-5" />
                         Transcription
                     </CardTitle>
-                    {!transcription?.text && !isTranscribing && (
+                    {transcription?.text && onDeleteTranscription ? (
+                        <Button
+                            onClick={onDeleteTranscription}
+                            variant="outline"
+                            size="sm"
+                            disabled={
+                                isDeletingTranscription ||
+                                isTranscribing ||
+                                disabled
+                            }
+                            className="text-destructive hover:text-destructive"
+                        >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            {isDeletingTranscription
+                                ? "Removing..."
+                                : "Remove Transcription"}
+                        </Button>
+                    ) : !isTranscribing ? (
                         <Button
                             onClick={onTranscribe}
                             size="sm"
-                            disabled={isTranscribing}
+                            disabled={disabled}
                         >
-                            {isTranscribing ? (
-                                <>
-                                    <Sparkles className="w-4 h-4 mr-2 animate-pulse" />
-                                    Transcribing...
-                                </>
-                            ) : (
-                                <>
-                                    <Sparkles className="w-4 h-4 mr-2" />
-                                    Transcribe
-                                </>
-                            )}
+                            <Sparkles className="w-4 h-4 mr-2" />
+                            {transcription?.text
+                                ? "Re-Transcribe"
+                                : "Transcribe"}
                         </Button>
-                    )}
+                    ) : null}
                 </div>
             </CardHeader>
             <CardContent>
@@ -88,7 +105,11 @@ export function TranscriptionPanel({
                         <p className="text-sm text-muted-foreground mb-4">
                             No transcription available
                         </p>
-                        <Button onClick={onTranscribe} size="sm">
+                        <Button
+                            onClick={onTranscribe}
+                            size="sm"
+                            disabled={disabled}
+                        >
                             <Sparkles className="w-4 h-4 mr-2" />
                             Generate Transcription
                         </Button>

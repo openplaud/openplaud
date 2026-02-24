@@ -1,17 +1,27 @@
 "use client";
 
-import { Pause, Play, Volume2 } from "lucide-react";
+import { CloudUpload, Pause, Pencil, Play, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { MetalButton } from "@/components/metal-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import type { Recording } from "@/types/recording";
 
 interface RecordingPlayerProps {
     recording: Recording;
     onEnded?: () => void;
+    onEditTitle?: () => void;
+    isEditingTitle?: boolean;
+    editTitleValue?: string;
+    onEditTitleChange?: (value: string) => void;
+    onSaveTitle?: () => void;
+    onCancelEdit?: () => void;
+    isSavingTitle?: boolean;
+    onSyncToPlaud?: () => void;
+    isSyncingToPlaud?: boolean;
 }
 
 const playbackSpeedOptions = [
@@ -23,7 +33,19 @@ const playbackSpeedOptions = [
     { label: "2x", value: 2.0 },
 ];
 
-export function RecordingPlayer({ recording, onEnded }: RecordingPlayerProps) {
+export function RecordingPlayer({
+    recording,
+    onEnded,
+    onEditTitle,
+    isEditingTitle,
+    editTitleValue,
+    onEditTitleChange,
+    onSaveTitle,
+    onCancelEdit,
+    isSavingTitle,
+    onSyncToPlaud,
+    isSyncingToPlaud,
+}: RecordingPlayerProps) {
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
@@ -33,6 +55,7 @@ export function RecordingPlayer({ recording, onEnded }: RecordingPlayerProps) {
     const audioRef = useRef<HTMLAudioElement>(null);
     const isSeekingRef = useRef(false);
     const settingsLoadedRef = useRef(false);
+    const cancelledRef = useRef(false);
 
     useEffect(() => {
         if (settingsLoadedRef.current) return;
@@ -233,7 +256,64 @@ export function RecordingPlayer({ recording, onEnded }: RecordingPlayerProps) {
     return (
         <Card>
             <CardHeader>
-                <CardTitle>{recording.filename}</CardTitle>
+                <div className="flex items-center gap-1 min-w-0">
+                    {isEditingTitle ? (
+                        <Input
+                            value={editTitleValue ?? ""}
+                            onChange={(e) =>
+                                onEditTitleChange?.(e.target.value)
+                            }
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                    cancelledRef.current = false;
+                                    e.currentTarget.blur();
+                                }
+                                if (e.key === "Escape") {
+                                    cancelledRef.current = true;
+                                    e.currentTarget.blur();
+                                }
+                            }}
+                            onBlur={() => {
+                                if (cancelledRef.current) onCancelEdit?.();
+                                else onSaveTitle?.();
+                                cancelledRef.current = false;
+                            }}
+                            disabled={isSavingTitle}
+                            className="text-xl font-semibold flex-1"
+                            autoFocus
+                        />
+                    ) : (
+                        <CardTitle className="truncate flex-1">
+                            {recording.filename}
+                        </CardTitle>
+                    )}
+                    {onEditTitle && !isEditingTitle && (
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="shrink-0 h-8 w-8"
+                            onClick={onEditTitle}
+                            title="Edit title"
+                        >
+                            <Pencil className="w-4 h-4" />
+                        </Button>
+                    )}
+                    {onSyncToPlaud &&
+                        !recording.plaudFileId.startsWith("split-") &&
+                        !recording.plaudFileId.startsWith("silence-removed-") &&
+                        recording.filenameModified && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="shrink-0 h-8 w-8"
+                                onClick={onSyncToPlaud}
+                                disabled={isSyncingToPlaud}
+                                title="Sync title to Plaud device"
+                            >
+                                <CloudUpload className="w-4 h-4" />
+                            </Button>
+                        )}
+                </div>
                 <p className="text-sm text-muted-foreground">
                     {new Date(recording.startTime).toLocaleString()}
                 </p>

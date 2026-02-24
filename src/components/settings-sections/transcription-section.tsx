@@ -434,7 +434,7 @@ export function TranscriptionSection() {
                         }}
                         onBlur={(e) => {
                             const val = parseInt(e.target.value, 10);
-                            if (!isNaN(val) && val >= 1 && val <= 360) {
+                            if (!Number.isNaN(val) && val >= 1 && val <= 360) {
                                 handleSplitSegmentMinutesChange(val);
                             } else {
                                 // Revert the display to the last valid saved value

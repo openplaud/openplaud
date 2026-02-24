@@ -1,6 +1,13 @@
 "use client";
 
-import { Mic, RefreshCw, Settings } from "lucide-react";
+import {
+    Mic,
+    RefreshCw,
+    Scissors,
+    Settings,
+    Trash2,
+    VolumeX,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -37,6 +44,9 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
         recordings.length > 0 ? recordings[0] : null,
     );
     const [isTranscribing, setIsTranscribing] = useState(false);
+    const [isSplitting, setIsSplitting] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [isRemovingSilence, setIsRemovingSilence] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [onboardingOpen, setOnboardingOpen] = useState(false);
     const [providers, setProviders] = useState<
@@ -60,10 +70,25 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
     const [notificationPrefs, setNotificationPrefs] = useState<{
         browserNotifications: boolean;
     } | null>(null);
+    const [splitSegmentMinutes, setSplitSegmentMinutes] = useState(60);
 
     const currentTranscription = currentRecording
         ? transcriptions.get(currentRecording.id)
         : undefined;
+
+    const isProcessing =
+        isSplitting || isDeleting || isRemovingSilence || isTranscribing;
+
+    // Keep currentRecording in sync with the recordings prop (updated after router.refresh()).
+    // If the previously-selected recording is no longer present (e.g. just deleted),
+    // clear the selection rather than holding a stale reference.
+    useEffect(() => {
+        setCurrentRecording((prev) => {
+            if (!prev) return prev;
+            const updated = recordings.find((r) => r.id === prev.id);
+            return updated ?? null;
+        });
+    }, [recordings]);
 
     useEffect(() => {
         getSyncSettings().then(setSyncSettings);
@@ -78,6 +103,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                 setNotificationPrefs({
                     browserNotifications: data.browserNotifications ?? true,
                 });
+                setSplitSegmentMinutes(data.splitSegmentMinutes ?? 60);
             } catch {
                 // best-effort; ignore
             }
@@ -174,6 +200,94 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
         }
     }, [currentRecording, router]);
 
+    const handleSplit = useCallback(async () => {
+        if (!currentRecording) return;
+
+        setIsSplitting(true);
+        try {
+            const response = await fetch(
+                `/api/recordings/${currentRecording.id}/split`,
+                { method: "POST" },
+            );
+
+            if (response.ok) {
+                const data = await response.json();
+                toast.success(
+                    `Recording split into ${data.segmentCount} segments`,
+                );
+                router.refresh();
+            } else {
+                const error = await response.json();
+                toast.error(error.error || "Failed to split recording");
+            }
+        } catch {
+            toast.error("Failed to split recording");
+        } finally {
+            setIsSplitting(false);
+        }
+    }, [currentRecording, router]);
+
+    const handleDelete = useCallback(async () => {
+        if (!currentRecording) return;
+
+        // Confirm before irreversibly deleting
+        if (
+            !window.confirm(
+                `Are you sure you want to delete "${currentRecording.filename}"? This cannot be undone.`,
+            )
+        ) {
+            return;
+        }
+
+        setIsDeleting(true);
+        try {
+            const response = await fetch(
+                `/api/recordings/${currentRecording.id}`,
+                { method: "DELETE" },
+            );
+
+            if (response.ok) {
+                toast.success("Recording deleted");
+                setCurrentRecording(null);
+                router.refresh();
+            } else {
+                const error = await response.json();
+                toast.error(error.error || "Failed to delete recording");
+            }
+        } catch {
+            toast.error("Failed to delete recording");
+        } finally {
+            setIsDeleting(false);
+        }
+    }, [currentRecording, router]);
+
+    const handleRemoveSilence = useCallback(async () => {
+        if (!currentRecording) return;
+
+        setIsRemovingSilence(true);
+        try {
+            const response = await fetch(
+                `/api/recordings/${currentRecording.id}/remove-silence`,
+                { method: "POST" },
+            );
+
+            if (response.ok) {
+                const data = await response.json();
+                toast.success(
+                    `Silence removed — ${data.originalSizeMb} MB → ${data.newSizeMb} MB (${data.reductionPercent}% smaller)`,
+                );
+                router.refresh();
+            } else {
+                const error = await response.json();
+                toast.error(error.error || "Failed to remove silence");
+            }
+        } catch {
+            toast.error("Failed to remove silence");
+        } finally {
+            setIsRemovingSilence(false);
+        }
+    }, [currentRecording, router]);
+
     return (
         <>
             <div className="bg-background">
@@ -265,6 +379,54 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                             <div className="lg:col-span-2 space-y-6">
                                 {currentRecording ? (
                                     <>
+                                        <div className="flex justify-end gap-2 flex-wrap">
+                                            <Button
+                                                onClick={handleRemoveSilence}
+                                                variant="outline"
+                                                size="sm"
+                                                disabled={isProcessing}
+                                            >
+                                                <VolumeX className="w-4 h-4 mr-2" />
+                                                {isRemovingSilence
+                                                    ? "Processing..."
+                                                    : "Remove Silence"}
+                                            </Button>
+                                            {currentRecording.duration >
+                                                splitSegmentMinutes *
+                                                    60 *
+                                                    1000 && (
+                                                <Button
+                                                    onClick={handleSplit}
+                                                    variant="outline"
+                                                    size="sm"
+                                                    disabled={isProcessing}
+                                                >
+                                                    <Scissors className="w-4 h-4 mr-2" />
+                                                    {isSplitting
+                                                        ? "Splitting..."
+                                                        : "Split Recording"}
+                                                </Button>
+                                            )}
+                                            {(currentRecording.plaudFileId.startsWith(
+                                                "split-",
+                                            ) ||
+                                                currentRecording.plaudFileId.startsWith(
+                                                    "silence-removed-",
+                                                )) && (
+                                                <Button
+                                                    onClick={handleDelete}
+                                                    variant="outline"
+                                                    size="sm"
+                                                    disabled={isProcessing}
+                                                    className="text-destructive hover:text-destructive"
+                                                >
+                                                    <Trash2 className="w-4 h-4 mr-2" />
+                                                    {isDeleting
+                                                        ? "Deleting..."
+                                                        : "Delete"}
+                                                </Button>
+                                            )}
+                                        </div>
                                         <RecordingPlayer
                                             recording={currentRecording}
                                             onEnded={() => {
@@ -292,6 +454,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                             transcription={currentTranscription}
                                             isTranscribing={isTranscribing}
                                             onTranscribe={handleTranscribe}
+                                            disabled={isProcessing}
                                         />
                                     </>
                                 ) : (

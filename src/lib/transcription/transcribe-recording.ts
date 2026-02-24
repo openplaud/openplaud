@@ -1,9 +1,5 @@
 import { and, eq } from "drizzle-orm";
 import { OpenAI } from "openai";
-import type {
-    TranscriptionDiarized,
-    TranscriptionVerbose,
-} from "openai/resources/audio/transcriptions";
 import { db } from "@/db";
 import {
     apiCredentials,
@@ -98,42 +94,35 @@ export async function transcribeRecording(
 
         const model = credentials.defaultModel || "whisper-1";
 
-        const isGpt4o = model.startsWith("gpt-4o");
-        const supportsDiarizedJson =
-            model.includes("diarize") || model.includes("diarized");
+        type TranscriptionParams = {
+            file: File;
+            model: string;
+            response_format: "verbose_json";
+            language?: string;
+        };
 
-        const responseFormat = supportsDiarizedJson
-            ? ("diarized_json" as const)
-            : isGpt4o
-              ? ("json" as const)
-              : ("verbose_json" as const);
-
-        const transcription = await openai.audio.transcriptions.create({
+        const transcriptionParams: TranscriptionParams = {
             file: audioFile,
             model,
-            response_format: responseFormat,
-            ...(defaultLanguage ? { language: defaultLanguage } : {}),
-        });
+            response_format: "verbose_json",
+        };
 
-        let transcriptionText: string;
-        let detectedLanguage: string | null = null;
-
-        if (supportsDiarizedJson) {
-            const diarized = transcription as TranscriptionDiarized;
-            transcriptionText = (diarized.segments ?? [])
-                .map((seg) => `${seg.speaker}: ${seg.text}`)
-                .join("\n");
-            // TranscriptionDiarized doesn't expose language
-        } else if (responseFormat === "verbose_json") {
-            const verbose = transcription as TranscriptionVerbose;
-            transcriptionText = verbose.text;
-            detectedLanguage = verbose.language ?? null;
-        } else {
-            transcriptionText =
-                typeof transcription === "string"
-                    ? transcription
-                    : (transcription.text ?? "");
+        if (defaultLanguage) {
+            transcriptionParams.language = defaultLanguage;
         }
+
+        const transcription =
+            await openai.audio.transcriptions.create(transcriptionParams);
+
+        const transcriptionText =
+            typeof transcription === "string"
+                ? transcription
+                : (transcription.text ?? "");
+
+        const detectedLanguage =
+            typeof transcription === "string"
+                ? null
+                : (transcription.language ?? null);
 
         if (existingTranscription) {
             await db

@@ -61,7 +61,8 @@ export function TranscriptionSection() {
     // String buffer so the user can clear the field before typing a new number.
     // The numeric state (splitSegmentMinutes) is only updated on blur once the
     // value is valid; the raw string is shown in the input while typing.
-    const [splitSegmentMinutesInput, setSplitSegmentMinutesInput] = useState("60");
+    const [splitSegmentMinutesInput, setSplitSegmentMinutesInput] =
+        useState("60");
     const pendingChangesRef = useRef<Map<string, unknown>>(new Map());
     // Track the last-successfully-saved value for rollback on save failure.
     const savedSplitSegmentMinutesRef = useRef(60);
@@ -82,8 +83,11 @@ export function TranscriptionSection() {
                     setAutoGenerateTitle(data.autoGenerateTitle ?? true);
                     setSyncTitleToPlaud(data.syncTitleToPlaud ?? false);
                     setSplitSegmentMinutes(data.splitSegmentMinutes ?? 60);
-                    setSplitSegmentMinutesInput(String(data.splitSegmentMinutes ?? 60));
-                    savedSplitSegmentMinutesRef.current = data.splitSegmentMinutes ?? 60;
+                    setSplitSegmentMinutesInput(
+                        String(data.splitSegmentMinutes ?? 60),
+                    );
+                    savedSplitSegmentMinutesRef.current =
+                        data.splitSegmentMinutes ?? 60;
                 }
             } catch (error) {
                 console.error("Failed to fetch settings:", error);
@@ -237,7 +241,9 @@ export function TranscriptionSection() {
             // Revert to the last-saved value (not the pre-optimistic-update
             // local state, which may itself be a previous unsaved value).
             setSplitSegmentMinutes(savedSplitSegmentMinutesRef.current);
-            setSplitSegmentMinutesInput(String(savedSplitSegmentMinutesRef.current));
+            setSplitSegmentMinutesInput(
+                String(savedSplitSegmentMinutesRef.current),
+            );
             toast.error("Failed to save settings. Changes reverted.");
         }
     };
@@ -438,7 +444,9 @@ export function TranscriptionSection() {
                                 handleSplitSegmentMinutesChange(val);
                             } else {
                                 // Revert the display to the last valid saved value
-                                setSplitSegmentMinutesInput(String(splitSegmentMinutes));
+                                setSplitSegmentMinutesInput(
+                                    String(splitSegmentMinutes),
+                                );
                             }
                         }}
                         disabled={isSavingSettings}

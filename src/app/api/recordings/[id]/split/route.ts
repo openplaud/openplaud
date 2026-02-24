@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -30,8 +30,7 @@ export async function POST(
         }
 
         const { id } = await params;
-        const force =
-            new URL(request.url).searchParams.get("force") === "true";
+        const force = new URL(request.url).searchParams.get("force") === "true";
 
         const [recording] = await db
             .select()
@@ -116,38 +115,46 @@ export async function POST(
             // Detect the actual file extension from the storage path and use it
             // for both input and output. OGG cannot hold MP3/AAC/PCM streams, so
             // non-OGG files must keep their original container format.
-            const detectedExt = path.extname(recording.storagePath).toLowerCase() || ".ogg";
+            const detectedExt =
+                path.extname(recording.storagePath).toLowerCase() || ".ogg";
             const NON_OGG_EXTS = new Set([".mp3", ".m4a", ".wav"]);
             const inputExt = detectedExt;
-            const outputExt = NON_OGG_EXTS.has(detectedExt) ? detectedExt : ".ogg";
-            const contentType = outputExt === ".mp3"
-                ? "audio/mpeg"
-                : outputExt === ".m4a"
-                  ? "audio/mp4"
-                  : outputExt === ".wav"
-                    ? "audio/wav"
-                    : "audio/ogg";
+            const outputExt = NON_OGG_EXTS.has(detectedExt)
+                ? detectedExt
+                : ".ogg";
+            const contentType =
+                outputExt === ".mp3"
+                    ? "audio/mpeg"
+                    : outputExt === ".m4a"
+                      ? "audio/mp4"
+                      : outputExt === ".wav"
+                        ? "audio/wav"
+                        : "audio/ogg";
 
             const inputPath = path.join(tmpDir, `input${inputExt}`);
             await fs.writeFile(inputPath, audioBuffer);
 
             // -map 0:a — skip the unknown metadata stream present in Plaud OGG files
             const outputPattern = path.join(tmpDir, `part_%03d${outputExt}`);
-            await execFileAsync("ffmpeg", [
-                "-i",
-                inputPath,
-                "-map",
-                "0:a",
-                "-f",
-                "segment",
-                "-segment_time",
-                String(segmentSeconds),
-                "-c",
-                "copy",
-                "-reset_timestamps",
-                "1",
-                outputPattern,
-            ], { timeout: 300_000 }); // 5-minute timeout for large files
+            await execFileAsync(
+                "ffmpeg",
+                [
+                    "-i",
+                    inputPath,
+                    "-map",
+                    "0:a",
+                    "-f",
+                    "segment",
+                    "-segment_time",
+                    String(segmentSeconds),
+                    "-c",
+                    "copy",
+                    "-reset_timestamps",
+                    "1",
+                    outputPattern,
+                ],
+                { timeout: 300_000 },
+            ); // 5-minute timeout for large files
 
             const allFiles = await fs.readdir(tmpDir);
             const segmentFiles = allFiles
@@ -199,9 +206,7 @@ export async function POST(
                     startTime: new Date(
                         recording.startTime.getTime() + segStartMs,
                     ),
-                    endTime: new Date(
-                        recording.startTime.getTime() + segEndMs,
-                    ),
+                    endTime: new Date(recording.startTime.getTime() + segEndMs),
                     filesize: segBuffer.length,
                     fileMd5: md5,
                     storageType: recording.storageType,

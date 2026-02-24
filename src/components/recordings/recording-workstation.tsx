@@ -38,7 +38,9 @@ export function RecordingWorkstation({
                 if (!res.ok) throw new Error("Failed to fetch user settings");
                 return res.json();
             })
-            .then((data) => setSplitSegmentMinutes(data.splitSegmentMinutes ?? 60))
+            .then((data) =>
+                setSplitSegmentMinutes(data.splitSegmentMinutes ?? 60),
+            )
             .catch(() => {});
     }, []);
 
@@ -176,10 +178,14 @@ export function RecordingWorkstation({
                             <Button
                                 onClick={handleSplit}
                                 variant="outline"
-                                disabled={isProcessing || splitConflict !== null}
+                                disabled={
+                                    isProcessing || splitConflict !== null
+                                }
                             >
                                 <Scissors className="w-4 h-4 mr-2" />
-                                {isSplitting ? "Splitting..." : "Split Recording"}
+                                {isSplitting
+                                    ? "Splitting..."
+                                    : "Split Recording"}
                             </Button>
                         </div>
                     )}

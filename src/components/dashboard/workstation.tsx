@@ -98,6 +98,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
     }, [settingsOpen]);
 
     // Reset split conflict state whenever the selected recording changes.
+    // biome-ignore lint/correctness/useExhaustiveDependencies: currentRecording?.id intentionally triggers reset
     useEffect(() => {
         setSplitConflict(null);
     }, [currentRecording?.id]);
@@ -416,7 +417,11 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                                         onClick={handleSplit}
                                                         variant="outline"
                                                         size="sm"
-                                                        disabled={isProcessing || splitConflict !== null}
+                                                        disabled={
+                                                            isProcessing ||
+                                                            splitConflict !==
+                                                                null
+                                                        }
                                                     >
                                                         <Scissors className="w-4 h-4 mr-2" />
                                                         {isSplitting

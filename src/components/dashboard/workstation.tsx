@@ -37,6 +37,8 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
         recordings.length > 0 ? recordings[0] : null,
     );
     const [isTranscribing, setIsTranscribing] = useState(false);
+    const [isDeletingTranscription, setIsDeletingTranscription] =
+        useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [onboardingOpen, setOnboardingOpen] = useState(false);
     const [providers, setProviders] = useState<
@@ -64,6 +66,19 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
     const currentTranscription = currentRecording
         ? transcriptions.get(currentRecording.id)
         : undefined;
+
+    const anyBusy = isTranscribing || isDeletingTranscription;
+
+    // Keep currentRecording in sync with the recordings prop (updated after router.refresh()).
+    // If the previously-selected recording is no longer present (e.g. just deleted),
+    // clear the selection rather than holding a stale reference.
+    useEffect(() => {
+        setCurrentRecording((prev) => {
+            if (!prev) return prev;
+            const updated = recordings.find((r) => r.id === prev.id);
+            return updated ?? null;
+        });
+    }, [recordings]);
 
     useEffect(() => {
         getSyncSettings().then(setSyncSettings);
@@ -171,6 +186,36 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
             toast.error("Failed to transcribe recording");
         } finally {
             setIsTranscribing(false);
+        }
+    }, [currentRecording, router]);
+
+    const handleDeleteTranscription = useCallback(async () => {
+        if (!currentRecording) return;
+        if (
+            !window.confirm(
+                "Remove the transcription? Re-transcribing costs API credits.",
+            )
+        )
+            return;
+
+        setIsDeletingTranscription(true);
+        try {
+            const response = await fetch(
+                `/api/recordings/${currentRecording.id}/transcribe`,
+                { method: "DELETE" },
+            );
+
+            if (response.ok) {
+                toast.success("Transcription removed");
+                router.refresh();
+            } else {
+                const error = await response.json();
+                toast.error(error.error || "Failed to remove transcription");
+            }
+        } catch {
+            toast.error("Failed to remove transcription");
+        } finally {
+            setIsDeletingTranscription(false);
         }
     }, [currentRecording, router]);
 
@@ -292,6 +337,13 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                             transcription={currentTranscription}
                                             isTranscribing={isTranscribing}
                                             onTranscribe={handleTranscribe}
+                                            isDeletingTranscription={
+                                                isDeletingTranscription
+                                            }
+                                            onDeleteTranscription={
+                                                handleDeleteTranscription
+                                            }
+                                            disabled={anyBusy}
                                         />
                                     </>
                                 ) : (

@@ -238,15 +238,11 @@ export async function POST(
                         );
                 }
 
-                const ids: string[] = [];
-                for (const row of segmentRows) {
-                    const [newRecording] = await tx
-                        .insert(recordings)
-                        .values(row)
-                        .returning({ id: recordings.id });
-                    ids.push(newRecording.id);
-                }
-                return ids;
+                const inserted = await tx
+                    .insert(recordings)
+                    .values(segmentRows)
+                    .returning({ id: recordings.id });
+                return inserted.map((r) => r.id);
             });
 
             // Delete old split storage files only after the DB transaction

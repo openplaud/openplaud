@@ -15,18 +15,14 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import {
-    DEFAULT_SERVER_KEY,
-    PLAUD_SERVERS,
-    type PlaudServerKey,
-} from "@/lib/plaud/servers";
+import { PLAUD_SERVERS } from "@/lib/plaud/constants";
 
 type Step = "plaud" | "complete";
 
 export function OnboardingForm() {
     const [step, setStep] = useState<Step>("plaud");
     const [bearerToken, setBearerToken] = useState("");
-    const [server, setServer] = useState<PlaudServerKey>(DEFAULT_SERVER_KEY);
+    const [apiBase, setApiBase] = useState<string>(PLAUD_SERVERS[0].value);
     const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
 
@@ -41,7 +37,7 @@ export function OnboardingForm() {
             const response = await fetch("/api/plaud/connect", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ bearerToken, server }),
+                body: JSON.stringify({ bearerToken, apiBase }),
             });
 
             if (!response.ok) throw new Error("Failed to connect");
@@ -101,30 +97,24 @@ export function OnboardingForm() {
 
                     <div className="space-y-2">
                         <Label htmlFor="apiBase">API Server</Label>
-                        <Select
-                            value={server}
-                            onValueChange={(v) =>
-                                setServer(v as PlaudServerKey)
-                            }
-                        >
+                        <Select value={apiBase} onValueChange={setApiBase}>
                             <SelectTrigger id="apiBase" disabled={isLoading}>
                                 <SelectValue placeholder="Select API server" />
                             </SelectTrigger>
                             <SelectContent className="z-[200]">
-                                {(
-                                    Object.entries(PLAUD_SERVERS) as [
-                                        PlaudServerKey,
-                                        (typeof PLAUD_SERVERS)[PlaudServerKey],
-                                    ][]
-                                ).map(([key, s]) => (
-                                    <SelectItem key={key} value={key}>
-                                        {s.label}
+                                {PLAUD_SERVERS.map((server) => (
+                                    <SelectItem
+                                        key={server.value}
+                                        value={server.value}
+                                    >
+                                        {server.label}
                                     </SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
                         <p className="text-xs text-muted-foreground">
-                            {PLAUD_SERVERS[server].description}
+                            {PLAUD_SERVERS.find((s) => s.value === apiBase)
+                                ?.hint ?? ""}
                         </p>
                     </div>
 

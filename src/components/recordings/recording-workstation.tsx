@@ -1,8 +1,8 @@
 "use client";
 
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Scissors, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { RecordingPlayer } from "@/components/dashboard/recording-player";
 import { TranscriptionPanel } from "@/components/dashboard/transcription-panel";
@@ -27,6 +27,20 @@ export function RecordingWorkstation({
 }: RecordingWorkstationProps) {
     const router = useRouter();
     const [isTranscribing, setIsTranscribing] = useState(false);
+    const [isSplitting, setIsSplitting] = useState(false);
+    const [splitConflict, setSplitConflict] = useState<number | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [splitSegmentMinutes, setSplitSegmentMinutes] = useState(60);
+
+    useEffect(() => {
+        fetch("/api/settings/user")
+            .then((res) => {
+                if (!res.ok) throw new Error("Failed to fetch user settings");
+                return res.json();
+            })
+            .then((data) => setSplitSegmentMinutes(data.splitSegmentMinutes ?? 60))
+            .catch(() => {});
+    }, []);
 
     const handleTranscribe = useCallback(async () => {
         setIsTranscribing(true);
@@ -52,6 +66,64 @@ export function RecordingWorkstation({
         }
     }, [recording.id, router]);
 
+    const runSplit = useCallback(
+        async (force: boolean) => {
+            setIsSplitting(true);
+            try {
+                const url = `/api/recordings/${recording.id}/split${force ? "?force=true" : ""}`;
+                const response = await fetch(url, { method: "POST" });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    setSplitConflict(null);
+                    toast.success(
+                        `Recording split into ${data.segmentCount} segments`,
+                    );
+                    router.push("/dashboard");
+                } else if (response.status === 409) {
+                    const data = await response.json();
+                    setSplitConflict(data.existingCount as number);
+                } else {
+                    const error = await response.json();
+                    toast.error(error.error || "Failed to split recording");
+                }
+            } catch {
+                toast.error("Failed to split recording");
+            } finally {
+                setIsSplitting(false);
+            }
+        },
+        [recording.id, router],
+    );
+
+    const handleSplit = useCallback(() => runSplit(false), [runSplit]);
+    const handleSplitForce = useCallback(() => runSplit(true), [runSplit]);
+
+    // True whenever any mutating operation is in flight — used to disable all
+    // action buttons and prevent concurrent conflicting requests.
+    const isProcessing = isSplitting || isDeleting || isTranscribing;
+
+    const handleDelete = useCallback(async () => {
+        setIsDeleting(true);
+        try {
+            const response = await fetch(`/api/recordings/${recording.id}`, {
+                method: "DELETE",
+            });
+
+            if (response.ok) {
+                toast.success("Recording deleted");
+                router.push("/dashboard");
+            } else {
+                const error = await response.json();
+                toast.error(error.error || "Failed to delete recording");
+            }
+        } catch {
+            toast.error("Failed to delete recording");
+        } finally {
+            setIsDeleting(false);
+        }
+    }, [recording.id, router]);
+
     return (
         <div className="bg-background">
             <div className="container mx-auto px-4 py-6 max-w-4xl">
@@ -72,6 +144,56 @@ export function RecordingWorkstation({
                             {new Date(recording.startTime).toLocaleString()}
                         </p>
                     </div>
+                    {recording.duration > splitSegmentMinutes * 60 * 1000 && (
+                        <div className="flex flex-col items-end gap-2">
+                            {splitConflict !== null && (
+                                <div className="flex items-center gap-3 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm">
+                                    <span className="text-destructive">
+                                        {splitConflict === 1
+                                            ? "1 existing segment"
+                                            : `${splitConflict} existing segments`}{" "}
+                                        will be deleted. Continue?
+                                    </span>
+                                    <Button
+                                        onClick={() => setSplitConflict(null)}
+                                        variant="outline"
+                                        size="sm"
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        onClick={handleSplitForce}
+                                        variant="destructive"
+                                        size="sm"
+                                        disabled={isProcessing}
+                                    >
+                                        {isSplitting
+                                            ? "Splitting..."
+                                            : "Delete & Re-split"}
+                                    </Button>
+                                </div>
+                            )}
+                            <Button
+                                onClick={handleSplit}
+                                variant="outline"
+                                disabled={isProcessing || splitConflict !== null}
+                            >
+                                <Scissors className="w-4 h-4 mr-2" />
+                                {isSplitting ? "Splitting..." : "Split Recording"}
+                            </Button>
+                        </div>
+                    )}
+                    {recording.plaudFileId.startsWith("split-") && (
+                        <Button
+                            onClick={handleDelete}
+                            variant="outline"
+                            disabled={isProcessing}
+                            className="text-destructive hover:text-destructive"
+                        >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            {isDeleting ? "Deleting..." : "Delete"}
+                        </Button>
+                    )}
                 </div>
 
                 {/* Content */}

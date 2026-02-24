@@ -323,6 +323,8 @@ export const userSettings = pgTable("user_settings", {
     syncTitleToPlaud: boolean("sync_title_to_plaud").notNull().default(false),
     // Title generation prompt configuration
     titleGenerationPrompt: jsonb("title_generation_prompt"), // { preset: string, customPrompt?: string }
+    // Recording split settings (minutes per segment, default 60)
+    splitSegmentMinutes: integer("split_segment_minutes").notNull().default(60),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

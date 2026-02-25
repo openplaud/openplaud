@@ -15,6 +15,7 @@ import {
 import { generateTitleFromTranscription } from "@/lib/ai/generate-title";
 import { decrypt } from "@/lib/encryption";
 import { createPlaudClient } from "@/lib/plaud/client";
+import { isPlaudLocallyCreated } from "@/lib/plaud/sync-title";
 import { createUserStorageProvider } from "@/lib/storage/factory";
 
 export async function transcribeRecording(
@@ -170,11 +171,15 @@ export async function transcribeRecording(
                         .update(recordings)
                         .set({
                             filename: generatedTitle,
+                            filenameModified: true,
                             updatedAt: new Date(),
                         })
                         .where(eq(recordings.id, recordingId));
 
-                    if (syncTitleToPlaud) {
+                    if (
+                        syncTitleToPlaud &&
+                        !isPlaudLocallyCreated(recording.plaudFileId)
+                    ) {
                         try {
                             const [connection] = await db
                                 .select()

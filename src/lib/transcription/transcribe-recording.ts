@@ -15,7 +15,11 @@ import {
 import { generateTitleFromTranscription } from "@/lib/ai/generate-title";
 import { decrypt } from "@/lib/encryption";
 import { createPlaudClient } from "@/lib/plaud/client";
+import { isPlaudLocallyCreated } from "@/lib/plaud/sync-title";
 import { createUserStorageProvider } from "@/lib/storage/factory";
+import { postProcessTranscription } from "@/lib/transcription/post-process";
+import { trimTrailingSilence } from "@/lib/transcription/trim-silence";
+import { audioFilenameWithExt, getAudioMimeType } from "@/lib/utils";
 
 export async function transcribeRecording(
     userId: string,
@@ -83,17 +87,19 @@ export async function transcribeRecording(
         });
 
         const storage = await createUserStorageProvider(userId);
-        const audioBuffer = await storage.downloadFile(recording.storagePath);
+        const rawAudioBuffer = await storage.downloadFile(
+            recording.storagePath,
+        );
+        // Trim trailing silence to prevent end-of-audio hallucinations
+        const audioBuffer = await trimTrailingSilence(
+            rawAudioBuffer,
+            recording.storagePath,
+        );
 
-        const contentType = recording.storagePath.endsWith(".mp3")
-            ? "audio/mpeg"
-            : "audio/opus";
         const audioFile = new File(
             [new Uint8Array(audioBuffer)],
-            recording.filename,
-            {
-                type: contentType,
-            },
+            audioFilenameWithExt(recording.storagePath),
+            { type: getAudioMimeType(recording.storagePath) },
         );
 
         const model = credentials.defaultModel || "whisper-1";
@@ -120,21 +126,30 @@ export async function transcribeRecording(
 
         if (supportsDiarizedJson) {
             const diarized = transcription as TranscriptionDiarized;
-            transcriptionText = (diarized.segments ?? [])
+            const rawDiarized = (diarized.segments ?? [])
                 .map((seg) => `${seg.speaker}: ${seg.text}`)
                 .join("\n");
-            // TranscriptionDiarized doesn't expose language
+            // Apply text-based repetition removal as safety net for diarized output
+            transcriptionText = postProcessTranscription(
+                rawDiarized,
+                undefined,
+            );
+            // TranscriptionDiarized does not expose language
         } else if (responseFormat === "verbose_json") {
             const verbose = transcription as TranscriptionVerbose;
-            transcriptionText = verbose.text;
+            const segments = verbose.segments ?? undefined;
+            transcriptionText = postProcessTranscription(
+                verbose.text,
+                segments,
+            );
             detectedLanguage = verbose.language ?? null;
         } else {
-            transcriptionText =
+            const rawText =
                 typeof transcription === "string"
                     ? transcription
                     : (transcription.text ?? "");
+            transcriptionText = postProcessTranscription(rawText, undefined);
         }
-
         if (existingTranscription) {
             await db
                 .update(transcriptions)
@@ -170,11 +185,15 @@ export async function transcribeRecording(
                         .update(recordings)
                         .set({
                             filename: generatedTitle,
+                            filenameModified: true,
                             updatedAt: new Date(),
                         })
                         .where(eq(recordings.id, recordingId));
 
-                    if (syncTitleToPlaud) {
+                    if (
+                        syncTitleToPlaud &&
+                        !isPlaudLocallyCreated(recording.plaudFileId)
+                    ) {
                         try {
                             const [connection] = await db
                                 .select()

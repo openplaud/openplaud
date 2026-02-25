@@ -1,19 +1,16 @@
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { promisify } from "node:util";
 import { nanoid } from "nanoid";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { recordings } from "@/db/schema";
+import { getAudioDurationMs } from "@/lib/audio-utils";
 import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { createUserStorageProvider } from "@/lib/storage/factory";
 import { getAudioMimeType } from "@/lib/utils";
-
-const execFileAsync = promisify(execFile);
 
 const ACCEPTED_EXTENSIONS = new Set([
     ".mp3",
@@ -26,33 +23,6 @@ const ACCEPTED_EXTENSIONS = new Set([
     ".aac",
     ".flac",
 ]);
-
-async function getAudioDurationMs(filePath: string): Promise<number> {
-    // Try stream duration first, fall back to format duration
-    for (const flag of ["-show_streams", "-show_format"]) {
-        try {
-            const { stdout } = await execFileAsync(
-                "ffprobe",
-                ["-v", "quiet", "-print_format", "json", flag, filePath],
-                { timeout: 30000 },
-            );
-            const info = JSON.parse(stdout) as {
-                streams?: Array<{ codec_type: string; duration?: string }>;
-                format?: { duration?: string };
-            };
-            const durationStr =
-                flag === "-show_streams"
-                    ? info.streams?.find((s) => s.codec_type === "audio")
-                          ?.duration
-                    : info.format?.duration;
-            const sec = parseFloat(durationStr ?? "0");
-            if (sec > 0) return Math.round(sec * 1000);
-        } catch {
-            // try next flag
-        }
-    }
-    return 0;
-}
 
 export async function POST(request: Request) {
     const session = await auth.api.getSession({

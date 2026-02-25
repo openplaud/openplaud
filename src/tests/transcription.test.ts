@@ -19,7 +19,14 @@ vi.mock("@/lib/storage/factory", () => ({
 }));
 
 vi.mock("openai", () => {
-    return { OpenAI: vi.fn() };
+    const MockOpenAI = vi.fn(() => ({
+        audio: {
+            transcriptions: {
+                create: vi.fn(),
+            },
+        },
+    }));
+    return { OpenAI: MockOpenAI };
 });
 
 import { OpenAI } from "openai";
@@ -123,10 +130,9 @@ describe("Transcription", () => {
             const mockCreate = vi
                 .fn()
                 .mockRejectedValue(new Error("API Error"));
-            // biome-ignore lint/complexity/useArrowFunction: regular function required for new OpenAI() constructor mock
-            (OpenAI as unknown as Mock).mockImplementation(function () {
-                return { audio: { transcriptions: { create: mockCreate } } };
-            });
+            (OpenAI as unknown as Mock).mockImplementation(() => ({
+                audio: { transcriptions: { create: mockCreate } },
+            }));
 
             (db.select as Mock)
                 .mockReturnValueOnce({

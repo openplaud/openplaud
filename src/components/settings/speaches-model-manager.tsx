@@ -102,7 +102,7 @@ export function SpeachesModelManager({
             fetchInstalled();
             fetchRegistry();
         }
-        // biome-ignore lint/correctness/useExhaustiveDependencies: fetch fns are stable within render
+        // biome-ignore lint/correctness/useExhaustiveDependencies: fetch fns called directly
     }, [open, fetchInstalled, fetchRegistry]);
 
     // Always refresh the parent list when the dialog closes
@@ -246,10 +246,7 @@ export function SpeachesModelManager({
                                             variant="ghost"
                                             size="sm"
                                             className="shrink-0 text-destructive hover:text-destructive"
-                                            disabled={
-                                                removingIds.has(model.id) ||
-                                                installingId !== null
-                                            }
+                                            disabled={removingIds.has(model.id)}
                                             onClick={() =>
                                                 handleRemove(model.id)
                                             }

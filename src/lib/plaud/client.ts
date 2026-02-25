@@ -4,6 +4,7 @@ import type {
     PlaudRecordingsResponse,
     PlaudTempUrlResponse,
 } from "@/types/plaud";
+import { PLAUD_SERVERS } from "./constants";
 
 export interface PlaudUpdateFilenameResponse {
     status: number;
@@ -11,7 +12,7 @@ export interface PlaudUpdateFilenameResponse {
     data_file?: unknown;
 }
 
-export const DEFAULT_PLAUD_API_BASE = "https://api.plaud.ai";
+export const DEFAULT_PLAUD_API_BASE = PLAUD_SERVERS[0].value;
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY = 1000; // 1 second
 

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { recordings, transcriptions } from "@/db/schema";
 import { auth } from "@/lib/auth";
+import { isPlaudLocallyCreated } from "@/lib/plaud/sync-title";
 import { createUserStorageProvider } from "@/lib/storage/factory";
 
 export async function GET(
@@ -177,25 +178,13 @@ export async function DELETE(
             );
         }
 
-        const isLocallyCreated =
-            recording.plaudFileId.startsWith("split-") ||
-            recording.plaudFileId.startsWith("silence-removed-") ||
-            recording.plaudFileId.startsWith("uploaded-");
+        const isLocallyCreated = isPlaudLocallyCreated(recording.plaudFileId);
 
         if (!isLocallyCreated) {
             return NextResponse.json(
                 { error: "Only locally created recordings can be deleted" },
                 { status: 403 },
             );
-        }
-
-        // Delete audio file from storage
-        try {
-            const storage = await createUserStorageProvider(session.user.id);
-            await storage.deleteFile(recording.storagePath);
-        } catch (err) {
-            console.error("Failed to delete audio file from storage:", err);
-            // Continue with DB deletion even if storage delete fails
         }
 
         // Delete from DB — transcriptions cascade automatically.
@@ -211,6 +200,14 @@ export async function DELETE(
                     eq(recordings.userId, session.user.id),
                 ),
             );
+
+        // Delete audio file from storage
+        try {
+            const storage = await createUserStorageProvider(session.user.id);
+            await storage.deleteFile(recording.storagePath);
+        } catch (err) {
+            console.error("Failed to delete audio file from storage:", err);
+        }
 
         return NextResponse.json({ success: true });
     } catch (error) {

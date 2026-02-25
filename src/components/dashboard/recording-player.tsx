@@ -49,6 +49,7 @@ export function RecordingPlayer({
 }: RecordingPlayerProps) {
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
+    const cancelledRef = useRef(false);
     const [duration, setDuration] = useState(0);
     const [volume, setVolume] = useState(75);
     const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
@@ -56,7 +57,6 @@ export function RecordingPlayer({
     const audioRef = useRef<HTMLAudioElement>(null);
     const isSeekingRef = useRef(false);
     const settingsLoadedRef = useRef(false);
-    const cancelledRef = useRef(false);
 
     useEffect(() => {
         if (settingsLoadedRef.current) return;
@@ -266,18 +266,19 @@ export function RecordingPlayer({
                             }
                             onKeyDown={(e) => {
                                 if (e.key === "Enter") {
-                                    cancelledRef.current = false;
                                     e.currentTarget.blur();
                                 }
                                 if (e.key === "Escape") {
                                     cancelledRef.current = true;
-                                    e.currentTarget.blur();
+                                    onCancelEdit?.();
                                 }
                             }}
                             onBlur={() => {
-                                if (cancelledRef.current) onCancelEdit?.();
-                                else onSaveTitle?.();
-                                cancelledRef.current = false;
+                                if (cancelledRef.current) {
+                                    cancelledRef.current = false;
+                                    return;
+                                }
+                                onSaveTitle?.();
                             }}
                             disabled={isSavingTitle}
                             className="text-xl font-semibold flex-1"

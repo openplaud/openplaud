@@ -8,37 +8,11 @@ import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { recordings, userSettings } from "@/db/schema";
+import { getAudioDurationMs } from "@/lib/audio-utils";
 import { auth } from "@/lib/auth";
 import { createUserStorageProvider } from "@/lib/storage/factory";
 
 const execFileAsync = promisify(execFile);
-
-async function getAudioDurationMs(filePath: string): Promise<number> {
-    // Try stream duration first, fall back to format duration
-    for (const flag of ["-show_streams", "-show_format"]) {
-        try {
-            const { stdout } = await execFileAsync(
-                "ffprobe",
-                ["-v", "quiet", "-print_format", "json", flag, filePath],
-                { timeout: 5_000 },
-            );
-            const info = JSON.parse(stdout) as {
-                streams?: Array<{ codec_type: string; duration?: string }>;
-                format?: { duration?: string };
-            };
-            const durationStr =
-                flag === "-show_streams"
-                    ? info.streams?.find((s) => s.codec_type === "audio")
-                          ?.duration
-                    : info.format?.duration;
-            const sec = parseFloat(durationStr ?? "0");
-            if (sec > 0) return Math.round(sec * 1000);
-        } catch {
-            // try next flag
-        }
-    }
-    return 0;
-}
 
 export async function POST(
     request: Request,
@@ -214,6 +188,7 @@ export async function POST(
                 set: {
                     filename: `${baseFilename} (Silence Removed)`,
                     duration: estimatedDurationMs,
+                    startTime: recording.startTime,
                     endTime: new Date(
                         recording.startTime.getTime() + estimatedDurationMs,
                     ),

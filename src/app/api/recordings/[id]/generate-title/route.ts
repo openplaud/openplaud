@@ -1,10 +1,16 @@
-import { and, desc, eq } from "drizzle-orm";
-import { after, NextResponse } from "next/server";
+import { and, eq } from "drizzle-orm";
+import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { recordings, transcriptions, userSettings } from "@/db/schema";
+import {
+    plaudConnections,
+    recordings,
+    transcriptions,
+    userSettings,
+} from "@/db/schema";
 import { generateTitleFromTranscription } from "@/lib/ai/generate-title";
 import { auth } from "@/lib/auth";
-import { syncTitleToPlaudIfNeeded } from "@/lib/plaud/sync-title-server";
+import { createPlaudClient } from "@/lib/plaud/client";
+import { isPlaudLocallyCreated } from "@/lib/plaud/sync-title";
 
 export async function POST(
     request: Request,
@@ -51,7 +57,6 @@ export async function POST(
                     eq(transcriptions.userId, session.user.id),
                 ),
             )
-            .orderBy(desc(transcriptions.createdAt))
             .limit(1);
 
         if (!transcription?.text) {
@@ -91,19 +96,31 @@ export async function POST(
                 ),
             );
 
-        // Sync to Plaud device after the response is sent (fire-and-forget, best-effort)
-        after(async () => {
+        // Sync to Plaud device if the user has that option enabled
+        const [settings] = await db
+            .select({ syncTitleToPlaud: userSettings.syncTitleToPlaud })
+            .from(userSettings)
+            .where(eq(userSettings.userId, session.user.id))
+            .limit(1);
+
+        const isLocallyCreated = recording.plaudFileId
+            ? isPlaudLocallyCreated(recording.plaudFileId)
+            : true;
+
+        if (settings?.syncTitleToPlaud && !isLocallyCreated) {
             try {
-                const [settings] = await db
-                    .select({ syncTitleToPlaud: userSettings.syncTitleToPlaud })
-                    .from(userSettings)
-                    .where(eq(userSettings.userId, session.user.id))
+                const [connection] = await db
+                    .select()
+                    .from(plaudConnections)
+                    .where(eq(plaudConnections.userId, session.user.id))
                     .limit(1);
 
-                if (settings?.syncTitleToPlaud) {
-                    await syncTitleToPlaudIfNeeded(
-                        session.user.id,
-                        id,
+                if (connection) {
+                    const plaudClient = await createPlaudClient(
+                        connection.bearerToken,
+                        connection.apiBase,
+                    );
+                    await plaudClient.updateFilename(
                         recording.plaudFileId,
                         generatedTitle,
                     );
@@ -111,7 +128,7 @@ export async function POST(
             } catch (err) {
                 console.error("Failed to sync title to Plaud:", err);
             }
-        });
+        }
 
         return NextResponse.json({ title: generatedTitle });
     } catch (error) {

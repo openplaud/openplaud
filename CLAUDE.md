@@ -74,6 +74,7 @@ bun run db:studio    # Visual database browser
 
 - **`isPlaudLocallyCreated(plaudFileId)`** — `src/lib/plaud/sync-title.ts`. Returns `true` for recordings created locally (`uploaded-`, `split-`, `silence-removed-` prefixes). Use this instead of inline `startsWith` chains.
 - **`getAudioMimeType(filePath)`** — `src/lib/utils.ts`. Derives MIME type from file extension. Use instead of inline ternary chains when setting `contentType` for storage uploads.
+- **`getAudioDurationMs(filePath)`** — `src/lib/audio-utils.ts`. Shared ffprobe wrapper for getting audio duration in milliseconds. Use this instead of inlining ffprobe calls.
 - **`SPEACHES_DEFAULT_BASE_URL`** and **`validateBaseUrl()`** — `src/lib/speaches/validate-url.ts`. Import the constant rather than hardcoding `"http://localhost:8000/v1"`. `validateBaseUrl()` provides SSRF protection (blocks cloud metadata endpoints including trailing-dot bypass variants).
 
 **Runtime dependency**: `ffmpeg` is required for the split and silence-removal API routes. It is pre-installed in the Docker image.

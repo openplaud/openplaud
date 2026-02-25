@@ -45,20 +45,11 @@ export function RecordingWorkstation({
     const [isSyncingToPlaud, setIsSyncingToPlaud] = useState(false);
     const [isSplitting, setIsSplitting] = useState(false);
     const [splitConflict, setSplitConflict] = useState<number | null>(null);
-    const cancelledRef = useRef(false);
+    const _cancelledRef = useRef(false);
+    const titleEditCancelledRef = useRef(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [isRemovingSilence, setIsRemovingSilence] = useState(false);
     const [splitSegmentMinutes, setSplitSegmentMinutes] = useState(60);
-
-    const anyBusy =
-        isTranscribing ||
-        isDeletingTranscription ||
-        isGeneratingTitle ||
-        isSavingTitle ||
-        isSyncingToPlaud ||
-        isSplitting ||
-        isDeleting ||
-        isRemovingSilence;
 
     useEffect(() => {
         fetch("/api/settings/user")
@@ -145,6 +136,10 @@ export function RecordingWorkstation({
     }, [recording.id, router]);
 
     const handleSaveTitle = useCallback(async () => {
+        if (titleEditCancelledRef.current) {
+            titleEditCancelledRef.current = false;
+            return;
+        }
         const trimmed = editTitleValue.trim();
         if (!trimmed || trimmed === recording.filename) {
             setIsEditingTitle(false);
@@ -227,6 +222,18 @@ export function RecordingWorkstation({
     const handleSplit = useCallback(() => runSplit(false), [runSplit]);
     const handleSplitForce = useCallback(() => runSplit(true), [runSplit]);
 
+    // True whenever any mutating operation is in flight — used to disable all
+    // action buttons and prevent concurrent conflicting requests.
+    const isProcessing =
+        isTranscribing ||
+        isDeletingTranscription ||
+        isGeneratingTitle ||
+        isSavingTitle ||
+        isSyncingToPlaud ||
+        isSplitting ||
+        isDeleting ||
+        isRemovingSilence;
+
     const handleDelete = useCallback(async () => {
         setIsDeleting(true);
         try {
@@ -295,20 +302,14 @@ export function RecordingWorkstation({
                                     }
                                     onKeyDown={(e) => {
                                         if (e.key === "Enter") {
-                                            cancelledRef.current = false;
                                             e.currentTarget.blur();
                                         }
                                         if (e.key === "Escape") {
-                                            cancelledRef.current = true;
-                                            e.currentTarget.blur();
+                                            titleEditCancelledRef.current = true;
+                                            setIsEditingTitle(false);
                                         }
                                     }}
-                                    onBlur={() => {
-                                        if (cancelledRef.current)
-                                            setIsEditingTitle(false);
-                                        else handleSaveTitle();
-                                        cancelledRef.current = false;
-                                    }}
+                                    onBlur={handleSaveTitle}
                                     disabled={isSavingTitle}
                                     className="text-2xl font-bold h-auto py-0.5 flex-1"
                                     autoFocus
@@ -323,9 +324,8 @@ export function RecordingWorkstation({
                                     variant="ghost"
                                     size="icon"
                                     className="shrink-0"
-                                    disabled={anyBusy}
+                                    disabled={isProcessing}
                                     onClick={() => {
-                                        cancelledRef.current = false;
                                         setEditTitleValue(recording.filename);
                                         setIsEditingTitle(true);
                                     }}
@@ -392,7 +392,9 @@ export function RecordingWorkstation({
                             <Button
                                 onClick={handleSplit}
                                 variant="outline"
-                                disabled={isSplitting}
+                                disabled={
+                                    isProcessing || splitConflict !== null
+                                }
                             >
                                 <Scissors className="w-4 h-4 mr-2" />
                                 {isSplitting
@@ -426,6 +428,7 @@ export function RecordingWorkstation({
                         onDeleteTranscription={handleDeleteTranscription}
                         isGeneratingTitle={isGeneratingTitle}
                         onGenerateTitle={handleGenerateTitle}
+                        disabled={isProcessing}
                     />
 
                     {/* Metadata */}

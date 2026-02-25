@@ -117,7 +117,13 @@ export async function POST(
             // non-OGG files must keep their original container format.
             const detectedExt =
                 path.extname(recording.storagePath).toLowerCase() || ".ogg";
-            const NON_OGG_EXTS = new Set([".mp3", ".m4a", ".wav"]);
+            const NON_OGG_EXTS = new Set([
+                ".mp3",
+                ".m4a",
+                ".wav",
+                ".aac",
+                ".mp4",
+            ]);
             const inputExt = detectedExt;
             const outputExt = NON_OGG_EXTS.has(detectedExt)
                 ? detectedExt
@@ -129,7 +135,11 @@ export async function POST(
                       ? "audio/mp4"
                       : outputExt === ".wav"
                         ? "audio/wav"
-                        : "audio/ogg";
+                        : outputExt === ".aac"
+                          ? "audio/aac"
+                          : outputExt === ".mp4"
+                            ? "audio/mp4"
+                            : "audio/ogg";
 
             const inputPath = path.join(tmpDir, `input${inputExt}`);
             await fs.writeFile(inputPath, audioBuffer);
@@ -179,76 +189,122 @@ export async function POST(
 
             // Prepare all segment buffers and storage uploads before touching
             // the database, so the DB transaction is as short as possible.
+            const uploadedPaths: string[] = [];
             const segmentRows: (typeof recordings.$inferInsert)[] = [];
-            for (let i = 0; i < segmentFiles.length; i++) {
-                const segBuffer = await fs.readFile(
-                    path.join(tmpDir, segmentFiles[i]),
-                );
-                const partNum = i + 1;
-                const storageKey = `${storagePathBase}_part${String(partNum).padStart(3, "0")}${outputExt}`;
+            try {
+                for (let i = 0; i < segmentFiles.length; i++) {
+                    const segBuffer = await fs.readFile(
+                        path.join(tmpDir, segmentFiles[i]),
+                    );
+                    const partNum = i + 1;
+                    const storageKey = `${storagePathBase}_part${String(partNum).padStart(3, "0")}${outputExt}`;
 
-                await storage.uploadFile(storageKey, segBuffer, contentType);
+                    await storage.uploadFile(
+                        storageKey,
+                        segBuffer,
+                        contentType,
+                    );
+                    uploadedPaths.push(storageKey);
 
-                const md5 = createHash("md5").update(segBuffer).digest("hex");
+                    const md5 = createHash("md5")
+                        .update(segBuffer)
+                        .digest("hex");
 
-                const segStartMs = i * durationPerSegmentMs;
-                const segEndMs =
-                    i < segmentFiles.length - 1
-                        ? (i + 1) * durationPerSegmentMs
-                        : Math.max(segStartMs, recording.duration);
+                    const segStartMs = i * durationPerSegmentMs;
+                    const segEndMs =
+                        i < segmentFiles.length - 1
+                            ? (i + 1) * durationPerSegmentMs
+                            : recording.duration > segStartMs
+                              ? recording.duration
+                              : segStartMs + durationPerSegmentMs;
 
-                segmentRows.push({
-                    userId: session.user.id,
-                    deviceSn: recording.deviceSn,
-                    plaudFileId: `split-${recording.plaudFileId}-part${String(partNum).padStart(3, "0")}`,
-                    filename: `${baseFilename} (Part ${partNum})`,
-                    duration: segEndMs - segStartMs,
-                    startTime: new Date(
-                        recording.startTime.getTime() + segStartMs,
-                    ),
-                    endTime: new Date(recording.startTime.getTime() + segEndMs),
-                    filesize: segBuffer.length,
-                    fileMd5: md5,
-                    storageType: recording.storageType,
-                    storagePath: storageKey,
-                    downloadedAt: new Date(),
-                    plaudVersion: recording.plaudVersion,
-                    timezone: recording.timezone,
-                    zonemins: recording.zonemins,
-                    scene: recording.scene,
-                    isTrash: false,
-                });
+                    segmentRows.push({
+                        userId: session.user.id,
+                        deviceSn: recording.deviceSn,
+                        plaudFileId: `split-${recording.plaudFileId}-part${String(partNum).padStart(3, "0")}`,
+                        filename: `${baseFilename} (Part ${partNum})${outputExt}`,
+                        duration: segEndMs - segStartMs,
+                        startTime: new Date(
+                            recording.startTime.getTime() + segStartMs,
+                        ),
+                        endTime: new Date(
+                            recording.startTime.getTime() + segEndMs,
+                        ),
+                        filesize: segBuffer.length,
+                        fileMd5: md5,
+                        storageType: recording.storageType,
+                        storagePath: storageKey,
+                        downloadedAt: new Date(),
+                        plaudVersion: recording.plaudVersion,
+                        timezone: recording.timezone,
+                        zonemins: recording.zonemins,
+                        scene: recording.scene,
+                        isTrash: false,
+                    });
+                }
+            } catch (uploadErr) {
+                // Clean up any files already uploaded before the failure
+                for (const p of uploadedPaths) {
+                    await storage
+                        .deleteFile(p)
+                        .catch((e) =>
+                            console.error(
+                                `Failed to delete orphaned upload ${p}:`,
+                                e,
+                            ),
+                        );
+                }
+                throw uploadErr;
             }
 
             // Wrap the DB delete (for force re-splits) and all inserts in a
             // single transaction so that partial failures leave no orphaned rows
             // and concurrent force=true requests cannot interleave their writes.
-            const newRecordingIds = await db.transaction(async (tx) => {
-                if (existingSplits.length > 0 && force) {
-                    await tx
-                        .delete(recordings)
-                        .where(
-                            and(
-                                eq(recordings.userId, session.user.id),
-                                like(
-                                    recordings.plaudFileId,
-                                    `split-${escapedPlaudFileId}-part%`,
-                                ),
+            let newRecordingIds: string[];
+            try {
+                newRecordingIds = await (async () =>
+                    await db.transaction(async (tx) => {
+                        if (existingSplits.length > 0 && force) {
+                            await tx
+                                .delete(recordings)
+                                .where(
+                                    and(
+                                        eq(recordings.userId, session.user.id),
+                                        like(
+                                            recordings.plaudFileId,
+                                            `split-${escapedPlaudFileId}-part%`,
+                                        ),
+                                    ),
+                                );
+                        }
+
+                        const inserted = await tx
+                            .insert(recordings)
+                            .values(segmentRows)
+                            .returning({ id: recordings.id });
+                        return inserted.map((r) => r.id);
+                    })());
+            } catch (txErr) {
+                // DB transaction failed — clean up all uploaded storage files
+                for (const p of segmentRows.map((r) => r.storagePath)) {
+                    await storage
+                        .deleteFile(p as string)
+                        .catch((e) =>
+                            console.error(
+                                `Failed to delete orphaned segment ${p}:`,
+                                e,
                             ),
                         );
                 }
-
-                const inserted = await tx
-                    .insert(recordings)
-                    .values(segmentRows)
-                    .returning({ id: recordings.id });
-                return inserted.map((r) => r.id);
-            });
+                throw txErr;
+            }
 
             // Delete old split storage files only after the DB transaction
             // has successfully committed, preserving consistency.
             if (existingSplits.length > 0 && force) {
+                const newPathSet = new Set(uploadedPaths);
                 for (const split of existingSplits) {
+                    if (newPathSet.has(split.storagePath)) continue;
                     try {
                         await storage.deleteFile(split.storagePath);
                     } catch (err) {

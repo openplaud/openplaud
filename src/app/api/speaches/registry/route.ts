@@ -29,7 +29,7 @@ export async function GET(request: Request) {
         }
 
         const response = await fetch(
-            `${baseUrl}/registry?task=automatic-speech-recognition`,
+            `${baseUrl.replace(/\/+$/, "")}/registry?task=automatic-speech-recognition`,
             { signal: AbortSignal.timeout(15000), redirect: "error" },
         );
 

@@ -72,7 +72,15 @@ export async function POST(request: Request) {
             );
         }
 
-        const { modelId } = await request.json();
+        let modelId: string | undefined;
+        try {
+            ({ modelId } = await request.json());
+        } catch {
+            return NextResponse.json(
+                { error: "Invalid JSON body" },
+                { status: 400 },
+            );
+        }
 
         if (!modelId) {
             return NextResponse.json(

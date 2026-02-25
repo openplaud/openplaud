@@ -29,14 +29,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-
-const PLAUD_SERVERS = [
-    { label: "Global (api.plaud.ai)", value: "https://api.plaud.ai" },
-    {
-        label: "EU – Frankfurt (api-euc1.plaud.ai)",
-        value: "https://api-euc1.plaud.ai",
-    },
-] as const;
+import { PLAUD_SERVERS } from "@/lib/plaud/constants";
 
 type OnboardingStep = "welcome" | "plaud" | "ai-provider" | "complete";
 
@@ -66,6 +59,11 @@ export function OnboardingDialog({
                 .then((data) => {
                     if (data.connected) {
                         setHasPlaudConnection(true);
+                        // Pre-populate the server dropdown with the stored value
+                        // so EU users reconnecting don't accidentally switch to Global.
+                        if (data.apiBase) {
+                            setApiBase(data.apiBase);
+                        }
                     }
                 })
                 .catch(() => {});
@@ -353,10 +351,9 @@ export function OnboardingDialog({
                                                 </SelectContent>
                                             </Select>
                                             <p className="text-xs text-muted-foreground">
-                                                {apiBase ===
-                                                "https://api.plaud.ai"
-                                                    ? "Global server — used by most accounts (api.plaud.ai)"
-                                                    : "EU server — used by European accounts (api-euc1.plaud.ai)"}
+                                                {PLAUD_SERVERS.find(
+                                                    (s) => s.value === apiBase,
+                                                )?.hint ?? ""}
                                             </p>
                                         </div>
                                         <div className="space-y-2">

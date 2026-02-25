@@ -1,7 +1,7 @@
 "use client";
 
 import { RefreshCw } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { MetalButton } from "@/components/metal-button";
 import { Panel } from "@/components/panel";
@@ -109,35 +109,40 @@ export function AddProviderDialog({
     const [showModelManager, setShowModelManager] = useState(false);
 
     const isSpeaches = provider === "Speaches";
-    // Track the last URL for which models were fetched so onBlur can skip
-    // re-fetching when the user focuses and blurs without changing the URL.
-    const lastFetchedUrlRef = useRef<string | null>(null);
 
-    const fetchSpeachesModels = async (url: string) => {
-        lastFetchedUrlRef.current = url;
+    // Reset showModelManager when the parent dialog closes
+    useEffect(() => {
+        if (!open) {
+            setShowModelManager(false);
+        }
+    }, [open]);
+
+    const fetchSpeachesModels = useCallback(async (url: string) => {
         setIsLoadingModels(true);
-        // Clear the selected model so a stale selection from a previous fetch
-        // cannot be submitted if the new model list no longer contains it.
-        setDefaultModel("");
         try {
             const res = await fetch(
                 `/api/speaches/models?baseUrl=${encodeURIComponent(url)}`,
             );
             if (!res.ok) throw new Error("Failed to fetch");
             const data = await res.json();
-            setSpeachesModels(data.data || []);
+            const models: SpeachesModel[] = data.data || [];
+            setSpeachesModels(models);
+            // If the previously selected model was removed, auto-select the first available one
+            setDefaultModel((prev) => {
+                if (prev && models.some((m) => m.id === prev)) return prev;
+                return models[0]?.id ?? "";
+            });
         } catch {
             setSpeachesModels([]);
         } finally {
             setIsLoadingModels(false);
         }
-    };
+    }, []); // fetchSpeachesModels only uses its url parameter
 
     useEffect(() => {
         if (isSpeaches && open) {
             fetchSpeachesModels(baseUrl || SPEACHES_DEFAULT_BASE_URL);
         }
-        // biome-ignore lint/correctness/useExhaustiveDependencies: baseUrl changes are handled by onBlur, not here
     }, [isSpeaches, open, baseUrl, fetchSpeachesModels]);
 
     const handleProviderChange = (value: string) => {
@@ -146,9 +151,6 @@ export function AddProviderDialog({
         if (preset) {
             setBaseUrl(preset.baseUrl);
             setDefaultModel(preset.defaultModel);
-            // fetchSpeachesModels is intentionally NOT called here:
-            // the useEffect with [isSpeaches, open] handles the initial fetch
-            // when the user selects Speaches, avoiding a double fetch.
         }
     };
 
@@ -273,15 +275,11 @@ export function AddProviderDialog({
                                 value={baseUrl}
                                 onChange={(e) => setBaseUrl(e.target.value)}
                                 onBlur={(e) => {
-                                    const url =
-                                        e.target.value ||
-                                        SPEACHES_DEFAULT_BASE_URL;
-                                    if (
-                                        isSpeaches &&
-                                        url !== lastFetchedUrlRef.current
-                                    ) {
-                                        fetchSpeachesModels(url);
-                                    }
+                                    if (isSpeaches)
+                                        fetchSpeachesModels(
+                                            e.target.value ||
+                                                SPEACHES_DEFAULT_BASE_URL,
+                                        );
                                 }}
                                 disabled={isLoading}
                                 className="font-mono text-sm"

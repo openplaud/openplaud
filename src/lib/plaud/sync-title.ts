@@ -1,14 +1,13 @@
 /**
- * Returns true for recordings that were created locally (not synced from a
- * Plaud device), meaning they do not have a real Plaud file ID and cannot be
- * synced back to the device.
- *
- * Safe to import from client components — no server-side dependencies.
+ * Returns true when the plaudFileId belongs to a recording that was created
+ * locally (upload, split, or silence-removal) rather than synced from the
+ * Plaud cloud API.  Locally-created recordings cannot be synced back to Plaud
+ * because they have no corresponding server-side file ID.
  */
 export function isPlaudLocallyCreated(plaudFileId: string): boolean {
     return (
+        plaudFileId.startsWith("uploaded-") ||
         plaudFileId.startsWith("split-") ||
-        plaudFileId.startsWith("silence-removed-") ||
-        plaudFileId.startsWith("uploaded-")
+        plaudFileId.startsWith("silence-removed-")
     );
 }

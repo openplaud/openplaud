@@ -1,9 +1,10 @@
 import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { recordings } from "@/db/schema";
+import { plaudConnections, recordings } from "@/db/schema";
 import { auth } from "@/lib/auth";
-import { syncTitleToPlaudIfNeeded } from "@/lib/plaud/sync-title-server";
+import { createPlaudClient } from "@/lib/plaud/client";
+import { isPlaudLocallyCreated } from "@/lib/plaud/sync-title";
 
 export async function POST(
     request: Request,
@@ -41,26 +42,49 @@ export async function POST(
             );
         }
 
-        const result = await syncTitleToPlaudIfNeeded(
-            session.user.id,
-            id,
-            recording.plaudFileId,
-            recording.filename,
-        );
+        const isLocallyCreated = recording.plaudFileId
+            ? isPlaudLocallyCreated(recording.plaudFileId)
+            : true;
 
-        if (result === "locally_created") {
+        if (isLocallyCreated) {
             return NextResponse.json(
                 { error: "Only original Plaud recordings can be synced" },
                 { status: 400 },
             );
         }
 
-        if (result === "no_connection") {
+        const [connection] = await db
+            .select()
+            .from(plaudConnections)
+            .where(eq(plaudConnections.userId, session.user.id))
+            .limit(1);
+
+        if (!connection) {
             return NextResponse.json(
                 { error: "No Plaud connection configured" },
                 { status: 400 },
             );
         }
+
+        const plaudClient = await createPlaudClient(
+            connection.bearerToken,
+            connection.apiBase,
+        );
+
+        await plaudClient.updateFilename(
+            recording.plaudFileId,
+            recording.filename,
+        );
+
+        await db
+            .update(recordings)
+            .set({ filenameModified: false, updatedAt: new Date() })
+            .where(
+                and(
+                    eq(recordings.id, id),
+                    eq(recordings.userId, session.user.id),
+                ),
+            );
 
         return NextResponse.json({ success: true });
     } catch (error) {

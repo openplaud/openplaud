@@ -87,17 +87,6 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
         ? transcriptions.get(currentRecording.id)
         : undefined;
 
-    const isProcessing =
-        isSplitting ||
-        isDeleting ||
-        isRemovingSilence ||
-        isTranscribing ||
-        isDeletingTranscription ||
-        isUploading ||
-        isGeneratingTitle ||
-        isSavingTitle ||
-        isSyncingToPlaud;
-
     // Keep currentRecording in sync with the recordings prop (updated after router.refresh()).
     // If the previously-selected recording is no longer present (e.g. just deleted),
     // clear the selection rather than holding a stale reference.
@@ -108,6 +97,14 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
             return updated ?? null;
         });
     }, [recordings]);
+
+    // Reset title-editing state whenever the selected recording changes so a
+    // stale editing UI is never shown after switching recordings.
+    useEffect(() => {
+        setIsEditingTitle(false);
+        setEditTitleValue("");
+        setSplitConflict(null);
+    }, []);
 
     useEffect(() => {
         getSyncSettings().then(setSyncSettings);
@@ -378,6 +375,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                     setSplitConflict(data.existingCount as number);
                 } else {
                     const error = await response.json();
+                    setSplitConflict(null);
                     toast.error(error.error || "Failed to split recording");
                 }
             } catch {
@@ -391,6 +389,17 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
 
     const handleSplit = useCallback(() => runSplit(false), [runSplit]);
     const handleSplitForce = useCallback(() => runSplit(true), [runSplit]);
+
+    const isProcessing =
+        isSplitting ||
+        isDeleting ||
+        isRemovingSilence ||
+        isTranscribing ||
+        isDeletingTranscription ||
+        isUploading ||
+        isGeneratingTitle ||
+        isSavingTitle ||
+        isSyncingToPlaud;
 
     const handleDelete = useCallback(async () => {
         if (!currentRecording) return;
@@ -548,8 +557,6 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                     onSelect={(r) => {
                                         setSplitConflict(null);
                                         setCurrentRecording(r);
-                                        setIsEditingTitle(false);
-                                        setEditTitleValue("");
                                     }}
                                 />
                             </div>
@@ -614,7 +621,11 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                                         onClick={handleSplit}
                                                         variant="outline"
                                                         size="sm"
-                                                        disabled={isProcessing}
+                                                        disabled={
+                                                            isProcessing ||
+                                                            splitConflict !==
+                                                                null
+                                                        }
                                                     >
                                                         <Scissors className="w-4 h-4 mr-2" />
                                                         {isSplitting
@@ -703,6 +714,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                             onGenerateTitle={
                                                 handleGenerateTitle
                                             }
+                                            disabled={isProcessing}
                                         />
                                     </>
                                 ) : (

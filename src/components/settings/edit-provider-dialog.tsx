@@ -1,7 +1,7 @@
 "use client";
 
 import { RefreshCw, Shield } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { MetalButton } from "@/components/metal-button";
 import { Panel } from "@/components/panel";
@@ -118,14 +118,9 @@ export function EditProviderDialog({
     const [speachesModels, setSpeachesModels] = useState<SpeachesModel[]>([]);
     const [isLoadingModels, setIsLoadingModels] = useState(false);
     const [showModelManager, setShowModelManager] = useState(false);
-    // Track the last URL for which Speaches models were fetched so that
-    // onBlur only triggers a network request when the value actually changed.
-    const lastFetchedUrlRef = useRef<string | null>(null);
-
     const isSpeaches = providerName === "Speaches";
 
     const fetchSpeachesModels = useCallback(async (url: string) => {
-        lastFetchedUrlRef.current = url;
         setIsLoadingModels(true);
         try {
             const res = await fetch(
@@ -135,17 +130,12 @@ export function EditProviderDialog({
             const data = await res.json();
             const models: SpeachesModel[] = data.data || [];
             setSpeachesModels(models);
-            // If the current defaultModel is not in the new list, auto-select the first available
-            setDefaultModel((current) => {
-                if (current && models.some((m) => m.id === current))
-                    return current;
+            setDefaultModel((prev) => {
+                if (prev && models.some((m) => m.id === prev)) return prev;
                 return models[0]?.id ?? "";
             });
         } catch {
             setSpeachesModels([]);
-            // Clear any stale model selection so the user isn't left with a
-            // value that no longer exists in the empty list.
-            setDefaultModel("");
             toast.error("Failed to fetch models from Speaches");
         } finally {
             setIsLoadingModels(false);
@@ -334,17 +324,11 @@ export function EditProviderDialog({
                                 value={baseUrl}
                                 onChange={(e) => setBaseUrl(e.target.value)}
                                 onBlur={(e) => {
-                                    // Only refetch if the URL actually changed
-                                    // to avoid spurious requests on every focus-out.
-                                    const url =
-                                        e.target.value ||
-                                        SPEACHES_DEFAULT_BASE_URL;
-                                    if (
-                                        isSpeaches &&
-                                        url !== lastFetchedUrlRef.current
-                                    ) {
-                                        fetchSpeachesModels(url);
-                                    }
+                                    if (isSpeaches)
+                                        fetchSpeachesModels(
+                                            e.target.value ||
+                                                SPEACHES_DEFAULT_BASE_URL,
+                                        );
                                 }}
                                 disabled={isLoading}
                                 className="font-mono text-sm"

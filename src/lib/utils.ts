@@ -14,7 +14,7 @@ const AUDIO_MIME_TYPES: Record<string, string> = {
     ".m4a": "audio/mp4",
     ".wav": "audio/wav",
     ".ogg": "audio/ogg",
-    ".opus": "audio/ogg",
+    ".opus": "audio/ogg", // Opus is stored in an Ogg container
     ".webm": "audio/webm",
     ".aac": "audio/aac",
     ".flac": "audio/flac",

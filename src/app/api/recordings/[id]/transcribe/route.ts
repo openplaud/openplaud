@@ -136,7 +136,190 @@ export async function POST(
             );
         }
 
-        // Decrypt API key
+        // Get storage provider and download audio
+        const storage = await createUserStorageProvider(session.user.id);
+        const rawAudioBuffer = await storage.downloadFile(recording.storagePath);
+        // Trim trailing silence to prevent end-of-audio hallucinations
+        const audioBuffer = await trimTrailingSilence(rawAudioBuffer, recording.storagePath);
+
+        // Speaches streaming path
+        if (credentials.provider === "Speaches" && credentials.streamingEnabled) {
+            const baseUrl = credentials.baseUrl || "http://localhost:8000/v1";
+            const model = credentials.defaultModel || "whisper-1";
+
+            // Build FormData for Speaches streaming request
+            const formData = new FormData();
+            formData.append(
+                "file",
+                new File(
+                    [new Uint8Array(audioBuffer)],
+                    audioFilenameWithExt(recording.storagePath),
+                    { type: getAudioMimeType(recording.storagePath) },
+                ),
+            );
+            formData.append("model", model);
+            formData.append("stream", "true");
+
+            const speachesResponse = await fetch(
+                `${baseUrl}/audio/transcriptions`,
+                { method: "POST", body: formData },
+            );
+
+            const contentType = speachesResponse.headers.get("content-type") ?? "";
+
+            if (!contentType.includes("text/event-stream")) {
+                // Speaches returned regular JSON (older version or streaming unsupported)
+                // Fall back to parsing it like the standard path
+                const json = await speachesResponse.json() as { text?: string };
+                const rawText = json.text ?? "";
+                const transcriptionText = postProcessTranscription(rawText);
+                const detectedLanguage = null;
+
+                await saveTranscription(id, session.user.id, transcriptionText, detectedLanguage, credentials);
+                await runTitleGeneration(id, session.user.id, recording, transcriptionText);
+
+                return NextResponse.json({ transcription: transcriptionText, detectedLanguage });
+            }
+
+            // Pre-fetch settings before opening the stream
+            const [settings] = await db
+                .select()
+                .from(userSettings)
+                .where(eq(userSettings.userId, session.user.id))
+                .limit(1);
+
+            const autoGenerateTitle = settings?.autoGenerateTitle ?? true;
+            const syncTitleToPlaud = settings?.syncTitleToPlaud ?? false;
+
+            const encoder = new TextEncoder();
+
+            const stream = new ReadableStream({
+                async start(controller) {
+                    const send = (data: Record<string, unknown>) => {
+                        controller.enqueue(
+                            encoder.encode(`data: ${JSON.stringify(data)}\n\n`),
+                        );
+                    };
+
+                    try {
+                        const reader = speachesResponse.body!.getReader();
+                        const decoder = new TextDecoder();
+                        let buffer = "";
+                        let accumulatedText = "";
+
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
+
+                            buffer += decoder.decode(value, { stream: true });
+                            const blocks = buffer.split("\n\n");
+                            buffer = blocks.pop() ?? "";
+
+                            for (const block of blocks) {
+                                const line = block.trim();
+                                if (!line.startsWith("data:")) continue;
+                                const jsonStr = line.slice(5).trim();
+                                if (!jsonStr) continue;
+
+                                let event: {
+                                    type: string;
+                                    delta?: string;
+                                    transcript?: string;
+                                };
+                                try {
+                                    event = JSON.parse(jsonStr);
+                                } catch {
+                                    continue;
+                                }
+
+                                if (
+                                    event.type === "transcript.text.delta" &&
+                                    event.delta
+                                ) {
+                                    accumulatedText += event.delta;
+                                    send({ type: "chunk", text: event.delta });
+                                } else if (event.type === "transcript.text.done") {
+                                    // Use the authoritative full transcript from done event
+                                    if (event.transcript) {
+                                        accumulatedText = event.transcript;
+                                    }
+                                }
+                            }
+                        }
+
+                        // Post-process and persist
+                        const transcriptionText = postProcessTranscription(accumulatedText);
+                        await saveTranscription(id, session.user.id, transcriptionText, null, credentials);
+
+                        if (autoGenerateTitle && transcriptionText.trim() && !recording.filenameModified) {
+                            try {
+                                const generatedTitle = await generateTitleFromTranscription(
+                                    session.user.id,
+                                    transcriptionText,
+                                );
+
+                                if (generatedTitle) {
+                                    await db
+                                        .update(recordings)
+                                        .set({ filename: generatedTitle, filenameModified: true, updatedAt: new Date() })
+                                        .where(eq(recordings.id, id));
+
+                                    const isLocallyCreated =
+                                        recording.plaudFileId.startsWith("split-") ||
+                                        recording.plaudFileId.startsWith("silence-removed-") ||
+                                        recording.plaudFileId.startsWith("uploaded-");
+
+                                    if (syncTitleToPlaud && !isLocallyCreated && recording.plaudFileId) {
+                                        try {
+                                            const [connection] = await db
+                                                .select()
+                                                .from(plaudConnections)
+                                                .where(eq(plaudConnections.userId, session.user.id))
+                                                .limit(1);
+
+                                            if (connection) {
+                                                const plaudClient = await createPlaudClient(
+                                                    connection.bearerToken,
+                                                    connection.apiBase,
+                                                );
+                                                await plaudClient.updateFilename(
+                                                    recording.plaudFileId,
+                                                    generatedTitle,
+                                                );
+                                            }
+                                        } catch (err) {
+                                            console.error("Failed to sync title to Plaud:", err);
+                                        }
+                                    }
+                                }
+                            } catch (err) {
+                                console.error("Failed to generate title:", err);
+                            }
+                        }
+
+                        send({ type: "done", transcription: transcriptionText, detectedLanguage: null });
+                        controller.close();
+                    } catch (err) {
+                        console.error("Speaches streaming error:", err);
+                        send({
+                            type: "error",
+                            message: err instanceof Error ? err.message : "Transcription failed",
+                        });
+                        controller.close();
+                    }
+                },
+            });
+
+            return new Response(stream, {
+                headers: {
+                    "Content-Type": "text/event-stream",
+                    "Cache-Control": "no-cache",
+                    Connection: "keep-alive",
+                },
+            });
+        }
+
+        // Standard (non-streaming) path for all other providers
         const apiKey = decrypt(credentials.apiKey);
 
         // Create OpenAI client (works with all OpenAI-compatible APIs)
@@ -144,12 +327,6 @@ export async function POST(
             apiKey,
             baseURL: credentials.baseUrl || undefined,
         });
-
-        // Get storage provider and download audio
-        const storage = await createUserStorageProvider(session.user.id);
-        const rawAudioBuffer = await storage.downloadFile(recording.storagePath);
-        // Trim trailing silence to prevent end-of-audio hallucinations
-        const audioBuffer = await trimTrailingSilence(rawAudioBuffer, recording.storagePath);
 
         // Create a File object for the transcription API.
         // Use the correct MIME type and a filename that carries the right
@@ -200,91 +377,8 @@ export async function POST(
                 ? null
                 : (transcription as VerboseTranscription).language || null;
 
-        // Save transcription
-        const [existingTranscription] = await db
-            .select()
-            .from(transcriptions)
-            .where(eq(transcriptions.recordingId, id))
-            .limit(1);
-
-        if (existingTranscription) {
-            await db
-                .update(transcriptions)
-                .set({
-                    text: transcriptionText,
-                    detectedLanguage,
-                    transcriptionType: "server",
-                    provider: credentials.provider,
-                    model: credentials.defaultModel || "whisper-1",
-                })
-                .where(eq(transcriptions.id, existingTranscription.id));
-        } else {
-            await db.insert(transcriptions).values({
-                recordingId: id,
-                userId: session.user.id,
-                text: transcriptionText,
-                detectedLanguage,
-                transcriptionType: "server",
-                provider: credentials.provider,
-                model: credentials.defaultModel || "whisper-1",
-            });
-        }
-
-        // Run title generation if the user has it enabled
-        const [settings] = await db
-            .select()
-            .from(userSettings)
-            .where(eq(userSettings.userId, session.user.id))
-            .limit(1);
-
-        const autoGenerateTitle = settings?.autoGenerateTitle ?? true;
-        const syncTitleToPlaud = settings?.syncTitleToPlaud ?? false;
-
-        if (autoGenerateTitle && transcriptionText.trim() && !recording.filenameModified) {
-            try {
-                const generatedTitle = await generateTitleFromTranscription(
-                    session.user.id,
-                    transcriptionText,
-                );
-
-                if (generatedTitle) {
-                    await db
-                        .update(recordings)
-                        .set({ filename: generatedTitle, filenameModified: true, updatedAt: new Date() })
-                        .where(eq(recordings.id, id));
-
-                    const isLocallyCreated =
-                        recording.plaudFileId.startsWith("split-") ||
-                        recording.plaudFileId.startsWith("silence-removed-") ||
-                        recording.plaudFileId.startsWith("uploaded-");
-
-                    if (syncTitleToPlaud && !isLocallyCreated && recording.plaudFileId) {
-                        try {
-                            const [connection] = await db
-                                .select()
-                                .from(plaudConnections)
-                                .where(eq(plaudConnections.userId, session.user.id))
-                                .limit(1);
-
-                            if (connection) {
-                                const plaudClient = await createPlaudClient(
-                                    connection.bearerToken,
-                                    connection.apiBase,
-                                );
-                                await plaudClient.updateFilename(
-                                    recording.plaudFileId,
-                                    generatedTitle,
-                                );
-                            }
-                        } catch (err) {
-                            console.error("Failed to sync title to Plaud:", err);
-                        }
-                    }
-                }
-            } catch (err) {
-                console.error("Failed to generate title:", err);
-            }
-        }
+        await saveTranscription(id, session.user.id, transcriptionText, detectedLanguage, credentials);
+        await runTitleGeneration(id, session.user.id, recording, transcriptionText);
 
         return NextResponse.json({
             transcription: transcriptionText,
@@ -296,5 +390,110 @@ export async function POST(
             { error: "Failed to transcribe recording" },
             { status: 500 },
         );
+    }
+}
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+async function saveTranscription(
+    recordingId: string,
+    userId: string,
+    text: string,
+    detectedLanguage: string | null,
+    credentials: { provider: string; defaultModel: string | null },
+) {
+    const [existingTranscription] = await db
+        .select()
+        .from(transcriptions)
+        .where(eq(transcriptions.recordingId, recordingId))
+        .limit(1);
+
+    if (existingTranscription) {
+        await db
+            .update(transcriptions)
+            .set({
+                text,
+                detectedLanguage,
+                transcriptionType: "server",
+                provider: credentials.provider,
+                model: credentials.defaultModel || "whisper-1",
+            })
+            .where(eq(transcriptions.id, existingTranscription.id));
+    } else {
+        await db.insert(transcriptions).values({
+            recordingId,
+            userId,
+            text,
+            detectedLanguage,
+            transcriptionType: "server",
+            provider: credentials.provider,
+            model: credentials.defaultModel || "whisper-1",
+        });
+    }
+}
+
+async function runTitleGeneration(
+    recordingId: string,
+    userId: string,
+    recording: {
+        id: string;
+        plaudFileId: string;
+        filenameModified: boolean;
+    },
+    transcriptionText: string,
+) {
+    const [settings] = await db
+        .select()
+        .from(userSettings)
+        .where(eq(userSettings.userId, userId))
+        .limit(1);
+
+    const autoGenerateTitle = settings?.autoGenerateTitle ?? true;
+    const syncTitleToPlaud = settings?.syncTitleToPlaud ?? false;
+
+    if (autoGenerateTitle && transcriptionText.trim() && !recording.filenameModified) {
+        try {
+            const generatedTitle = await generateTitleFromTranscription(
+                userId,
+                transcriptionText,
+            );
+
+            if (generatedTitle) {
+                await db
+                    .update(recordings)
+                    .set({ filename: generatedTitle, filenameModified: true, updatedAt: new Date() })
+                    .where(eq(recordings.id, recordingId));
+
+                const isLocallyCreated =
+                    recording.plaudFileId.startsWith("split-") ||
+                    recording.plaudFileId.startsWith("silence-removed-") ||
+                    recording.plaudFileId.startsWith("uploaded-");
+
+                if (syncTitleToPlaud && !isLocallyCreated && recording.plaudFileId) {
+                    try {
+                        const [connection] = await db
+                            .select()
+                            .from(plaudConnections)
+                            .where(eq(plaudConnections.userId, userId))
+                            .limit(1);
+
+                        if (connection) {
+                            const plaudClient = await createPlaudClient(
+                                connection.bearerToken,
+                                connection.apiBase,
+                            );
+                            await plaudClient.updateFilename(
+                                recording.plaudFileId,
+                                generatedTitle,
+                            );
+                        }
+                    } catch (err) {
+                        console.error("Failed to sync title to Plaud:", err);
+                    }
+                }
+            }
+        } catch (err) {
+            console.error("Failed to generate title:", err);
+        }
     }
 }

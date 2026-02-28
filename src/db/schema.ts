@@ -234,6 +234,8 @@ export const apiCredentials = pgTable("api_credentials", {
     isDefaultEnhancement: boolean("is_default_enhancement")
         .notNull()
         .default(false),
+    // Speaches only: stream transcription segments via SSE (default: true)
+    streamingEnabled: boolean("streaming_enabled").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

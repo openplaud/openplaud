@@ -27,6 +27,7 @@ export async function GET(request: Request) {
                 defaultModel: apiCredentials.defaultModel,
                 isDefaultTranscription: apiCredentials.isDefaultTranscription,
                 isDefaultEnhancement: apiCredentials.isDefaultEnhancement,
+                streamingEnabled: apiCredentials.streamingEnabled,
                 createdAt: apiCredentials.createdAt,
             })
             .from(apiCredentials)
@@ -63,6 +64,7 @@ export async function POST(request: Request) {
             defaultModel,
             isDefaultTranscription,
             isDefaultEnhancement,
+            streamingEnabled,
         } = await request.json();
 
         if (!provider || !apiKey) {
@@ -113,6 +115,7 @@ export async function POST(request: Request) {
                     defaultModel: defaultModel || null,
                     isDefaultTranscription: isDefaultTranscription || false,
                     isDefaultEnhancement: isDefaultEnhancement || false,
+                    streamingEnabled: streamingEnabled !== false,
                 })
                 .returning({
                     id: apiCredentials.id,
@@ -122,6 +125,7 @@ export async function POST(request: Request) {
                     isDefaultTranscription:
                         apiCredentials.isDefaultTranscription,
                     isDefaultEnhancement: apiCredentials.isDefaultEnhancement,
+                    streamingEnabled: apiCredentials.streamingEnabled,
                 });
         });
 

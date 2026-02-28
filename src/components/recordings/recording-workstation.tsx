@@ -28,6 +28,7 @@ export function RecordingWorkstation({
 }: RecordingWorkstationProps) {
     const router = useRouter();
     const [isTranscribing, setIsTranscribing] = useState(false);
+    const [streamingText, setStreamingText] = useState("");
     const [isDeletingTranscription, setIsDeletingTranscription] = useState(false);
     const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
     const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -56,22 +57,60 @@ export function RecordingWorkstation({
         try {
             const response = await fetch(
                 `/api/recordings/${recording.id}/transcribe`,
-                {
-                    method: "POST",
-                },
+                { method: "POST" },
             );
 
-            if (response.ok) {
+            const contentType = response.headers.get("content-type");
+            if (contentType?.includes("text/event-stream")) {
+                // Speaches streaming path
+                const reader = response.body!.getReader();
+                const decoder = new TextDecoder();
+                let buffer = "";
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const blocks = buffer.split("\n\n");
+                    buffer = blocks.pop() ?? "";
+
+                    for (const block of blocks) {
+                        const line = block.trim();
+                        if (!line.startsWith("data:")) continue;
+                        const jsonStr = line.slice(5).trim();
+                        if (!jsonStr) continue;
+
+                        let event: { type: string; text?: string; message?: string };
+                        try {
+                            event = JSON.parse(jsonStr);
+                        } catch {
+                            continue;
+                        }
+
+                        if (event.type === "chunk" && event.text) {
+                            setStreamingText((prev) => prev + event.text);
+                        } else if (event.type === "done") {
+                            toast.success("Transcription complete");
+                            router.refresh();
+                            return;
+                        } else if (event.type === "error") {
+                            throw new Error(event.message ?? "Transcription failed");
+                        }
+                    }
+                }
+            } else if (response.ok) {
                 toast.success("Transcription complete");
                 router.refresh();
             } else {
                 const error = await response.json();
                 toast.error(error.error || "Transcription failed");
             }
-        } catch {
-            toast.error("Failed to transcribe recording");
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Failed to transcribe recording");
         } finally {
             setIsTranscribing(false);
+            setStreamingText("");
         }
     }, [recording.id, router]);
 
@@ -405,6 +444,7 @@ export function RecordingWorkstation({
                         isGeneratingTitle={isGeneratingTitle}
                         onGenerateTitle={handleGenerateTitle}
                         disabled={isProcessing}
+                        streamingText={streamingText}
                     />
 
                     {/* Metadata */}

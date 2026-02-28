@@ -78,6 +78,34 @@
             "when": 1771632000000,
             "tag": "0010_plaud_api_base",
             "breakpoints": true
+        },
+        {
+            "idx": 11,
+            "version": "7",
+            "when": 1771804800000,
+            "tag": "0011_recording_split_setting",
+            "breakpoints": true
+        },
+        {
+            "idx": 12,
+            "version": "7",
+            "when": 1771891200000,
+            "tag": "0012_silence_removal_settings",
+            "breakpoints": true
+        },
+        {
+            "idx": 13,
+            "version": "7",
+            "when": 1771977600000,
+            "tag": "0013_recording_filename_modified",
+            "breakpoints": true
+        },
+        {
+            "idx": 14,
+            "version": "7",
+            "when": 1772236800000,
+            "tag": "0014_speaches_streaming_flag",
+            "breakpoints": true
         }
     ]
 }

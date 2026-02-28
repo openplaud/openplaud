@@ -103,6 +103,7 @@ export function AddProviderDialog({
     const [isDefaultTranscription, setIsDefaultTranscription] = useState(false);
     const [isDefaultEnhancement, setIsDefaultEnhancement] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [streamingEnabled, setStreamingEnabled] = useState(true);
     const [speachesModels, setSpeachesModels] = useState<SpeachesModel[]>([]);
     const [isLoadingModels, setIsLoadingModels] = useState(false);
     const [showModelManager, setShowModelManager] = useState(false);
@@ -181,6 +182,7 @@ export function AddProviderDialog({
                     defaultModel: defaultModel || null,
                     isDefaultTranscription,
                     isDefaultEnhancement,
+                    streamingEnabled,
                 }),
             });
 
@@ -196,6 +198,7 @@ export function AddProviderDialog({
             setDefaultModel("");
             setIsDefaultTranscription(false);
             setIsDefaultEnhancement(false);
+            setStreamingEnabled(true);
             setSpeachesModels([]);
         } catch {
             toast.error("Failed to add AI provider");
@@ -379,6 +382,19 @@ export function AddProviderDialog({
                                 />
                                 <span>Use for AI enhancements</span>
                             </label>
+                            {isSpeaches && (
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={streamingEnabled}
+                                        onChange={(e) =>
+                                            setStreamingEnabled(e.target.checked)
+                                        }
+                                        disabled={isLoading}
+                                    />
+                                    <span>Enable streaming (live transcription preview)</span>
+                                </label>
+                            )}
                         </Panel>
 
                         <div className="flex gap-2">

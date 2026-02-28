@@ -21,6 +21,8 @@ interface TranscriptionPanelProps {
     onGenerateTitle?: () => void;
     /** When true, disables all action buttons to prevent concurrent mutations */
     disabled?: boolean;
+    /** Live text being streamed during Speaches transcription */
+    streamingText?: string;
 }
 
 export function TranscriptionPanel({
@@ -33,6 +35,7 @@ export function TranscriptionPanel({
     isGeneratingTitle,
     onGenerateTitle,
     disabled,
+    streamingText,
 }: TranscriptionPanelProps) {
     return (
         <Card>
@@ -95,12 +98,26 @@ export function TranscriptionPanel({
             </CardHeader>
             <CardContent>
                 {isTranscribing ? (
-                    <div className="flex flex-col items-center justify-center py-12">
-                        <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mb-4" />
-                        <p className="text-sm text-muted-foreground">
-                            Transcribing audio...
-                        </p>
-                    </div>
+                    streamingText ? (
+                        <div className="space-y-3">
+                            <div className="bg-muted rounded-lg p-4 max-h-96 overflow-y-auto">
+                                <p className="text-sm whitespace-pre-wrap leading-relaxed">
+                                    {streamingText}
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <span className="animate-pulse inline-block w-2 h-2 bg-primary rounded-full" />
+                                <span>Transcribing...</span>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center py-12">
+                            <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mb-4" />
+                            <p className="text-sm text-muted-foreground">
+                                Transcribing audio...
+                            </p>
+                        </div>
+                    )
                 ) : transcription?.text ? (
                     <div className="space-y-4">
                         <div className="bg-muted rounded-lg p-4 max-h-96 overflow-y-auto">

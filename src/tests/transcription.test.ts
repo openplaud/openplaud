@@ -19,13 +19,15 @@ vi.mock("@/lib/storage/factory", () => ({
 }));
 
 vi.mock("openai", () => {
-    const MockOpenAI = vi.fn();
-    MockOpenAI.mockReturnValue({
-        audio: {
-            transcriptions: {
-                create: vi.fn(),
+    // biome-ignore lint/complexity/useArrowFunction: must use function keyword so Vitest 4 allows new MockOpenAI() (arrow fns are not constructable)
+    const MockOpenAI = vi.fn(function () {
+        return {
+            audio: {
+                transcriptions: {
+                    create: vi.fn(),
+                },
             },
-        },
+        };
     });
     return { OpenAI: MockOpenAI };
 });

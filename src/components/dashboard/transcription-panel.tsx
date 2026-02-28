@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, Languages, Sparkles } from "lucide-react";
+import { FileText, Languages, Sparkles, Tag, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Recording } from "@/types/recording";
@@ -15,6 +15,14 @@ interface TranscriptionPanelProps {
     transcription?: Transcription;
     isTranscribing: boolean;
     onTranscribe: () => void;
+    isDeletingTranscription?: boolean;
+    onDeleteTranscription?: () => void;
+    isGeneratingTitle?: boolean;
+    onGenerateTitle?: () => void;
+    /** When true, disables all action buttons to prevent concurrent mutations */
+    disabled?: boolean;
+    /** Live text being streamed during Speaches transcription */
+    streamingText?: string;
 }
 
 export function TranscriptionPanel({
@@ -22,6 +30,12 @@ export function TranscriptionPanel({
     transcription,
     isTranscribing,
     onTranscribe,
+    isDeletingTranscription,
+    onDeleteTranscription,
+    isGeneratingTitle,
+    onGenerateTitle,
+    disabled,
+    streamingText,
 }: TranscriptionPanelProps) {
     return (
         <Card>
@@ -31,35 +45,72 @@ export function TranscriptionPanel({
                         <FileText className="w-5 h-5" />
                         Transcription
                     </CardTitle>
-                    {!transcription?.text && !isTranscribing && (
+                    {transcription?.text ? (
+                        <div className="flex items-center gap-2">
+                            {onGenerateTitle && (
+                                <Button
+                                    onClick={onGenerateTitle}
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={isGeneratingTitle || disabled}
+                                >
+                                    <Tag className="w-4 h-4 mr-2" />
+                                    {isGeneratingTitle
+                                        ? "Generating..."
+                                        : "Generate Title"}
+                                </Button>
+                            )}
+                            {onDeleteTranscription && (
+                                <Button
+                                    onClick={onDeleteTranscription}
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={
+                                        isDeletingTranscription || disabled
+                                    }
+                                    className="text-destructive hover:text-destructive"
+                                >
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    {isDeletingTranscription
+                                        ? "Removing..."
+                                        : "Remove Transcription"}
+                                </Button>
+                            )}
+                        </div>
+                    ) : !isTranscribing ? (
                         <Button
                             onClick={onTranscribe}
                             size="sm"
-                            disabled={isTranscribing}
+                            disabled={disabled}
                         >
-                            {isTranscribing ? (
-                                <>
-                                    <Sparkles className="w-4 h-4 mr-2 animate-pulse" />
-                                    Transcribing...
-                                </>
-                            ) : (
-                                <>
-                                    <Sparkles className="w-4 h-4 mr-2" />
-                                    Transcribe
-                                </>
-                            )}
+                            <Sparkles className="w-4 h-4 mr-2" />
+                            Transcribe
                         </Button>
-                    )}
+                    ) : null}
                 </div>
             </CardHeader>
             <CardContent>
                 {isTranscribing ? (
-                    <div className="flex flex-col items-center justify-center py-12">
-                        <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mb-4" />
-                        <p className="text-sm text-muted-foreground">
-                            Transcribing audio...
-                        </p>
-                    </div>
+                    streamingText ? (
+                        <div className="space-y-3">
+                            <div className="bg-muted rounded-lg p-4 max-h-96 overflow-y-auto">
+                                <p className="text-sm whitespace-pre-wrap leading-relaxed">
+                                    {streamingText}
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <span className="animate-pulse inline-block w-2 h-2 bg-primary rounded-full" />
+                                <span>Transcribing...</span>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center py-12">
+                            <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mb-4" />
+                            <p className="text-sm text-muted-foreground">
+                                Transcribing audio...
+                            </p>
+                        </div>
+                    )
                 ) : transcription?.text ? (
                     <div className="space-y-4">
                         <div className="bg-muted rounded-lg p-4 max-h-96 overflow-y-auto">

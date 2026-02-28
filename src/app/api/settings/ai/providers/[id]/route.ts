@@ -29,6 +29,7 @@ export async function PUT(
             defaultModel,
             isDefaultTranscription,
             isDefaultEnhancement,
+            streamingEnabled,
         } = await request.json();
 
         // Verify ownership
@@ -83,6 +84,7 @@ export async function PUT(
                 defaultModel: string | null;
                 isDefaultTranscription: boolean;
                 isDefaultEnhancement: boolean;
+                streamingEnabled: boolean;
                 updatedAt: Date;
                 apiKey?: string;
             } = {
@@ -90,6 +92,7 @@ export async function PUT(
                 defaultModel: defaultModel || null,
                 isDefaultTranscription: isDefaultTranscription || false,
                 isDefaultEnhancement: isDefaultEnhancement || false,
+                streamingEnabled: streamingEnabled !== false,
                 updatedAt: new Date(),
             };
 

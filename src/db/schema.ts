@@ -141,6 +141,8 @@ export const recordings = pgTable(
         zonemins: integer("zonemins"),
         scene: integer("scene"),
         isTrash: boolean("is_trash").notNull().default(false),
+        // Set to true whenever the filename is changed from the original Plaud value
+        filenameModified: boolean("filename_modified").notNull().default(false),
         createdAt: timestamp("created_at").notNull().defaultNow(),
         updatedAt: timestamp("updated_at").notNull().defaultNow(),
     },
@@ -232,6 +234,8 @@ export const apiCredentials = pgTable("api_credentials", {
     isDefaultEnhancement: boolean("is_default_enhancement")
         .notNull()
         .default(false),
+    // Speaches only: stream transcription segments via SSE (default: true)
+    streamingEnabled: boolean("streaming_enabled").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -323,6 +327,13 @@ export const userSettings = pgTable("user_settings", {
     syncTitleToPlaud: boolean("sync_title_to_plaud").notNull().default(false),
     // Title generation prompt configuration
     titleGenerationPrompt: jsonb("title_generation_prompt"), // { preset: string, customPrompt?: string }
+    // Recording split settings (minutes per segment, default 60)
+    splitSegmentMinutes: integer("split_segment_minutes").notNull().default(60),
+    // Silence removal settings
+    silenceThresholdDb: integer("silence_threshold_db").notNull().default(-40), // dB, audio below this is silence
+    silenceDurationSeconds: real("silence_duration_seconds")
+        .notNull()
+        .default(1.0), // min silence length to remove
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

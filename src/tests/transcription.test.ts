@@ -133,8 +133,11 @@ describe("Transcription", () => {
             const mockCreate = vi
                 .fn()
                 .mockRejectedValue(new Error("API Error"));
-            (OpenAI as unknown as Mock).mockReturnValue({
-                audio: { transcriptions: { create: mockCreate } },
+            // biome-ignore lint/complexity/useArrowFunction: must use function keyword so Vitest 4 allows new OpenAI() (arrow fns returned by mockReturnValue are not constructable)
+            (OpenAI as unknown as Mock).mockImplementation(function () {
+                return {
+                    audio: { transcriptions: { create: mockCreate } },
+                };
             });
 
             (db.select as Mock)

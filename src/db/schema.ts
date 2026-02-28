@@ -252,6 +252,47 @@ export const storageConfig = pgTable("storage_config", {
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+// Google Calendar Connections
+export const googleCalendarConnections = pgTable(
+    "google_calendar_connections",
+    {
+        id: text("id")
+            .primaryKey()
+            .$defaultFn(() => nanoid()),
+        userId: text("user_id")
+            .notNull()
+            .unique()
+            .references(() => users.id, { onDelete: "cascade" }),
+        // Encrypted OAuth tokens
+        accessToken: text("access_token").notNull(),
+        refreshToken: text("refresh_token").notNull(),
+        expiresAt: timestamp("expires_at").notNull(),
+        // Selected calendar ID (defaults to 'primary')
+        calendarId: text("calendar_id").notNull().default("primary"),
+        createdAt: timestamp("created_at").notNull().defaultNow(),
+        updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    },
+);
+
+// Notion Connections
+export const notionConnections = pgTable("notion_connections", {
+    id: text("id")
+        .primaryKey()
+        .$defaultFn(() => nanoid()),
+    userId: text("user_id")
+        .notNull()
+        .unique()
+        .references(() => users.id, { onDelete: "cascade" }),
+    // Encrypted Notion API key (internal integration token)
+    apiKey: text("api_key").notNull(),
+    // Target database ID
+    databaseId: text("database_id").notNull(),
+    // Database name (for display purposes)
+    databaseName: text("database_name"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 // User Settings
 export const userSettings = pgTable("user_settings", {
     id: text("id")
@@ -323,6 +364,11 @@ export const userSettings = pgTable("user_settings", {
     syncTitleToPlaud: boolean("sync_title_to_plaud").notNull().default(false),
     // Title generation prompt configuration
     titleGenerationPrompt: jsonb("title_generation_prompt"), // { preset: string, customPrompt?: string }
+    // Integration settings
+    autoSyncToNotion: boolean("auto_sync_to_notion").notNull().default(false),
+    useTitleFromCalendar: boolean("use_title_from_calendar")
+        .notNull()
+        .default(false),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

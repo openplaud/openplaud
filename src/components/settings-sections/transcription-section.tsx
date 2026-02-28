@@ -61,11 +61,14 @@ export function TranscriptionSection() {
     // String buffer so the user can clear the field before typing a new number.
     // The numeric state (splitSegmentMinutes) is only updated on blur once the
     // value is valid; the raw string is shown in the input while typing.
-    const [splitSegmentMinutesInput, setSplitSegmentMinutesInput] = useState("60");
+    const [splitSegmentMinutesInput, setSplitSegmentMinutesInput] =
+        useState("60");
     const [silenceThresholdDb, setSilenceThresholdDb] = useState(-40);
-    const [silenceThresholdDbInput, setSilenceThresholdDbInput] = useState("-40");
+    const [silenceThresholdDbInput, setSilenceThresholdDbInput] =
+        useState("-40");
     const [silenceDurationSeconds, setSilenceDurationSeconds] = useState(1.0);
-    const [silenceDurationSecondsInput, setSilenceDurationSecondsInput] = useState("1");
+    const [silenceDurationSecondsInput, setSilenceDurationSecondsInput] =
+        useState("1");
     const pendingChangesRef = useRef<Map<string, unknown>>(new Map());
     // Track the last-successfully-saved values for settings that use optimistic
     // updates, so rollback always reverts to what is actually persisted.
@@ -89,14 +92,25 @@ export function TranscriptionSection() {
                     setAutoGenerateTitle(data.autoGenerateTitle ?? true);
                     setSyncTitleToPlaud(data.syncTitleToPlaud ?? false);
                     setSplitSegmentMinutes(data.splitSegmentMinutes ?? 60);
-                    setSplitSegmentMinutesInput(String(data.splitSegmentMinutes ?? 60));
+                    setSplitSegmentMinutesInput(
+                        String(data.splitSegmentMinutes ?? 60),
+                    );
                     setSilenceThresholdDb(data.silenceThresholdDb ?? -40);
-                    setSilenceThresholdDbInput(String(data.silenceThresholdDb ?? -40));
-                    setSilenceDurationSeconds(data.silenceDurationSeconds ?? 1.0);
-                    setSilenceDurationSecondsInput(String(data.silenceDurationSeconds ?? 1.0));
-                    savedSplitSegmentMinutesRef.current = data.splitSegmentMinutes ?? 60;
-                    savedSilenceThresholdRef.current = data.silenceThresholdDb ?? -40;
-                    savedSilenceDurationRef.current = data.silenceDurationSeconds ?? 1.0;
+                    setSilenceThresholdDbInput(
+                        String(data.silenceThresholdDb ?? -40),
+                    );
+                    setSilenceDurationSeconds(
+                        data.silenceDurationSeconds ?? 1.0,
+                    );
+                    setSilenceDurationSecondsInput(
+                        String(data.silenceDurationSeconds ?? 1.0),
+                    );
+                    savedSplitSegmentMinutesRef.current =
+                        data.splitSegmentMinutes ?? 60;
+                    savedSilenceThresholdRef.current =
+                        data.silenceThresholdDb ?? -40;
+                    savedSilenceDurationRef.current =
+                        data.silenceDurationSeconds ?? 1.0;
                 }
             } catch (error) {
                 console.error("Failed to fetch settings:", error);
@@ -236,8 +250,10 @@ export function TranscriptionSection() {
         silenceThresholdDb?: number;
         silenceDurationSeconds?: number;
     }) => {
-        if (updates.silenceThresholdDb !== undefined) setSilenceThresholdDb(updates.silenceThresholdDb);
-        if (updates.silenceDurationSeconds !== undefined) setSilenceDurationSeconds(updates.silenceDurationSeconds);
+        if (updates.silenceThresholdDb !== undefined)
+            setSilenceThresholdDb(updates.silenceThresholdDb);
+        if (updates.silenceDurationSeconds !== undefined)
+            setSilenceDurationSeconds(updates.silenceDurationSeconds);
         try {
             const response = await fetch("/api/settings/user", {
                 method: "PUT",
@@ -246,15 +262,22 @@ export function TranscriptionSection() {
             });
             if (!response.ok) throw new Error("Failed to save settings");
             // Update saved refs only on success
-            if (updates.silenceThresholdDb !== undefined) savedSilenceThresholdRef.current = updates.silenceThresholdDb;
-            if (updates.silenceDurationSeconds !== undefined) savedSilenceDurationRef.current = updates.silenceDurationSeconds;
+            if (updates.silenceThresholdDb !== undefined)
+                savedSilenceThresholdRef.current = updates.silenceThresholdDb;
+            if (updates.silenceDurationSeconds !== undefined)
+                savedSilenceDurationRef.current =
+                    updates.silenceDurationSeconds;
         } catch {
             // Revert to the last-saved values (not the pre-optimistic-update
             // local state, which may itself be a previous unsaved value).
             setSilenceThresholdDb(savedSilenceThresholdRef.current);
-            setSilenceThresholdDbInput(String(savedSilenceThresholdRef.current));
+            setSilenceThresholdDbInput(
+                String(savedSilenceThresholdRef.current),
+            );
             setSilenceDurationSeconds(savedSilenceDurationRef.current);
-            setSilenceDurationSecondsInput(String(savedSilenceDurationRef.current));
+            setSilenceDurationSecondsInput(
+                String(savedSilenceDurationRef.current),
+            );
             toast.error("Failed to save settings. Changes reverted.");
         }
     };
@@ -277,7 +300,9 @@ export function TranscriptionSection() {
             // Revert to the last-saved value (not the pre-optimistic-update
             // local state, which may itself be a previous unsaved value).
             setSplitSegmentMinutes(savedSplitSegmentMinutesRef.current);
-            setSplitSegmentMinutesInput(String(savedSplitSegmentMinutesRef.current));
+            setSplitSegmentMinutesInput(
+                String(savedSplitSegmentMinutesRef.current),
+            );
             toast.error("Failed to save settings. Changes reverted.");
         }
     };
@@ -474,11 +499,13 @@ export function TranscriptionSection() {
                         }}
                         onBlur={(e) => {
                             const val = parseInt(e.target.value, 10);
-                            if (!isNaN(val) && val >= 1 && val <= 360) {
+                            if (!Number.isNaN(val) && val >= 1 && val <= 360) {
                                 handleSplitSegmentMinutesChange(val);
                             } else {
                                 // Revert the display to the last valid saved value
-                                setSplitSegmentMinutesInput(String(splitSegmentMinutes));
+                                setSplitSegmentMinutesInput(
+                                    String(splitSegmentMinutes),
+                                );
                             }
                         }}
                         disabled={isSavingSettings}
@@ -505,10 +532,18 @@ export function TranscriptionSection() {
                         }}
                         onBlur={(e) => {
                             const val = parseInt(e.target.value, 10);
-                            if (!isNaN(val) && val >= -60 && val <= -10) {
-                                handleSilenceSettingChange({ silenceThresholdDb: val });
+                            if (
+                                !Number.isNaN(val) &&
+                                val >= -60 &&
+                                val <= -10
+                            ) {
+                                handleSilenceSettingChange({
+                                    silenceThresholdDb: val,
+                                });
                             } else {
-                                setSilenceThresholdDbInput(String(silenceThresholdDb));
+                                setSilenceThresholdDbInput(
+                                    String(silenceThresholdDb),
+                                );
                             }
                         }}
                         disabled={isSavingSettings}
@@ -537,10 +572,14 @@ export function TranscriptionSection() {
                         }}
                         onBlur={(e) => {
                             const val = parseFloat(e.target.value);
-                            if (!isNaN(val) && val >= 0.5 && val <= 30) {
-                                handleSilenceSettingChange({ silenceDurationSeconds: val });
+                            if (!Number.isNaN(val) && val >= 0.5 && val <= 30) {
+                                handleSilenceSettingChange({
+                                    silenceDurationSeconds: val,
+                                });
                             } else {
-                                setSilenceDurationSecondsInput(String(silenceDurationSeconds));
+                                setSilenceDurationSecondsInput(
+                                    String(silenceDurationSeconds),
+                                );
                             }
                         }}
                         disabled={isSavingSettings}

@@ -2,15 +2,21 @@ import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { OpenAI } from "openai";
 import { db } from "@/db";
-import { apiCredentials, plaudConnections, recordings, transcriptions, userSettings } from "@/db/schema";
-import { auth } from "@/lib/auth";
+import {
+    apiCredentials,
+    plaudConnections,
+    recordings,
+    transcriptions,
+    userSettings,
+} from "@/db/schema";
 import { generateTitleFromTranscription } from "@/lib/ai/generate-title";
+import { auth } from "@/lib/auth";
 import { decrypt } from "@/lib/encryption";
+import { createPlaudClient } from "@/lib/plaud/client";
+import { createUserStorageProvider } from "@/lib/storage/factory";
 import { postProcessTranscription } from "@/lib/transcription/post-process";
 import { trimTrailingSilence } from "@/lib/transcription/trim-silence";
 import { audioFilenameWithExt, getAudioMimeType } from "@/lib/utils";
-import { createPlaudClient } from "@/lib/plaud/client";
-import { createUserStorageProvider } from "@/lib/storage/factory";
 
 export async function DELETE(
     request: Request,
@@ -138,14 +144,23 @@ export async function POST(
 
         // Get storage provider and download audio
         const storage = await createUserStorageProvider(session.user.id);
-        const rawAudioBuffer = await storage.downloadFile(recording.storagePath);
+        const rawAudioBuffer = await storage.downloadFile(
+            recording.storagePath,
+        );
         // Trim trailing silence to prevent end-of-audio hallucinations
-        const audioBuffer = await trimTrailingSilence(rawAudioBuffer, recording.storagePath);
+        const audioBuffer = await trimTrailingSilence(
+            rawAudioBuffer,
+            recording.storagePath,
+        );
 
         // Speaches streaming path
-        if (credentials.provider === "Speaches" && credentials.streamingEnabled) {
+        if (
+            credentials.provider === "Speaches" &&
+            credentials.streamingEnabled
+        ) {
             const baseUrl = credentials.baseUrl || "http://localhost:8000/v1";
             const model = credentials.defaultModel || "whisper-1";
+            const apiKey = decrypt(credentials.apiKey);
 
             // Build FormData for Speaches streaming request
             const formData = new FormData();
@@ -160,36 +175,57 @@ export async function POST(
             formData.append("model", model);
             formData.append("stream", "true");
 
+            // Use a 10-minute timeout — large recordings may take a while to
+            // process, and undici's default 30 s headersTimeout would fire first.
             const speachesResponse = await fetch(
                 `${baseUrl}/audio/transcriptions`,
-                { method: "POST", body: formData },
+                {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${apiKey}` },
+                    body: formData,
+                    signal: AbortSignal.timeout(600_000),
+                },
             );
 
-            const contentType = speachesResponse.headers.get("content-type") ?? "";
+            if (!speachesResponse.ok) {
+                const errorText = await speachesResponse.text();
+                throw new Error(
+                    `Speaches request failed (${speachesResponse.status}): ${errorText}`,
+                );
+            }
+
+            const contentType =
+                speachesResponse.headers.get("content-type") ?? "";
 
             if (!contentType.includes("text/event-stream")) {
                 // Speaches returned regular JSON (older version or streaming unsupported)
                 // Fall back to parsing it like the standard path
-                const json = await speachesResponse.json() as { text?: string };
+                const json = (await speachesResponse.json()) as {
+                    text?: string;
+                };
                 const rawText = json.text ?? "";
                 const transcriptionText = postProcessTranscription(rawText);
                 const detectedLanguage = null;
 
-                await saveTranscription(id, session.user.id, transcriptionText, detectedLanguage, credentials);
-                await runTitleGeneration(id, session.user.id, recording, transcriptionText);
+                await saveTranscription(
+                    id,
+                    session.user.id,
+                    transcriptionText,
+                    detectedLanguage,
+                    credentials,
+                );
+                await runTitleGeneration(
+                    id,
+                    session.user.id,
+                    recording,
+                    transcriptionText,
+                );
 
-                return NextResponse.json({ transcription: transcriptionText, detectedLanguage });
+                return NextResponse.json({
+                    transcription: transcriptionText,
+                    detectedLanguage,
+                });
             }
-
-            // Pre-fetch settings before opening the stream
-            const [settings] = await db
-                .select()
-                .from(userSettings)
-                .where(eq(userSettings.userId, session.user.id))
-                .limit(1);
-
-            const autoGenerateTitle = settings?.autoGenerateTitle ?? true;
-            const syncTitleToPlaud = settings?.syncTitleToPlaud ?? false;
 
             const encoder = new TextEncoder();
 
@@ -202,7 +238,11 @@ export async function POST(
                     };
 
                     try {
-                        const reader = speachesResponse.body!.getReader();
+                        const reader = speachesResponse.body?.getReader();
+                        if (!reader)
+                            throw new Error(
+                                "Speaches response body is not readable",
+                            );
                         const decoder = new TextDecoder();
                         let buffer = "";
                         let accumulatedText = "";
@@ -238,7 +278,9 @@ export async function POST(
                                 ) {
                                     accumulatedText += event.delta;
                                     send({ type: "chunk", text: event.delta });
-                                } else if (event.type === "transcript.text.done") {
+                                } else if (
+                                    event.type === "transcript.text.done"
+                                ) {
                                     // Use the authoritative full transcript from done event
                                     if (event.transcript) {
                                         accumulatedText = event.transcript;
@@ -248,62 +290,36 @@ export async function POST(
                         }
 
                         // Post-process and persist
-                        const transcriptionText = postProcessTranscription(accumulatedText);
-                        await saveTranscription(id, session.user.id, transcriptionText, null, credentials);
+                        const transcriptionText =
+                            postProcessTranscription(accumulatedText);
+                        await saveTranscription(
+                            id,
+                            session.user.id,
+                            transcriptionText,
+                            null,
+                            credentials,
+                        );
+                        await runTitleGeneration(
+                            id,
+                            session.user.id,
+                            recording,
+                            transcriptionText,
+                        );
 
-                        if (autoGenerateTitle && transcriptionText.trim() && !recording.filenameModified) {
-                            try {
-                                const generatedTitle = await generateTitleFromTranscription(
-                                    session.user.id,
-                                    transcriptionText,
-                                );
-
-                                if (generatedTitle) {
-                                    await db
-                                        .update(recordings)
-                                        .set({ filename: generatedTitle, filenameModified: true, updatedAt: new Date() })
-                                        .where(eq(recordings.id, id));
-
-                                    const isLocallyCreated =
-                                        recording.plaudFileId.startsWith("split-") ||
-                                        recording.plaudFileId.startsWith("silence-removed-") ||
-                                        recording.plaudFileId.startsWith("uploaded-");
-
-                                    if (syncTitleToPlaud && !isLocallyCreated && recording.plaudFileId) {
-                                        try {
-                                            const [connection] = await db
-                                                .select()
-                                                .from(plaudConnections)
-                                                .where(eq(plaudConnections.userId, session.user.id))
-                                                .limit(1);
-
-                                            if (connection) {
-                                                const plaudClient = await createPlaudClient(
-                                                    connection.bearerToken,
-                                                    connection.apiBase,
-                                                );
-                                                await plaudClient.updateFilename(
-                                                    recording.plaudFileId,
-                                                    generatedTitle,
-                                                );
-                                            }
-                                        } catch (err) {
-                                            console.error("Failed to sync title to Plaud:", err);
-                                        }
-                                    }
-                                }
-                            } catch (err) {
-                                console.error("Failed to generate title:", err);
-                            }
-                        }
-
-                        send({ type: "done", transcription: transcriptionText, detectedLanguage: null });
+                        send({
+                            type: "done",
+                            transcription: transcriptionText,
+                            detectedLanguage: null,
+                        });
                         controller.close();
                     } catch (err) {
                         console.error("Speaches streaming error:", err);
                         send({
                             type: "error",
-                            message: err instanceof Error ? err.message : "Transcription failed",
+                            message:
+                                err instanceof Error
+                                    ? err.message
+                                    : "Transcription failed",
                         });
                         controller.close();
                     }
@@ -367,7 +383,8 @@ export async function POST(
         const segments =
             typeof transcription === "string"
                 ? undefined
-                : ((transcription as VerboseTranscription).segments ?? undefined);
+                : ((transcription as VerboseTranscription).segments ??
+                  undefined);
 
         // Filter out hallucination loops before saving
         const transcriptionText = postProcessTranscription(rawText, segments);
@@ -377,8 +394,19 @@ export async function POST(
                 ? null
                 : (transcription as VerboseTranscription).language || null;
 
-        await saveTranscription(id, session.user.id, transcriptionText, detectedLanguage, credentials);
-        await runTitleGeneration(id, session.user.id, recording, transcriptionText);
+        await saveTranscription(
+            id,
+            session.user.id,
+            transcriptionText,
+            detectedLanguage,
+            credentials,
+        );
+        await runTitleGeneration(
+            id,
+            session.user.id,
+            recording,
+            transcriptionText,
+        );
 
         return NextResponse.json({
             transcription: transcriptionText,
@@ -451,7 +479,11 @@ async function runTitleGeneration(
     const autoGenerateTitle = settings?.autoGenerateTitle ?? true;
     const syncTitleToPlaud = settings?.syncTitleToPlaud ?? false;
 
-    if (autoGenerateTitle && transcriptionText.trim() && !recording.filenameModified) {
+    if (
+        autoGenerateTitle &&
+        transcriptionText.trim() &&
+        !recording.filenameModified
+    ) {
         try {
             const generatedTitle = await generateTitleFromTranscription(
                 userId,
@@ -461,7 +493,11 @@ async function runTitleGeneration(
             if (generatedTitle) {
                 await db
                     .update(recordings)
-                    .set({ filename: generatedTitle, filenameModified: true, updatedAt: new Date() })
+                    .set({
+                        filename: generatedTitle,
+                        filenameModified: true,
+                        updatedAt: new Date(),
+                    })
                     .where(eq(recordings.id, recordingId));
 
                 const isLocallyCreated =
@@ -469,7 +505,11 @@ async function runTitleGeneration(
                     recording.plaudFileId.startsWith("silence-removed-") ||
                     recording.plaudFileId.startsWith("uploaded-");
 
-                if (syncTitleToPlaud && !isLocallyCreated && recording.plaudFileId) {
+                if (
+                    syncTitleToPlaud &&
+                    !isLocallyCreated &&
+                    recording.plaudFileId
+                ) {
                     try {
                         const [connection] = await db
                             .select()

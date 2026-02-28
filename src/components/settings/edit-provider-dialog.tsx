@@ -144,6 +144,7 @@ export function EditProviderDialog({
         }
     };
 
+    // biome-ignore lint/correctness/useExhaustiveDependencies: fetchSpeachesModels is intentionally omitted — it is a plain function recreated each render; adding it would cause infinite re-fetches
     useEffect(() => {
         if (open && provider) {
             setProviderName(provider.provider);
@@ -170,7 +171,6 @@ export function EditProviderDialog({
             setSpeachesModels([]);
             setShowModelManager(false);
         }
-        // biome-ignore lint/correctness/useExhaustiveDependencies: fetchSpeachesModels is stable within render
     }, [open, provider]);
 
     const handleProviderChange = (value: string) => {
@@ -332,7 +332,10 @@ export function EditProviderDialog({
                                 onChange={(e) => setBaseUrl(e.target.value)}
                                 onBlur={(e) => {
                                     if (isSpeaches)
-                                        fetchSpeachesModels(e.target.value || "http://localhost:8000/v1");
+                                        fetchSpeachesModels(
+                                            e.target.value ||
+                                                "http://localhost:8000/v1",
+                                        );
                                 }}
                                 disabled={isLoading}
                                 className="font-mono text-sm"
@@ -358,47 +361,50 @@ export function EditProviderDialog({
                             </div>
                             {isSpeaches ? (
                                 <div className="flex gap-1">
-                                <Select
-                                    value={defaultModel}
-                                    onValueChange={setDefaultModel}
-                                    disabled={isLoading || isLoadingModels}
-                                >
-                                    <SelectTrigger className="font-mono text-sm">
-                                        <SelectValue
-                                            placeholder={
-                                                isLoadingModels
-                                                    ? "Loading models…"
-                                                    : speachesModels.length ===
-                                                        0
-                                                      ? "No models installed"
-                                                      : "Select a model"
-                                            }
+                                    <Select
+                                        value={defaultModel}
+                                        onValueChange={setDefaultModel}
+                                        disabled={isLoading || isLoadingModels}
+                                    >
+                                        <SelectTrigger className="font-mono text-sm">
+                                            <SelectValue
+                                                placeholder={
+                                                    isLoadingModels
+                                                        ? "Loading models…"
+                                                        : speachesModels.length ===
+                                                            0
+                                                          ? "No models installed"
+                                                          : "Select a model"
+                                                }
+                                            />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {speachesModels.map((m) => (
+                                                <SelectItem
+                                                    key={m.id}
+                                                    value={m.id}
+                                                >
+                                                    {m.id}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <button
+                                        type="button"
+                                        aria-label="Refresh model list"
+                                        disabled={isLoadingModels}
+                                        onClick={() =>
+                                            fetchSpeachesModels(
+                                                baseUrl ||
+                                                    "http://localhost:8000/v1",
+                                            )
+                                        }
+                                        className="shrink-0 flex items-center justify-center h-10 w-10 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
+                                    >
+                                        <RefreshCw
+                                            className={`h-4 w-4 ${isLoadingModels ? "animate-spin" : ""}`}
                                         />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {speachesModels.map((m) => (
-                                            <SelectItem key={m.id} value={m.id}>
-                                                {m.id}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                <button
-                                    type="button"
-                                    aria-label="Refresh model list"
-                                    disabled={isLoadingModels}
-                                    onClick={() =>
-                                        fetchSpeachesModels(
-                                            baseUrl ||
-                                                "http://localhost:8000/v1",
-                                        )
-                                    }
-                                    className="shrink-0 flex items-center justify-center h-10 w-10 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
-                                >
-                                    <RefreshCw
-                                        className={`h-4 w-4 ${isLoadingModels ? "animate-spin" : ""}`}
-                                    />
-                                </button>
+                                    </button>
                                 </div>
                             ) : (
                                 <Input
@@ -434,7 +440,9 @@ export function EditProviderDialog({
                                     type="checkbox"
                                     checked={isDefaultEnhancement}
                                     onChange={(e) =>
-                                        setIsDefaultEnhancement(e.target.checked)
+                                        setIsDefaultEnhancement(
+                                            e.target.checked,
+                                        )
                                     }
                                     disabled={isLoading}
                                 />
@@ -446,11 +454,16 @@ export function EditProviderDialog({
                                         type="checkbox"
                                         checked={streamingEnabled}
                                         onChange={(e) =>
-                                            setStreamingEnabled(e.target.checked)
+                                            setStreamingEnabled(
+                                                e.target.checked,
+                                            )
                                         }
                                         disabled={isLoading}
                                     />
-                                    <span>Enable streaming (live transcription preview)</span>
+                                    <span>
+                                        Enable streaming (live transcription
+                                        preview)
+                                    </span>
                                 </label>
                             )}
                         </Panel>

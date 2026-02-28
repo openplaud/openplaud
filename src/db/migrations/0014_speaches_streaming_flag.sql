@@ -1,1 +1,1 @@
-ALTER TABLE "api_credentials" ADD COLUMN "streaming_enabled" boolean NOT NULL DEFAULT true;
+ALTER TABLE "api_credentials" ADD COLUMN IF NOT EXISTS "streaming_enabled" boolean NOT NULL DEFAULT true;

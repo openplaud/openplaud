@@ -14,11 +14,11 @@ import {
 } from "@/db/schema";
 import { generateTitleFromTranscription } from "@/lib/ai/generate-title";
 import { decrypt } from "@/lib/encryption";
+import { createPlaudClient } from "@/lib/plaud/client";
+import { createUserStorageProvider } from "@/lib/storage/factory";
 import { postProcessTranscription } from "@/lib/transcription/post-process";
 import { trimTrailingSilence } from "@/lib/transcription/trim-silence";
 import { audioFilenameWithExt, getAudioMimeType } from "@/lib/utils";
-import { createPlaudClient } from "@/lib/plaud/client";
-import { createUserStorageProvider } from "@/lib/storage/factory";
 
 export async function transcribeRecording(
     userId: string,
@@ -86,9 +86,14 @@ export async function transcribeRecording(
         });
 
         const storage = await createUserStorageProvider(userId);
-        const rawAudioBuffer = await storage.downloadFile(recording.storagePath);
+        const rawAudioBuffer = await storage.downloadFile(
+            recording.storagePath,
+        );
         // Trim trailing silence to prevent end-of-audio hallucinations
-        const audioBuffer = await trimTrailingSilence(rawAudioBuffer, recording.storagePath);
+        const audioBuffer = await trimTrailingSilence(
+            rawAudioBuffer,
+            recording.storagePath,
+        );
 
         const audioFile = new File(
             [new Uint8Array(audioBuffer)],
@@ -124,12 +129,18 @@ export async function transcribeRecording(
                 .map((seg) => `${seg.speaker}: ${seg.text}`)
                 .join("\n");
             // Apply text-based repetition removal as safety net for diarized output
-            transcriptionText = postProcessTranscription(rawDiarized, undefined);
+            transcriptionText = postProcessTranscription(
+                rawDiarized,
+                undefined,
+            );
             // TranscriptionDiarized does not expose language
         } else if (responseFormat === "verbose_json") {
             const verbose = transcription as TranscriptionVerbose;
             const segments = verbose.segments ?? undefined;
-            transcriptionText = postProcessTranscription(verbose.text, segments);
+            transcriptionText = postProcessTranscription(
+                verbose.text,
+                segments,
+            );
             detectedLanguage = verbose.language ?? null;
         } else {
             const rawText =

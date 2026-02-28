@@ -1,9 +1,9 @@
-import { createHash } from "crypto";
-import { execFile } from "child_process";
-import * as fs from "fs/promises";
-import * as os from "os";
-import * as path from "path";
-import { promisify } from "util";
+import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+import { promisify } from "node:util";
 import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
@@ -53,17 +53,13 @@ export async function POST(
     });
 
     if (!session?.user) {
-        return NextResponse.json(
-            { error: "Unauthorized" },
-            { status: 401 },
-        );
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const tmpDir = await fs.mkdtemp(
         path.join(os.tmpdir(), "openplaud-silence-"),
     );
     try {
-
         const { id } = await params;
 
         const [recording] = await db
@@ -99,7 +95,8 @@ export async function POST(
         const audioBuffer = await storage.downloadFile(recording.storagePath);
 
         // Write original to temp dir (keep original extension for probing)
-        const inputExt = path.extname(recording.storagePath).toLowerCase() || ".ogg";
+        const inputExt =
+            path.extname(recording.storagePath).toLowerCase() || ".ogg";
         const inputPath = path.join(tmpDir, `input${inputExt}`);
         await fs.writeFile(inputPath, audioBuffer);
 
@@ -117,14 +114,23 @@ export async function POST(
             `:stop_periods=-1:stop_duration=${durationSeconds}:stop_threshold=${thresholdDb}dB`,
         ].join("");
 
-        await execFileAsync("ffmpeg", [
-            "-i", inputPath,
-            "-map", "0:a",
-            "-af", silenceFilter,
-            "-c:a", "libopus",
-            "-b:a", "32k",
-            outputPath,
-        ], { timeout: 30_000 });
+        await execFileAsync(
+            "ffmpeg",
+            [
+                "-i",
+                inputPath,
+                "-map",
+                "0:a",
+                "-af",
+                silenceFilter,
+                "-c:a",
+                "libopus",
+                "-b:a",
+                "32k",
+                outputPath,
+            ],
+            { timeout: 30_000 },
+        );
 
         const outputBuffer = await fs.readFile(outputPath);
 
@@ -146,7 +152,9 @@ export async function POST(
         // misleading and makes it impossible to seek in the player.
         if (estimatedDurationMs <= 0) {
             return NextResponse.json(
-                { error: "Could not determine output duration — the file may be corrupt" },
+                {
+                    error: "Could not determine output duration — the file may be corrupt",
+                },
                 { status: 422 },
             );
         }
@@ -221,7 +229,9 @@ export async function POST(
             recordingId: resultId,
             originalSizeMb,
             newSizeMb,
-            reductionPercent: Math.round((1 - outputBuffer.length / audioBuffer.length) * 100),
+            reductionPercent: Math.round(
+                (1 - outputBuffer.length / audioBuffer.length) * 100,
+            ),
         });
     } catch (error) {
         console.error("Error removing silence:", error);

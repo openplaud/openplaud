@@ -27,7 +27,10 @@ export async function GET(request: Request) {
     try {
         const session = await auth.api.getSession({ headers: request.headers });
         if (!session?.user) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+            return NextResponse.json(
+                { error: "Unauthorized" },
+                { status: 401 },
+            );
         }
 
         const baseUrl = await getBaseUrl(session.user.id);
@@ -58,7 +61,10 @@ export async function POST(request: Request) {
     try {
         const session = await auth.api.getSession({ headers: request.headers });
         if (!session?.user) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+            return NextResponse.json(
+                { error: "Unauthorized" },
+                { status: 401 },
+            );
         }
 
         const baseUrl = await getBaseUrl(session.user.id);
@@ -99,7 +105,10 @@ export async function DELETE(request: Request) {
     try {
         const session = await auth.api.getSession({ headers: request.headers });
         if (!session?.user) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+            return NextResponse.json(
+                { error: "Unauthorized" },
+                { status: 401 },
+            );
         }
 
         const baseUrl = await getBaseUrl(session.user.id);

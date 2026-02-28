@@ -47,7 +47,10 @@ const LOOP_COMPRESSION_RATIO_THRESHOLD = 5.0;
  */
 function findLoopStartIndex(segments: TranscriptionSegment[]): number {
     for (let i = 0; i < segments.length; i++) {
-        if ((segments[i].compression_ratio ?? 0) > LOOP_COMPRESSION_RATIO_THRESHOLD) {
+        if (
+            (segments[i].compression_ratio ?? 0) >
+            LOOP_COMPRESSION_RATIO_THRESHOLD
+        ) {
             return i;
         }
     }
@@ -84,10 +87,7 @@ function removeTrailingHallucinations(
         if (a.length > 0 && a === b) {
             // Walk back to include all leading repetitions of the same text
             let runStart = i;
-            while (
-                runStart > 0 &&
-                segments[runStart - 1].text.trim() === a
-            ) {
+            while (runStart > 0 && segments[runStart - 1].text.trim() === a) {
                 runStart--;
             }
             end = runStart;
@@ -143,7 +143,10 @@ export function filterSegmentsByQuality(
     const loopStart = findLoopStartIndex(segments);
     const beforeLoop = segments.slice(0, loopStart);
     const cleaned = removeTrailingHallucinations(beforeLoop);
-    return cleaned.map((s) => s.text).join("").trim();
+    return cleaned
+        .map((s) => s.text)
+        .join("")
+        .trim();
 }
 
 /**
@@ -168,7 +171,7 @@ export function removeRepetitions(text: string): string {
     // short-phrase loops; this text scan is a last-resort safety net.
     const tiers: Array<[number, number, number]> = [
         [1, 3, 15], // short filler syllables — require 15+ consecutive repetitions
-        [4, 8, 4],  // medium phrases      — require 4+ consecutive repetitions
+        [4, 8, 4], // medium phrases      — require 4+ consecutive repetitions
         [9, 20, 3], // long phrases        — require 3+ consecutive repetitions
     ];
 

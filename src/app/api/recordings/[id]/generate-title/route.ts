@@ -1,9 +1,14 @@
 import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { plaudConnections, recordings, transcriptions, userSettings } from "@/db/schema";
-import { auth } from "@/lib/auth";
+import {
+    plaudConnections,
+    recordings,
+    transcriptions,
+    userSettings,
+} from "@/db/schema";
 import { generateTitleFromTranscription } from "@/lib/ai/generate-title";
+import { auth } from "@/lib/auth";
 import { createPlaudClient } from "@/lib/plaud/client";
 
 export async function POST(
@@ -55,7 +60,9 @@ export async function POST(
 
         if (!transcription?.text) {
             return NextResponse.json(
-                { error: "No transcription available — transcribe the recording first" },
+                {
+                    error: "No transcription available — transcribe the recording first",
+                },
                 { status: 400 },
             );
         }
@@ -67,15 +74,26 @@ export async function POST(
 
         if (!generatedTitle) {
             return NextResponse.json(
-                { error: "Could not generate a title — check your AI provider configuration" },
+                {
+                    error: "Could not generate a title — check your AI provider configuration",
+                },
                 { status: 422 },
             );
         }
 
         await db
             .update(recordings)
-            .set({ filename: generatedTitle, filenameModified: true, updatedAt: new Date() })
-            .where(and(eq(recordings.id, id), eq(recordings.userId, session.user.id)));
+            .set({
+                filename: generatedTitle,
+                filenameModified: true,
+                updatedAt: new Date(),
+            })
+            .where(
+                and(
+                    eq(recordings.id, id),
+                    eq(recordings.userId, session.user.id),
+                ),
+            );
 
         // Sync to Plaud device if the user has that option enabled
         const [settings] = await db

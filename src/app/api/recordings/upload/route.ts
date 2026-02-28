@@ -1,9 +1,9 @@
-import { createHash } from "crypto";
-import { execFile } from "child_process";
-import * as fs from "fs/promises";
-import * as os from "os";
-import * as path from "path";
-import { promisify } from "util";
+import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+import { promisify } from "node:util";
 import { nanoid } from "nanoid";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
@@ -63,10 +63,7 @@ export async function POST(request: Request) {
     });
 
     if (!session?.user) {
-        return NextResponse.json(
-            { error: "Unauthorized" },
-            { status: 401 },
-        );
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const tmpDir = await fs.mkdtemp(
@@ -74,7 +71,6 @@ export async function POST(request: Request) {
     );
 
     try {
-
         const formData = await request.formData();
         const fileEntry = formData.get("file");
 
@@ -162,7 +158,10 @@ export async function POST(request: Request) {
             try {
                 await storage.deleteFile(storageKey);
             } catch (cleanupErr) {
-                console.error("Failed to clean up orphaned storage file after DB insert error:", cleanupErr);
+                console.error(
+                    "Failed to clean up orphaned storage file after DB insert error:",
+                    cleanupErr,
+                );
             }
             throw dbError;
         }

@@ -331,7 +331,9 @@ export const userSettings = pgTable("user_settings", {
     splitSegmentMinutes: integer("split_segment_minutes").notNull().default(60),
     // Silence removal settings
     silenceThresholdDb: integer("silence_threshold_db").notNull().default(-40), // dB, audio below this is silence
-    silenceDurationSeconds: real("silence_duration_seconds").notNull().default(1.0), // min silence length to remove
+    silenceDurationSeconds: real("silence_duration_seconds")
+        .notNull()
+        .default(1.0), // min silence length to remove
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

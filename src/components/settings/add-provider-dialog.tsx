@@ -130,18 +130,14 @@ export function AddProviderDialog({
         } finally {
             setIsLoadingModels(false);
         }
-    }, []);  // fetchSpeachesModels only uses its url parameter
+    }, []); // fetchSpeachesModels only uses its url parameter
 
+    // biome-ignore lint/correctness/useExhaustiveDependencies: baseUrl intentionally omitted — re-fetching on URL changes is handled by onBlur to avoid fetching on every keystroke
     useEffect(() => {
         if (isSpeaches && open) {
             fetchSpeachesModels(baseUrl || "http://localhost:8000/v1");
         }
-        // fetchSpeachesModels is intentionally omitted from deps: it is a stable
-        // useCallback ref and including it would cause a re-fetch on every baseUrl
-        // keystroke. Model fetching on baseUrl changes is handled by the onBlur
-        // handler on the Base URL input.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isSpeaches, open]);
+    }, [isSpeaches, open, fetchSpeachesModels]);
 
     const handleProviderChange = (value: string) => {
         setProvider(value);
@@ -255,7 +251,8 @@ export function AddProviderDialog({
                                 placeholder={
                                     selectedPreset?.localProvider
                                         ? `Leave blank or enter a value (e.g. "${selectedPreset.placeholder}")`
-                                        : (selectedPreset?.placeholder ?? "Your API key")
+                                        : (selectedPreset?.placeholder ??
+                                          "Your API key")
                                 }
                                 value={apiKey}
                                 onChange={(e) => setApiKey(e.target.value)}
@@ -274,7 +271,10 @@ export function AddProviderDialog({
                                 onChange={(e) => setBaseUrl(e.target.value)}
                                 onBlur={(e) => {
                                     if (isSpeaches)
-                                        fetchSpeachesModels(e.target.value || "http://localhost:8000/v1");
+                                        fetchSpeachesModels(
+                                            e.target.value ||
+                                                "http://localhost:8000/v1",
+                                        );
                                 }}
                                 disabled={isLoading}
                                 className="font-mono text-sm"
@@ -300,47 +300,50 @@ export function AddProviderDialog({
                             </div>
                             {isSpeaches ? (
                                 <div className="flex gap-1">
-                                <Select
-                                    value={defaultModel}
-                                    onValueChange={setDefaultModel}
-                                    disabled={isLoading || isLoadingModels}
-                                >
-                                    <SelectTrigger className="font-mono text-sm">
-                                        <SelectValue
-                                            placeholder={
-                                                isLoadingModels
-                                                    ? "Loading models…"
-                                                    : speachesModels.length ===
-                                                        0
-                                                      ? "No models installed"
-                                                      : "Select a model"
-                                            }
+                                    <Select
+                                        value={defaultModel}
+                                        onValueChange={setDefaultModel}
+                                        disabled={isLoading || isLoadingModels}
+                                    >
+                                        <SelectTrigger className="font-mono text-sm">
+                                            <SelectValue
+                                                placeholder={
+                                                    isLoadingModels
+                                                        ? "Loading models…"
+                                                        : speachesModels.length ===
+                                                            0
+                                                          ? "No models installed"
+                                                          : "Select a model"
+                                                }
+                                            />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {speachesModels.map((m) => (
+                                                <SelectItem
+                                                    key={m.id}
+                                                    value={m.id}
+                                                >
+                                                    {m.id}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <button
+                                        type="button"
+                                        aria-label="Refresh model list"
+                                        disabled={isLoadingModels}
+                                        onClick={() =>
+                                            fetchSpeachesModels(
+                                                baseUrl ||
+                                                    "http://localhost:8000/v1",
+                                            )
+                                        }
+                                        className="shrink-0 flex items-center justify-center h-10 w-10 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
+                                    >
+                                        <RefreshCw
+                                            className={`h-4 w-4 ${isLoadingModels ? "animate-spin" : ""}`}
                                         />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {speachesModels.map((m) => (
-                                            <SelectItem key={m.id} value={m.id}>
-                                                {m.id}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                <button
-                                    type="button"
-                                    aria-label="Refresh model list"
-                                    disabled={isLoadingModels}
-                                    onClick={() =>
-                                        fetchSpeachesModels(
-                                            baseUrl ||
-                                                "http://localhost:8000/v1",
-                                        )
-                                    }
-                                    className="shrink-0 flex items-center justify-center h-10 w-10 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
-                                >
-                                    <RefreshCw
-                                        className={`h-4 w-4 ${isLoadingModels ? "animate-spin" : ""}`}
-                                    />
-                                </button>
+                                    </button>
                                 </div>
                             ) : (
                                 <Input
@@ -376,7 +379,9 @@ export function AddProviderDialog({
                                     type="checkbox"
                                     checked={isDefaultEnhancement}
                                     onChange={(e) =>
-                                        setIsDefaultEnhancement(e.target.checked)
+                                        setIsDefaultEnhancement(
+                                            e.target.checked,
+                                        )
                                     }
                                     disabled={isLoading}
                                 />
@@ -388,11 +393,16 @@ export function AddProviderDialog({
                                         type="checkbox"
                                         checked={streamingEnabled}
                                         onChange={(e) =>
-                                            setStreamingEnabled(e.target.checked)
+                                            setStreamingEnabled(
+                                                e.target.checked,
+                                            )
                                         }
                                         disabled={isLoading}
                                     />
-                                    <span>Enable streaming (live transcription preview)</span>
+                                    <span>
+                                        Enable streaming (live transcription
+                                        preview)
+                                    </span>
                                 </label>
                             )}
                         </Panel>

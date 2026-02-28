@@ -1,8 +1,8 @@
-import { spawn } from "child_process";
-import * as crypto from "crypto";
-import * as fs from "fs/promises";
-import * as os from "os";
-import * as path from "path";
+import { spawn } from "node:child_process";
+import * as crypto from "node:crypto";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 
 /**
  * Trims trailing silence from an audio file using ffmpeg's silenceremove
@@ -69,7 +69,9 @@ export async function trimTrailingSilence(
         // recording is below the silence threshold — silenceremove strips
         // everything and exits 0). Fall back to the original audio.
         if (outputBuffer.length < 100) {
-            console.warn("[transcription] silence trim produced empty output, using original audio");
+            console.warn(
+                "[transcription] silence trim produced empty output, using original audio",
+            );
             return audioBuffer;
         }
         return outputBuffer;

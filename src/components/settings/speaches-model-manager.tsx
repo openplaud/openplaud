@@ -97,7 +97,7 @@ export function SpeachesModelManager({
             fetchRegistry();
         }
         // biome-ignore lint/correctness/useExhaustiveDependencies: fetch fns are stable within render
-    }, [open, baseUrl]);
+    }, [open, fetchInstalled, fetchRegistry]);
 
     // Always refresh the parent list when the dialog closes
     const handleOpenChange = (isOpen: boolean) => {
@@ -202,7 +202,9 @@ export function SpeachesModelManager({
                 <div className="flex-1 overflow-y-auto space-y-6 py-2">
                     {/* Installed models */}
                     <div className="space-y-2">
-                        <h3 className="text-sm font-medium">Installed Models</h3>
+                        <h3 className="text-sm font-medium">
+                            Installed Models
+                        </h3>
                         {isLoadingInstalled ? (
                             <p className="text-sm text-muted-foreground">
                                 Loading…
@@ -263,7 +265,12 @@ export function SpeachesModelManager({
                                     return (
                                         <div
                                             key={model.id}
-                                            className={cn("flex items-center justify-between gap-2 py-1.5 px-3 rounded-md border", isInstalling ? "border-primary/40 bg-primary/5" : "bg-card")}
+                                            className={cn(
+                                                "flex items-center justify-between gap-2 py-1.5 px-3 rounded-md border",
+                                                isInstalling
+                                                    ? "border-primary/40 bg-primary/5"
+                                                    : "bg-card",
+                                            )}
                                         >
                                             <span
                                                 className={`font-mono text-xs truncate ${isInstalling ? "text-muted-foreground" : ""}`}

@@ -1,1 +1,1 @@
-ALTER TABLE "recordings" ADD COLUMN "filename_modified" boolean NOT NULL DEFAULT false;
+ALTER TABLE "recordings" ADD COLUMN IF NOT EXISTS "filename_modified" boolean NOT NULL DEFAULT false;

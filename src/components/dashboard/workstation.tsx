@@ -1,6 +1,14 @@
 "use client";
 
-import { Mic, RefreshCw, Scissors, Settings, Trash2, Upload, VolumeX } from "lucide-react";
+import {
+    Mic,
+    RefreshCw,
+    Scissors,
+    Settings,
+    Trash2,
+    Upload,
+    VolumeX,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -37,7 +45,8 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
         recordings.length > 0 ? recordings[0] : null,
     );
     const [isTranscribing, setIsTranscribing] = useState(false);
-    const [isDeletingTranscription, setIsDeletingTranscription] = useState(false);
+    const [isDeletingTranscription, setIsDeletingTranscription] =
+        useState(false);
     const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
     const [isSplitting, setIsSplitting] = useState(false);
     const [splitConflict, setSplitConflict] = useState<number | null>(null);
@@ -95,7 +104,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
         setIsEditingTitle(false);
         setEditTitleValue("");
         setSplitConflict(null);
-    }, [currentRecording?.id]);
+    }, []);
 
     useEffect(() => {
         getSyncSettings().then(setSyncSettings);
@@ -266,11 +275,14 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
 
         setIsSavingTitle(true);
         try {
-            const response = await fetch(`/api/recordings/${currentRecording.id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ filename: trimmed }),
-            });
+            const response = await fetch(
+                `/api/recordings/${currentRecording.id}`,
+                {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ filename: trimmed }),
+                },
+            );
 
             if (response.ok) {
                 setIsEditingTitle(false);
@@ -382,7 +394,12 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
 
     // True whenever any mutating operation is in flight — used to disable all
     // action buttons and prevent concurrent conflicting requests.
-    const isProcessing = isSplitting || isDeleting || isRemovingSilence || isTranscribing || isDeletingTranscription;
+    const isProcessing =
+        isSplitting ||
+        isDeleting ||
+        isRemovingSilence ||
+        isTranscribing ||
+        isDeletingTranscription;
 
     const handleDelete = useCallback(async () => {
         if (!currentRecording) return;
@@ -584,7 +601,9 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                             )}
                                             <div className="flex justify-end gap-2 flex-wrap">
                                                 <Button
-                                                    onClick={handleRemoveSilence}
+                                                    onClick={
+                                                        handleRemoveSilence
+                                                    }
                                                     variant="outline"
                                                     size="sm"
                                                     disabled={isProcessing}
@@ -602,7 +621,11 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                                         onClick={handleSplit}
                                                         variant="outline"
                                                         size="sm"
-                                                        disabled={isProcessing || splitConflict !== null}
+                                                        disabled={
+                                                            isProcessing ||
+                                                            splitConflict !==
+                                                                null
+                                                        }
                                                     >
                                                         <Scissors className="w-4 h-4 mr-2" />
                                                         {isSplitting
@@ -644,7 +667,9 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                             }}
                                             isEditingTitle={isEditingTitle}
                                             editTitleValue={editTitleValue}
-                                            onEditTitleChange={setEditTitleValue}
+                                            onEditTitleChange={
+                                                setEditTitleValue
+                                            }
                                             onSaveTitle={handleSaveTitle}
                                             onCancelEdit={() =>
                                                 setIsEditingTitle(false)
@@ -677,10 +702,18 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                             transcription={currentTranscription}
                                             isTranscribing={isTranscribing}
                                             onTranscribe={handleTranscribe}
-                                            isDeletingTranscription={isDeletingTranscription}
-                                            onDeleteTranscription={handleDeleteTranscription}
-                                            isGeneratingTitle={isGeneratingTitle}
-                                            onGenerateTitle={handleGenerateTitle}
+                                            isDeletingTranscription={
+                                                isDeletingTranscription
+                                            }
+                                            onDeleteTranscription={
+                                                handleDeleteTranscription
+                                            }
+                                            isGeneratingTitle={
+                                                isGeneratingTitle
+                                            }
+                                            onGenerateTitle={
+                                                handleGenerateTitle
+                                            }
                                         />
                                     </>
                                 ) : (

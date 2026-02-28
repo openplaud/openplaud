@@ -1,6 +1,13 @@
 "use client";
 
-import { ArrowLeft, CloudUpload, Pencil, Scissors, Trash2, VolumeX } from "lucide-react";
+import {
+    ArrowLeft,
+    CloudUpload,
+    Pencil,
+    Scissors,
+    Trash2,
+    VolumeX,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -29,7 +36,8 @@ export function RecordingWorkstation({
     const router = useRouter();
     const [isTranscribing, setIsTranscribing] = useState(false);
     const [streamingText, setStreamingText] = useState("");
-    const [isDeletingTranscription, setIsDeletingTranscription] = useState(false);
+    const [isDeletingTranscription, setIsDeletingTranscription] =
+        useState(false);
     const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
     const [isEditingTitle, setIsEditingTitle] = useState(false);
     const [editTitleValue, setEditTitleValue] = useState("");
@@ -41,6 +49,7 @@ export function RecordingWorkstation({
     const [isRemovingSilence, setIsRemovingSilence] = useState(false);
     const [splitSegmentMinutes, setSplitSegmentMinutes] = useState(60);
     const titleEditCancelledRef = useRef(false);
+    const transcribeAbortRef = useRef<AbortController | null>(null);
 
     useEffect(() => {
         fetch("/api/settings/user")
@@ -48,24 +57,37 @@ export function RecordingWorkstation({
                 if (!res.ok) throw new Error("Failed to fetch user settings");
                 return res.json();
             })
-            .then((data) => setSplitSegmentMinutes(data.splitSegmentMinutes ?? 60))
+            .then((data) =>
+                setSplitSegmentMinutes(data.splitSegmentMinutes ?? 60),
+            )
             .catch(() => {});
     }, []);
 
+    // Abort any in-progress transcription stream when the component unmounts
+    useEffect(() => {
+        return () => {
+            transcribeAbortRef.current?.abort();
+        };
+    }, []);
+
     const handleTranscribe = useCallback(async () => {
+        const controller = new AbortController();
+        transcribeAbortRef.current = controller;
         setIsTranscribing(true);
         try {
             const response = await fetch(
                 `/api/recordings/${recording.id}/transcribe`,
-                { method: "POST" },
+                { method: "POST", signal: controller.signal },
             );
 
             const contentType = response.headers.get("content-type");
             if (contentType?.includes("text/event-stream")) {
                 // Speaches streaming path
-                const reader = response.body!.getReader();
+                const reader = response.body?.getReader();
+                if (!reader) throw new Error("Response body is not readable");
                 const decoder = new TextDecoder();
                 let buffer = "";
+                let receivedDone = false;
 
                 while (true) {
                     const { done, value } = await reader.read();
@@ -81,7 +103,11 @@ export function RecordingWorkstation({
                         const jsonStr = line.slice(5).trim();
                         if (!jsonStr) continue;
 
-                        let event: { type: string; text?: string; message?: string };
+                        let event: {
+                            type: string;
+                            text?: string;
+                            message?: string;
+                        };
                         try {
                             event = JSON.parse(jsonStr);
                         } catch {
@@ -91,13 +117,22 @@ export function RecordingWorkstation({
                         if (event.type === "chunk" && event.text) {
                             setStreamingText((prev) => prev + event.text);
                         } else if (event.type === "done") {
+                            receivedDone = true;
                             toast.success("Transcription complete");
                             router.refresh();
                             return;
                         } else if (event.type === "error") {
-                            throw new Error(event.message ?? "Transcription failed");
+                            throw new Error(
+                                event.message ?? "Transcription failed",
+                            );
                         }
                     }
+                }
+
+                // Stream closed without a done event — refresh to pick up any saved data
+                if (!receivedDone) {
+                    toast.success("Transcription complete");
+                    router.refresh();
                 }
             } else if (response.ok) {
                 toast.success("Transcription complete");
@@ -107,7 +142,12 @@ export function RecordingWorkstation({
                 toast.error(error.error || "Transcription failed");
             }
         } catch (err) {
-            toast.error(err instanceof Error ? err.message : "Failed to transcribe recording");
+            if (err instanceof Error && err.name === "AbortError") return;
+            toast.error(
+                err instanceof Error
+                    ? err.message
+                    : "Failed to transcribe recording",
+            );
         } finally {
             setIsTranscribing(false);
             setStreamingText("");
@@ -248,7 +288,14 @@ export function RecordingWorkstation({
 
     // True whenever any mutating operation is in flight — used to disable all
     // action buttons and prevent concurrent conflicting requests.
-    const isProcessing = isSplitting || isDeleting || isRemovingSilence || isTranscribing || isDeletingTranscription || isGeneratingTitle || isSyncingToPlaud;
+    const isProcessing =
+        isSplitting ||
+        isDeleting ||
+        isRemovingSilence ||
+        isTranscribing ||
+        isDeletingTranscription ||
+        isGeneratingTitle ||
+        isSyncingToPlaud;
 
     const handleDelete = useCallback(async () => {
         setIsDeleting(true);
@@ -351,7 +398,9 @@ export function RecordingWorkstation({
                                 !recording.plaudFileId.startsWith(
                                     "silence-removed-",
                                 ) &&
-                                !recording.plaudFileId.startsWith("uploaded-") &&
+                                !recording.plaudFileId.startsWith(
+                                    "uploaded-",
+                                ) &&
                                 recording.filenameModified && (
                                     <Button
                                         variant="ghost"
@@ -409,10 +458,14 @@ export function RecordingWorkstation({
                             <Button
                                 onClick={handleSplit}
                                 variant="outline"
-                                disabled={isProcessing || splitConflict !== null}
+                                disabled={
+                                    isProcessing || splitConflict !== null
+                                }
                             >
                                 <Scissors className="w-4 h-4 mr-2" />
-                                {isSplitting ? "Splitting..." : "Split Recording"}
+                                {isSplitting
+                                    ? "Splitting..."
+                                    : "Split Recording"}
                             </Button>
                         </div>
                     )}

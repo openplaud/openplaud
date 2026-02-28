@@ -65,7 +65,9 @@ export function TranscriptionPanel({
                                     onClick={onDeleteTranscription}
                                     variant="outline"
                                     size="sm"
-                                    disabled={isDeletingTranscription || disabled}
+                                    disabled={
+                                        isDeletingTranscription || disabled
+                                    }
                                     className="text-destructive hover:text-destructive"
                                 >
                                     <Trash2 className="w-4 h-4 mr-2" />
@@ -79,19 +81,10 @@ export function TranscriptionPanel({
                         <Button
                             onClick={onTranscribe}
                             size="sm"
-                            disabled={isTranscribing || disabled}
+                            disabled={disabled}
                         >
-                            {isTranscribing ? (
-                                <>
-                                    <Sparkles className="w-4 h-4 mr-2 animate-pulse" />
-                                    Transcribing...
-                                </>
-                            ) : (
-                                <>
-                                    <Sparkles className="w-4 h-4 mr-2" />
-                                    Transcribe
-                                </>
-                            )}
+                            <Sparkles className="w-4 h-4 mr-2" />
+                            Transcribe
                         </Button>
                     ) : null}
                 </div>

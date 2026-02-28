@@ -71,12 +71,20 @@ export async function POST(
             connection.apiBase,
         );
 
-        await plaudClient.updateFilename(recording.plaudFileId, recording.filename);
+        await plaudClient.updateFilename(
+            recording.plaudFileId,
+            recording.filename,
+        );
 
         await db
             .update(recordings)
             .set({ filenameModified: false, updatedAt: new Date() })
-            .where(and(eq(recordings.id, id), eq(recordings.userId, session.user.id)));
+            .where(
+                and(
+                    eq(recordings.id, id),
+                    eq(recordings.userId, session.user.id),
+                ),
+            );
 
         return NextResponse.json({ success: true });
     } catch (error) {

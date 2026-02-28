@@ -11,4 +11,6 @@ export const PLAUD_SERVERS = [
     },
 ] as const;
 
-export const ALLOWED_PLAUD_HOSTS = new Set(PLAUD_SERVERS.map(s => new URL(s.value).hostname));
+export const ALLOWED_PLAUD_HOSTS = new Set(
+    PLAUD_SERVERS.map((s) => new URL(s.value).hostname),
+);

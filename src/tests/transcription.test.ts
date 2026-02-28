@@ -19,13 +19,14 @@ vi.mock("@/lib/storage/factory", () => ({
 }));
 
 vi.mock("openai", () => {
-    const MockOpenAI = vi.fn(() => ({
+    const MockOpenAI = vi.fn();
+    MockOpenAI.mockReturnValue({
         audio: {
             transcriptions: {
                 create: vi.fn(),
             },
         },
-    }));
+    });
     return { OpenAI: MockOpenAI };
 });
 

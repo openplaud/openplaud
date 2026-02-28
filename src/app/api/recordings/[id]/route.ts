@@ -115,7 +115,12 @@ export async function PATCH(
         await db
             .update(recordings)
             .set({ filename, filenameModified: true, updatedAt: new Date() })
-            .where(and(eq(recordings.id, id), eq(recordings.userId, session.user.id)));
+            .where(
+                and(
+                    eq(recordings.id, id),
+                    eq(recordings.userId, session.user.id),
+                ),
+            );
 
         return NextResponse.json({ success: true, filename });
     } catch (error) {
@@ -191,7 +196,12 @@ export async function DELETE(
         // if the session changes between the two queries.
         await db
             .delete(recordings)
-            .where(and(eq(recordings.id, id), eq(recordings.userId, session.user.id)));
+            .where(
+                and(
+                    eq(recordings.id, id),
+                    eq(recordings.userId, session.user.id),
+                ),
+            );
 
         return NextResponse.json({ success: true });
     } catch (error) {

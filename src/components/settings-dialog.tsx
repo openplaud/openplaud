@@ -6,6 +6,7 @@ import {
     Download,
     FileText,
     HardDrive,
+    Link,
     Monitor,
     Play,
     RefreshCw,
@@ -80,6 +81,11 @@ const settingsNav = [
     },
     { name: "Export/Backup", id: "export" as SettingsSection, icon: Download },
     { name: "Storage", id: "storage" as SettingsSection, icon: HardDrive },
+    {
+        name: "Integrations",
+        id: "integrations" as SettingsSection,
+        icon: Link,
+    },
 ];
 
 const STORAGE_KEY = "settings-last-section";

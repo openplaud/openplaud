@@ -12,6 +12,7 @@ import {
 export async function generateTitleFromTranscription(
     userId: string,
     transcriptionText: string,
+    calendarEventName?: string,
 ): Promise<string | null> {
     try {
         // Get user's prompt configuration
@@ -109,18 +110,28 @@ export async function generateTitleFromTranscription(
                 ? `${transcriptionText.substring(0, maxTranscriptionLength)}...`
                 : transcriptionText;
 
-        const prompt = promptTemplate.replace(
+        let prompt = promptTemplate.replace(
             "{transcription}",
             truncatedTranscription,
         );
+
+        // Add calendar event context if available
+        const calendarContext = calendarEventName
+            ? `\n\nIMPORTANT: This recording was made during a calendar event called "${calendarEventName}". Start the title with the calendar event name, then add a dash and a brief content description from the transcription. Example format: "${calendarEventName} - [key topic from transcription]"`
+            : "";
+
+        const systemPrompt = calendarEventName
+            ? "You are a helpful assistant that generates concise, descriptive titles for audio recordings. The recording was made during a calendar event. Combine the event name with key content from the transcription. Always follow the rules strictly."
+            : "You are a helpful assistant that generates concise, descriptive titles for audio recordings based on transcriptions. Always follow the rules strictly.";
+
+        prompt += calendarContext;
 
         const response = await openai.chat.completions.create({
             model,
             messages: [
                 {
                     role: "system",
-                    content:
-                        "You are a helpful assistant that generates concise, descriptive titles for audio recordings based on transcriptions. Always follow the rules strictly.",
+                    content: systemPrompt,
                 },
                 {
                     role: "user",

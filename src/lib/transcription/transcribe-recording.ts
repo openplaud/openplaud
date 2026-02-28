@@ -14,6 +14,8 @@ import {
 } from "@/db/schema";
 import { generateTitleFromTranscription } from "@/lib/ai/generate-title";
 import { decrypt } from "@/lib/encryption";
+import { getCalendarEventAtTime } from "@/lib/google-calendar/client";
+import { pushToNotion } from "@/lib/notion/client";
 import { createPlaudClient } from "@/lib/plaud/client";
 import { createUserStorageProvider } from "@/lib/storage/factory";
 
@@ -73,6 +75,8 @@ export async function transcribeRecording(
         const quality = settings?.transcriptionQuality || "balanced";
         const autoGenerateTitle = settings?.autoGenerateTitle ?? true;
         const syncTitleToPlaud = settings?.syncTitleToPlaud ?? false;
+        const useTitleFromCalendar = settings?.useTitleFromCalendar ?? false;
+        const autoSyncToNotion = settings?.autoSyncToNotion ?? false;
 
         void quality;
 
@@ -158,14 +162,34 @@ export async function transcribeRecording(
             });
         }
 
+        // Step 1: Look up calendar event at recording time (if enabled)
+        let calendarEventName: string | undefined;
+        if (useTitleFromCalendar) {
+            try {
+                const calendarEvent = await getCalendarEventAtTime(
+                    userId,
+                    recording.startTime,
+                );
+                if (calendarEvent) {
+                    calendarEventName = calendarEvent.summary;
+                }
+            } catch (error) {
+                console.error("Failed to fetch calendar event:", error);
+            }
+        }
+
+        // Step 2: Generate title (with calendar context if available)
+        let finalTitle: string | null = null;
         if (autoGenerateTitle && transcriptionText.trim()) {
             try {
                 const generatedTitle = await generateTitleFromTranscription(
                     userId,
                     transcriptionText,
+                    calendarEventName,
                 );
 
                 if (generatedTitle) {
+                    finalTitle = generatedTitle;
                     await db
                         .update(recordings)
                         .set({
@@ -202,6 +226,28 @@ export async function transcribeRecording(
                 }
             } catch (error) {
                 console.error("Failed to generate title:", error);
+            }
+        }
+
+        // Step 3: Push to Notion (if enabled)
+        if (autoSyncToNotion && transcriptionText.trim()) {
+            try {
+                const notionTitle =
+                    finalTitle || calendarEventName || recording.filename;
+                const result = await pushToNotion(userId, {
+                    title: notionTitle,
+                    transcription: transcriptionText,
+                    recordingDate: recording.startTime,
+                    duration: recording.duration,
+                    calendarEvent: calendarEventName,
+                    detectedLanguage: detectedLanguage || undefined,
+                });
+
+                if (!result.success) {
+                    console.error("Failed to push to Notion:", result.error);
+                }
+            } catch (error) {
+                console.error("Failed to push to Notion:", error);
             }
         }
 

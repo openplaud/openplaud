@@ -35,6 +35,8 @@ const DEFAULT_SETTINGS = {
     onboardingCompleted: false,
     autoGenerateTitle: true,
     syncTitleToPlaud: false,
+    autoSyncToNotion: false,
+    useTitleFromCalendar: false,
 } as const;
 
 // Settings field names (excluding userId, id, createdAt, updatedAt)
@@ -68,6 +70,8 @@ const SETTINGS_FIELDS = [
     "onboardingCompleted",
     "autoGenerateTitle",
     "syncTitleToPlaud",
+    "autoSyncToNotion",
+    "useTitleFromCalendar",
 ] as const;
 
 // Extract settings from database row to response format

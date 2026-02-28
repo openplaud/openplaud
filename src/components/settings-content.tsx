@@ -3,6 +3,7 @@
 import type { SettingsSection } from "@/types/settings";
 import { DisplaySection } from "./settings-sections/display-section";
 import { ExportSection } from "./settings-sections/export-section";
+import { IntegrationsSection } from "./settings-sections/integrations-section";
 import { NotificationsSection } from "./settings-sections/notifications-section";
 import { PlaybackSection } from "./settings-sections/playback-section";
 import { ProvidersSection } from "./settings-sections/providers-section";
@@ -48,6 +49,8 @@ export function SettingsContent({
             return <ExportSection onReRunOnboarding={onReRunOnboarding} />;
         case "storage":
             return <StorageSection />;
+        case "integrations":
+            return <IntegrationsSection />;
         default:
             return null;
     }

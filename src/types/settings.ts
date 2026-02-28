@@ -10,4 +10,5 @@ export type SettingsSection =
     | "playback"
     | "display"
     | "notifications"
-    | "export";
+    | "export"
+    | "integrations";

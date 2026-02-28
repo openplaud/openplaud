@@ -237,6 +237,19 @@ export async function POST(
                         );
                     };
 
+                    // Send SSE comment heartbeats every 15 s so reverse proxies
+                    // with short read timeouts don't close the connection while
+                    // Speaches processes long recordings.
+                    const heartbeat = setInterval(() => {
+                        try {
+                            controller.enqueue(
+                                encoder.encode(": heartbeat\n\n"),
+                            );
+                        } catch {
+                            clearInterval(heartbeat);
+                        }
+                    }, 15_000);
+
                     try {
                         const reader = speachesResponse.body?.getReader();
                         if (!reader)
@@ -306,6 +319,7 @@ export async function POST(
                             transcriptionText,
                         );
 
+                        clearInterval(heartbeat);
                         send({
                             type: "done",
                             transcription: transcriptionText,
@@ -313,6 +327,7 @@ export async function POST(
                         });
                         controller.close();
                     } catch (err) {
+                        clearInterval(heartbeat);
                         console.error("Speaches streaming error:", err);
                         send({
                             type: "error",

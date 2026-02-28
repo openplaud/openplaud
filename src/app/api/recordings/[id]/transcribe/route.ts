@@ -175,15 +175,18 @@ export async function POST(
             formData.append("model", model);
             formData.append("stream", "true");
 
-            // Use a 10-minute timeout — large recordings may take a while to
-            // process, and undici's default 30 s headersTimeout would fire first.
+            // No AbortSignal.timeout here: Speaches sends response headers
+            // immediately (SSE), so undici's default 30 s headersTimeout is
+            // fine for the connection phase. SSE events stream continuously
+            // throughout transcription, so there is no idle body timeout
+            // concern. A fixed timeout would abort arbitrarily long recordings
+            // (e.g. 5 h audio that takes 1–2 h to transcribe).
             const speachesResponse = await fetch(
                 `${baseUrl}/audio/transcriptions`,
                 {
                     method: "POST",
                     headers: { Authorization: `Bearer ${apiKey}` },
                     body: formData,
-                    signal: AbortSignal.timeout(600_000),
                 },
             );
 

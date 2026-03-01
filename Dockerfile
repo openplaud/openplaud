@@ -18,11 +18,11 @@ ENV NODE_ENV=production
 
 RUN bun run build
 
-# Bundle idempotent migration script with all dependencies
-RUN bun build src/db/migrate-idempotent.ts --target=bun --outfile=migrate-idempotent.js
+# Bundle idempotent migration script for Node.js runtime
+RUN bun build src/db/migrate-idempotent.ts --target=node --outfile=migrate-idempotent.js
 
-# Final runtime image
-FROM base AS runner
+# Final runtime image — use Node.js for Next.js standalone compatibility
+FROM node:20-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -47,4 +47,4 @@ RUN chmod +x docker-entrypoint.sh
 
 EXPOSE 8080
 ENTRYPOINT ["./docker-entrypoint.sh"]
-CMD ["bun", "server.js"]
+CMD ["node", "server.js"]

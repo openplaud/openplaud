@@ -28,7 +28,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV HOSTNAME=0.0.0.0
-ENV PORT=3000
+# PORT is injected by Railway at runtime (default 8080) - do not hardcode
 
 # Copy Next.js standalone output + public files
 COPY --from=builder /app/public ./public
@@ -45,6 +45,6 @@ COPY --from=builder /app/src/db/migrations ./src/db/migrations
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh
 
-EXPOSE 3000
+EXPOSE 8080
 ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["bun", "server.js"]

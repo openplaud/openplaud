@@ -7,6 +7,7 @@ import type {
 import { db } from "@/db";
 import {
     apiCredentials,
+    notionConfig,
     plaudConnections,
     recordings,
     transcriptions,
@@ -14,6 +15,7 @@ import {
 } from "@/db/schema";
 import { generateTitleFromTranscription } from "@/lib/ai/generate-title";
 import { decrypt } from "@/lib/encryption";
+import { syncTranscriptionToNotion } from "@/lib/notion/sync";
 import { createPlaudClient } from "@/lib/plaud/client";
 import { createUserStorageProvider } from "@/lib/storage/factory";
 
@@ -203,6 +205,37 @@ export async function transcribeRecording(
             } catch (error) {
                 console.error("Failed to generate title:", error);
             }
+        }
+
+        // Notion auto-sync (non-blocking)
+        try {
+            const [notionCfg] = await db
+                .select()
+                .from(notionConfig)
+                .where(
+                    and(
+                        eq(notionConfig.userId, userId),
+                        eq(notionConfig.enabled, true),
+                        eq(notionConfig.autoSave, true),
+                    ),
+                )
+                .limit(1);
+
+            if (notionCfg) {
+                const [txn] = await db
+                    .select({ id: transcriptions.id })
+                    .from(transcriptions)
+                    .where(eq(transcriptions.recordingId, recordingId))
+                    .limit(1);
+
+                if (txn) {
+                    syncTranscriptionToNotion(txn.id).catch((err) =>
+                        console.error("Notion auto-sync failed:", err),
+                    );
+                }
+            }
+        } catch (error) {
+            console.error("Notion config check failed:", error);
         }
 
         return { success: true };

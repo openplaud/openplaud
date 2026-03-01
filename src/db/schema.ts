@@ -179,6 +179,12 @@ export const transcriptions = pgTable(
             .default("server"), // 'server' or 'browser'
         provider: varchar("provider", { length: 100 }).notNull(), // e.g., 'openai', 'groq', 'browser'
         model: varchar("model", { length: 100 }).notNull(), // e.g., 'whisper-1', 'whisper-large-v3-turbo', 'whisper-base'
+        // Notion integration
+        notionPageId: text("notion_page_id"),
+        notionPageUrl: text("notion_page_url"),
+        notionSyncStatus: text("notion_sync_status").default("pending"), // 'pending' | 'syncing' | 'synced' | 'failed' | 'disabled'
+        notionSyncError: text("notion_sync_error"),
+        notionSyncedAt: timestamp("notion_synced_at"),
         createdAt: timestamp("created_at").notNull().defaultNow(),
     },
     (table) => ({
@@ -248,6 +254,27 @@ export const storageConfig = pgTable("storage_config", {
     storageType: varchar("storage_type", { length: 10 }).notNull(), // 'local' or 's3'
     // Encrypted S3 config (if s3): { endpoint, bucket, region, accessKeyId, secretAccessKey }
     s3Config: jsonb("s3_config"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Notion Configuration
+export const notionConfig = pgTable("notion_config", {
+    id: text("id")
+        .primaryKey()
+        .$defaultFn(() => nanoid()),
+    userId: text("user_id")
+        .notNull()
+        .unique()
+        .references(() => users.id, { onDelete: "cascade" }),
+    encryptedToken: text("encrypted_token").notNull(),
+    databaseId: text("database_id").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    autoSave: boolean("auto_save").notNull().default(true),
+    defaultTags: jsonb("default_tags").$type<string[]>().default(["Knowledge"]),
+    includeActionItems: boolean("include_action_items").notNull().default(true),
+    includeSummary: boolean("include_summary").notNull().default(true),
+    language: text("language").notNull().default("nl"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

@@ -3,8 +3,12 @@ set -e
 
 echo "🚀 Starting OpenPlaud..."
 
-echo "⏳ Running database migrations..."
-bun migrate-idempotent.js
+if [ -n "$DATABASE_URL" ]; then
+  echo "⏳ Running database migrations..."
+  node migrate-idempotent.js
+else
+  echo "⚠️ DATABASE_URL not set, skipping migrations"
+fi
 
 echo "🚀 Starting application..."
 exec "$@"

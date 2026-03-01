@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock, HardDrive, Play } from "lucide-react";
+import { BookOpen, Clock, HardDrive, Play } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatDateTime } from "@/lib/format-date";
@@ -12,12 +12,14 @@ interface RecordingListProps {
     recordings: Recording[];
     currentRecording: Recording | null;
     onSelect: (recording: Recording) => void;
+    notionSyncStatuses?: Map<string, string>;
 }
 
 export function RecordingList({
     recordings,
     currentRecording,
     onSelect,
+    notionSyncStatuses,
 }: RecordingListProps) {
     const [dateTimeFormat, setDateTimeFormat] =
         useState<DateTimeFormat>("relative");
@@ -82,6 +84,9 @@ export function RecordingList({
                     {sortedAndPaginatedRecordings.map((recording) => {
                         const isSelected =
                             currentRecording?.id === recording.id;
+                        const notionStatus = notionSyncStatuses?.get(
+                            recording.id,
+                        );
                         return (
                             <button
                                 key={recording.id}
@@ -99,6 +104,16 @@ export function RecordingList({
                                             <h3 className="font-medium truncate">
                                                 {recording.filename}
                                             </h3>
+                                            {notionStatus === "synced" && (
+                                                <span title="Opgeslagen in Notion">
+                                                    <BookOpen className="w-3 h-3 text-green-600 dark:text-green-400 flex-shrink-0" />
+                                                </span>
+                                            )}
+                                            {notionStatus === "failed" && (
+                                                <span title="Notion sync mislukt">
+                                                    <BookOpen className="w-3 h-3 text-red-500 flex-shrink-0" />
+                                                </span>
+                                            )}
                                         </div>
                                         <div className="flex items-center gap-4 text-sm text-muted-foreground ml-6">
                                             <div className="flex items-center gap-1">

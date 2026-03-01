@@ -2,6 +2,7 @@
 
 import {
     Bell,
+    BookOpen,
     Bot,
     Download,
     FileText,
@@ -78,6 +79,7 @@ const settingsNav = [
         id: "notifications" as SettingsSection,
         icon: Bell,
     },
+    { name: "Notion", id: "notion" as SettingsSection, icon: BookOpen },
     { name: "Export/Backup", id: "export" as SettingsSection, icon: Download },
     { name: "Storage", id: "storage" as SettingsSection, icon: HardDrive },
 ];

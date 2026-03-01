@@ -1,6 +1,6 @@
 "use client";
 
-import { Mic, RefreshCw, Settings } from "lucide-react";
+import { BookOpen, Mic, RefreshCw, Settings } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -29,9 +29,14 @@ interface TranscriptionData {
 interface WorkstationProps {
     recordings: Recording[];
     transcriptions: Map<string, TranscriptionData>;
+    notionSyncStatuses?: Map<string, string>;
 }
 
-export function Workstation({ recordings, transcriptions }: WorkstationProps) {
+export function Workstation({
+    recordings,
+    transcriptions,
+    notionSyncStatuses,
+}: WorkstationProps) {
     const router = useRouter();
     const [currentRecording, setCurrentRecording] = useState<Recording | null>(
         recordings.length > 0 ? recordings[0] : null,
@@ -60,6 +65,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
     const [notificationPrefs, setNotificationPrefs] = useState<{
         browserNotifications: boolean;
     } | null>(null);
+    const [notionConfigured, setNotionConfigured] = useState(false);
 
     const currentTranscription = currentRecording
         ? transcriptions.get(currentRecording.id)
@@ -84,6 +90,15 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
         };
 
         fetchNotificationPrefs();
+    }, []);
+
+    useEffect(() => {
+        fetch("/api/settings/notion")
+            .then((res) => res.json())
+            .then((data) => {
+                setNotionConfigured(!!data.config?.enabled);
+            })
+            .catch(() => {});
     }, []);
 
     useEffect(() => {
@@ -187,6 +202,15 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                             </p>
                         </div>
                         <div className="flex items-center gap-3">
+                            {notionConfigured && (
+                                <div
+                                    className="hidden md:flex items-center gap-1.5 text-xs text-muted-foreground"
+                                    title="Notion integration active"
+                                >
+                                    <BookOpen className="w-3.5 h-3.5" />
+                                    <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                                </div>
+                            )}
                             <SyncStatus
                                 lastSyncTime={lastSyncTime}
                                 nextSyncTime={nextSyncTime}
@@ -259,6 +283,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                     recordings={recordings}
                                     currentRecording={currentRecording}
                                     onSelect={setCurrentRecording}
+                                    notionSyncStatuses={notionSyncStatuses}
                                 />
                             </div>
 

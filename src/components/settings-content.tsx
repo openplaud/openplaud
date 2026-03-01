@@ -4,6 +4,7 @@ import type { SettingsSection } from "@/types/settings";
 import { DisplaySection } from "./settings-sections/display-section";
 import { ExportSection } from "./settings-sections/export-section";
 import { NotificationsSection } from "./settings-sections/notifications-section";
+import { NotionSection } from "./settings-sections/notion-section";
 import { PlaybackSection } from "./settings-sections/playback-section";
 import { ProvidersSection } from "./settings-sections/providers-section";
 import { StorageSection } from "./settings-sections/storage-section";
@@ -44,6 +45,8 @@ export function SettingsContent({
             return <DisplaySection />;
         case "notifications":
             return <NotificationsSection />;
+        case "notion":
+            return <NotionSection />;
         case "export":
             return <ExportSection onReRunOnboarding={onReRunOnboarding} />;
         case "storage":

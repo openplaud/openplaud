@@ -26,6 +26,7 @@ export default async function DashboardPage() {
             recordingId: transcriptions.recordingId,
             text: transcriptions.text,
             language: transcriptions.detectedLanguage,
+            notionSyncStatus: transcriptions.notionSyncStatus,
         })
         .from(transcriptions)
         .where(eq(transcriptions.userId, session.user.id));
@@ -39,10 +40,17 @@ export default async function DashboardPage() {
         ]),
     );
 
+    const notionSyncStatuses = new Map(
+        userTranscriptions
+            .filter((t) => t.notionSyncStatus)
+            .map((t) => [t.recordingId, t.notionSyncStatus as string]),
+    );
+
     return (
         <Workstation
             recordings={recordingsData}
             transcriptions={transcriptionMap}
+            notionSyncStatuses={notionSyncStatuses}
         />
     );
 }

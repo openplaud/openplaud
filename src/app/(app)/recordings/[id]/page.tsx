@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { RecordingWorkstation } from "@/components/recordings/recording-workstation";
 import { db } from "@/db";
-import { recordings, transcriptions } from "@/db/schema";
+import { notionConfig, recordings, transcriptions } from "@/db/schema";
 import { requireAuth } from "@/lib/auth-server";
 
 interface RecordingDetailPageProps {
@@ -36,6 +36,13 @@ export default async function RecordingDetailPage({
         .where(eq(transcriptions.recordingId, id))
         .limit(1);
 
+    // Check if Notion is configured
+    const [notionCfg] = await db
+        .select({ id: notionConfig.id })
+        .from(notionConfig)
+        .where(eq(notionConfig.userId, session.user.id))
+        .limit(1);
+
     return (
         <RecordingWorkstation
             recording={{
@@ -52,6 +59,10 @@ export default async function RecordingDetailPage({
                       }
                     : undefined
             }
+            notionSyncStatus={transcription?.notionSyncStatus}
+            notionPageUrl={transcription?.notionPageUrl}
+            notionSyncError={transcription?.notionSyncError}
+            notionConfigured={!!notionCfg}
         />
     );
 }

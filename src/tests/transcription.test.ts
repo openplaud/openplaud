@@ -12,6 +12,10 @@ vi.mock("@/lib/encryption", () => ({
     decrypt: vi.fn().mockReturnValue("fake-api-key"),
 }));
 
+vi.mock("@/lib/notion/sync", () => ({
+    syncTranscriptionToNotion: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("@/lib/storage/factory", () => ({
     createUserStorageProvider: vi.fn().mockResolvedValue({
         downloadFile: vi.fn().mockResolvedValue(Buffer.from("audio-data")),

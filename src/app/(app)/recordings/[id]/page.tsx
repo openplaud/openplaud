@@ -50,11 +50,16 @@ export default async function RecordingDetailPage({
                           detectedLanguage:
                               transcription.detectedLanguage || undefined,
                           transcriptionType: transcription.transcriptionType,
-                          speakersJson: transcription.speakersJson
-                              ? (JSON.parse(
-                                    transcription.speakersJson,
-                                ) as DiarizedSegment[])
-                              : undefined,
+                          speakersJson: (() => {
+                              if (!transcription.speakersJson) return undefined;
+                              try {
+                                  return JSON.parse(
+                                      transcription.speakersJson,
+                                  ) as DiarizedSegment[];
+                              } catch {
+                                  return undefined;
+                              }
+                          })(),
                       }
                     : undefined
             }

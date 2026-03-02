@@ -42,9 +42,14 @@ export default async function DashboardPage() {
             {
                 text: t.text,
                 language: t.language || undefined,
-                speakersJson: t.speakersJson
-                    ? (JSON.parse(t.speakersJson) as DiarizedSegment[])
-                    : undefined,
+                speakersJson: (() => {
+                    if (!t.speakersJson) return undefined;
+                    try {
+                        return JSON.parse(t.speakersJson) as DiarizedSegment[];
+                    } catch {
+                        return undefined;
+                    }
+                })(),
             },
         ]),
     );

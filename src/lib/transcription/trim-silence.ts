@@ -3,6 +3,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { getAudioMimeType } from "@/lib/utils";
 
 /**
  * Trims trailing silence from an audio file using a two-phase ffmpeg approach:
@@ -131,7 +132,7 @@ export async function normalizeForDiarization(
 
     const originalFallback = {
         buffer: audioBuffer,
-        mimeType: "audio/mpeg",
+        mimeType: getAudioMimeType(storagePath),
         filename: path.basename(storagePath),
     };
 

@@ -122,12 +122,10 @@ export function EditProviderDialog({
 
     const isSpeaches = providerName === "Speaches";
 
-    const fetchSpeachesModels = async (url: string) => {
+    const fetchSpeachesModels = async () => {
         setIsLoadingModels(true);
         try {
-            const res = await fetch(
-                `/api/speaches/models?baseUrl=${encodeURIComponent(url)}`,
-            );
+            const res = await fetch("/api/speaches/models");
             if (!res.ok) throw new Error("Failed to fetch");
             const data = await res.json();
             const models: SpeachesModel[] = data.data || [];
@@ -156,9 +154,7 @@ export function EditProviderDialog({
             setApiKey("");
 
             if (provider.provider === "Speaches") {
-                fetchSpeachesModels(
-                    provider.baseUrl || "http://localhost:8000/v1",
-                );
+                fetchSpeachesModels();
             }
         } else if (!open) {
             setProviderName("");
@@ -331,12 +327,8 @@ export function EditProviderDialog({
                                 placeholder="https://api.example.com/v1"
                                 value={baseUrl}
                                 onChange={(e) => setBaseUrl(e.target.value)}
-                                onBlur={(e) => {
-                                    if (isSpeaches)
-                                        fetchSpeachesModels(
-                                            e.target.value ||
-                                                "http://localhost:8000/v1",
-                                        );
+                                onBlur={() => {
+                                    if (isSpeaches) fetchSpeachesModels();
                                 }}
                                 disabled={isLoading}
                                 className="font-mono text-sm"

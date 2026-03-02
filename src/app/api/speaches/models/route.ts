@@ -98,12 +98,25 @@ export async function POST(request: Request) {
             console.log(
                 `[speaches] "${modelId}" cached but not listed — deleting stale cache and re-downloading`,
             );
-            await fetch(`${baseUrl}/models/${encodedModelId}`, { method: "DELETE" });
-            // Fire-and-forget: Speaches downloads asynchronously; the client polls
-            // GET /v1/models every 2.5 s until the model appears.
-            fetch(`${baseUrl}/models/${encodedModelId}`, { method: "POST" }).catch(
-                () => {},
-            );
+            const deleteResp = await fetch(`${baseUrl}/models/${encodedModelId}`, {
+                method: "DELETE",
+            });
+            if (!deleteResp.ok) {
+                return NextResponse.json(
+                    { error: "Failed to clear stale model cache" },
+                    { status: deleteResp.status },
+                );
+            }
+
+            const reinstallResp = await fetch(`${baseUrl}/models/${encodedModelId}`, {
+                method: "POST",
+            });
+            if (!reinstallResp.ok) {
+                return NextResponse.json(
+                    { error: "Failed to re-queue model download" },
+                    { status: reinstallResp.status },
+                );
+            }
         }
 
         // Return immediately — Speaches downloads the model asynchronously after

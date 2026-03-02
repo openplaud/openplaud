@@ -144,25 +144,6 @@ export function SpeachesModelManager({
         // The POST only queues the download on the Speaches side and returns
         // immediately, so polling is the only reliable completion signal.
         const POLL_TIMEOUT_MS = 30 * 60 * 1000; // 30-minute hard limit (large models can take a while)
-        const pollPromise = new Promise<void>((resolve, reject) => {
-            const pollTimeout = setTimeout(() => {
-                if (pollIntervalRef.current) {
-                    clearInterval(pollIntervalRef.current);
-                    pollIntervalRef.current = null;
-                }
-                reject(new Error("Model install timed out after 5 minutes"));
-            }, POLL_TIMEOUT_MS);
-            pollIntervalRef.current = setInterval(async () => {
-                const models = await fetchInstalledSilent();
-                setInstalledModels(models);
-                if (models.some((m) => m.id === modelId)) {
-                    clearInterval(pollIntervalRef.current!);
-                    pollIntervalRef.current = null;
-                    clearTimeout(pollTimeout);
-                    resolve();
-                }
-            }, 2500);
-        });
 
         try {
             // Trigger the download. Await only to catch immediate errors
@@ -178,9 +159,38 @@ export function SpeachesModelManager({
             );
             if (!res.ok) throw new Error("Failed to install");
 
+            // Start polling only after the POST succeeds to avoid unhandled
+            // promise rejections when the POST itself fails.
+            const pollPromise = new Promise<void>((resolve, reject) => {
+                const pollTimeout = setTimeout(() => {
+                    if (pollIntervalRef.current) {
+                        clearInterval(pollIntervalRef.current);
+                        pollIntervalRef.current = null;
+                    }
+                    reject(
+                        new Error(
+                            "Model install timed out after 30 minutes",
+                        ),
+                    );
+                }, POLL_TIMEOUT_MS);
+                pollIntervalRef.current = setInterval(async () => {
+                    const models = await fetchInstalledSilent();
+                    setInstalledModels(models);
+                    if (models.some((m) => m.id === modelId)) {
+                        clearInterval(pollIntervalRef.current!);
+                        pollIntervalRef.current = null;
+                        clearTimeout(pollTimeout);
+                        resolve();
+                    }
+                }, 2500);
+            });
+
             // Wait until polling confirms the model is installed.
             await pollPromise;
-            toast.success(`Model installed: ${modelId}`);
+            if (!installSuccessShownRef.current) {
+                toast.success(`Model installed: ${modelId}`);
+                installSuccessShownRef.current = true;
+            }
             await fetchInstalled();
             onModelsChanged();
         } catch {

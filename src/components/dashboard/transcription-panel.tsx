@@ -228,7 +228,11 @@ export function TranscriptionPanel({
                             No transcription available
                         </p>
                         <div className="flex flex-col items-center gap-2">
-                            <Button onClick={onTranscribe} size="sm">
+                            <Button
+                                onClick={onTranscribe}
+                                size="sm"
+                                disabled={disabled}
+                            >
                                 <Sparkles className="w-4 h-4 mr-2" />
                                 Generate Transcription
                             </Button>

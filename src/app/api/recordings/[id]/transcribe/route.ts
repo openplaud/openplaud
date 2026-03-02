@@ -109,9 +109,7 @@ export async function POST(
 
         const { id } = await params;
 
-        console.log(
-            `[transcribe:${id.slice(0, 8)}] POST received from user ${session.user.id.slice(0, 8)}`,
-        );
+        console.log(`[transcribe:${id.slice(0, 8)}] POST received`);
 
         const [recording] = await db
             .select()
@@ -172,7 +170,6 @@ export async function POST(
             console.log(`${recordingLabel} Starting Speaches diarization`, {
                 model,
                 baseUrl,
-                storagePath: recording.storagePath,
             });
 
             const stream = new ReadableStream({
@@ -758,7 +755,6 @@ export async function POST(
                         console.log(
                             `${recordingLabel} Saving transcription (${transcriptionText.length} chars)…`,
                         );
-                        transcriptionSaved = true;
                         await saveTranscription(
                             id,
                             session.user.id,
@@ -766,6 +762,7 @@ export async function POST(
                             null,
                             credentials,
                         );
+                        transcriptionSaved = true;
                         console.log(
                             `${recordingLabel} Transcription saved. Running title generation…`,
                         );
@@ -801,7 +798,6 @@ export async function POST(
                             try {
                                 const transcriptionText =
                                     postProcessTranscription(accumulatedText);
-                                transcriptionSaved = true;
                                 await saveTranscription(
                                     id,
                                     session.user.id,
@@ -809,6 +805,7 @@ export async function POST(
                                     null,
                                     credentials,
                                 );
+                                transcriptionSaved = true;
                                 await runTitleGeneration(
                                     id,
                                     session.user.id,

@@ -92,7 +92,10 @@ export async function PUT(
                 defaultModel: defaultModel || null,
                 isDefaultTranscription: isDefaultTranscription || false,
                 isDefaultEnhancement: isDefaultEnhancement || false,
-                streamingEnabled: streamingEnabled !== false,
+                streamingEnabled:
+                    typeof streamingEnabled === "boolean"
+                        ? streamingEnabled
+                        : (existing.streamingEnabled ?? true),
                 updatedAt: new Date(),
             };
 

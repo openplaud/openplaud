@@ -90,7 +90,11 @@ export function TranscriptionPanel({
                         <p className="text-sm text-muted-foreground mb-4">
                             No transcription available
                         </p>
-                        <Button onClick={onTranscribe} size="sm" disabled={disabled}>
+                        <Button
+                            onClick={onTranscribe}
+                            size="sm"
+                            disabled={disabled}
+                        >
                             <Sparkles className="w-4 h-4 mr-2" />
                             Generate Transcription
                         </Button>

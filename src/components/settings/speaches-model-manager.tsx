@@ -234,9 +234,11 @@ export function SpeachesModelManager({
         }
     };
 
-    const installedIds = new Set(installedModels.map((m) => m.id));
+    const installedIds = new Set(
+        installedModels.map((m) => normalizeModelId(m.id)),
+    );
     const availableToInstall = registryModels.filter(
-        (m) => !installedIds.has(m.id),
+        (m) => !installedIds.has(normalizeModelId(m.id)),
     );
 
     return (

@@ -137,6 +137,7 @@ export function EditProviderDialog({
             });
         } catch {
             setSpeachesModels([]);
+            toast.error("Failed to load Speaches models");
         } finally {
             setIsLoadingModels(false);
         }
@@ -327,9 +328,6 @@ export function EditProviderDialog({
                                 placeholder="https://api.example.com/v1"
                                 value={baseUrl}
                                 onChange={(e) => setBaseUrl(e.target.value)}
-                                onBlur={() => {
-                                    if (isSpeaches) fetchSpeachesModels();
-                                }}
                                 disabled={isLoading}
                                 className="font-mono text-sm"
                             />

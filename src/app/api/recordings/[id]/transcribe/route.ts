@@ -277,11 +277,15 @@ export async function POST(
                                 errorText.slice(0, 500),
                             );
                             clearInterval(heartbeat);
+                            const isDiarizationMissing =
+                                errorText.toLowerCase().includes("diarization") ||
+                                errorText.toLowerCase().includes("onnx");
                             send({
                                 type: "error",
-                                message:
-                                    "Speaker detection not available — install onnx-diarization in your Speaches container:\n" +
-                                    "docker exec <container> pip install onnx-diarization",
+                                message: isDiarizationMissing
+                                    ? "Speaker detection not available — install onnx-diarization in your Speaches container:\n" +
+                                      "docker exec <container> pip install onnx-diarization"
+                                    : `Diarization failed: ${errorText.slice(0, 200)}`,
                             });
                             controller.close();
                             return;
@@ -607,6 +611,7 @@ export async function POST(
                                 null,
                                 credentials,
                             );
+                            transcriptionSaved = true;
                             await runTitleGeneration(
                                 id,
                                 session.user.id,

@@ -371,6 +371,7 @@ export function OnboardingDialog({
                                             <Input
                                                 id="bearer-token"
                                                 type="password"
+                                                autoComplete="new-password"
                                                 placeholder="Enter your Plaud bearer token"
                                                 value={bearerToken}
                                                 onChange={(e) =>

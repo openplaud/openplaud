@@ -305,6 +305,7 @@ export function EditProviderDialog({
                             <Input
                                 id="apiKey"
                                 type="password"
+                                autoComplete="new-password"
                                 placeholder={
                                     selectedPreset?.localProvider
                                         ? `Leave blank to keep current key`

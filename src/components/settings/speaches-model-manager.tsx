@@ -46,6 +46,9 @@ export function SpeachesModelManager({
     const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
     const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Tracks whether we already showed the success toast for the current
+    // install, so the safety-net effect doesn't show it a second time.
+    const installSuccessShownRef = useRef(false);
 
     // Clear poll on unmount
     useEffect(() => {
@@ -54,6 +57,22 @@ export function SpeachesModelManager({
             if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
         };
     }, []);
+
+    // Safety-net: if the model appears in installedModels but installingId is
+    // still set (e.g. the Promise.race resolved via a path that didn't clear
+    // it), clear it here so the dialog doesn't get stuck.
+    useEffect(() => {
+        if (
+            installingId !== null &&
+            installedModels.some((m) => m.id === installingId)
+        ) {
+            if (!installSuccessShownRef.current) {
+                installSuccessShownRef.current = true;
+                toast.success(`Model installed: ${installingId}`);
+            }
+            setInstallingId(null);
+        }
+    }, [installedModels, installingId]);
 
     const fetchInstalledSilent = async (): Promise<SpeachesModel[]> => {
         try {
@@ -117,6 +136,7 @@ export function SpeachesModelManager({
     };
 
     const handleInstall = async (modelId: string) => {
+        installSuccessShownRef.current = false;
         setInstallingId(modelId);
 
         // Polling promise: resolves as soon as the model appears in the

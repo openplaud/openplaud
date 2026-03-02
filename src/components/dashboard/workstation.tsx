@@ -1,8 +1,8 @@
 "use client";
 
-import { Mic, RefreshCw, Settings } from "lucide-react";
+import { Mic, RefreshCw, Settings, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { OnboardingDialog } from "@/components/onboarding-dialog";
 import { SettingsDialog } from "@/components/settings-dialog";
@@ -37,6 +37,8 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
         recordings.length > 0 ? recordings[0] : null,
     );
     const [isTranscribing, setIsTranscribing] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
+    const uploadInputRef = useRef<HTMLInputElement>(null);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [onboardingOpen, setOnboardingOpen] = useState(false);
     const [providers, setProviders] = useState<
@@ -64,6 +66,19 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
     const currentTranscription = currentRecording
         ? transcriptions.get(currentRecording.id)
         : undefined;
+
+    const isProcessing = isTranscribing || isUploading;
+
+    // Keep currentRecording in sync with the recordings prop (updated after router.refresh()).
+    // If the previously-selected recording is no longer present (e.g. just deleted),
+    // clear the selection rather than holding a stale reference.
+    useEffect(() => {
+        setCurrentRecording((prev) => {
+            if (!prev) return prev;
+            const updated = recordings.find((r) => r.id === prev.id);
+            return updated ?? null;
+        });
+    }, [recordings]);
 
     useEffect(() => {
         getSyncSettings().then(setSyncSettings);
@@ -174,6 +189,39 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
         }
     }, [currentRecording, router]);
 
+    const handleUpload = useCallback(
+        async (e: React.ChangeEvent<HTMLInputElement>) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            e.target.value = "";
+
+            setIsUploading(true);
+            try {
+                const formData = new FormData();
+                formData.append("file", file);
+
+                const response = await fetch("/api/recordings/upload", {
+                    method: "POST",
+                    body: formData,
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    toast.success(`"${data.filename}" uploaded`);
+                    router.refresh();
+                } else {
+                    const error = await response.json();
+                    toast.error(error.error || "Upload failed");
+                }
+            } catch {
+                toast.error("Failed to upload recording");
+            } finally {
+                setIsUploading(false);
+            }
+        },
+        [router],
+    );
+
     return (
         <>
             <div className="bg-background">
@@ -212,6 +260,23 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                         Sync Device
                                     </>
                                 )}
+                            </Button>
+                            <input
+                                ref={uploadInputRef}
+                                type="file"
+                                accept="audio/*"
+                                className="hidden"
+                                onChange={handleUpload}
+                            />
+                            <Button
+                                onClick={() => uploadInputRef.current?.click()}
+                                disabled={isProcessing}
+                                variant="outline"
+                                size="sm"
+                                className="h-9"
+                            >
+                                <Upload className="w-4 h-4 mr-2" />
+                                {isUploading ? "Uploading..." : "Upload Audio"}
                             </Button>
                             <Button
                                 onClick={() => setSettingsOpen(true)}

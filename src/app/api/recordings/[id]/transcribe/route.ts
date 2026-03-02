@@ -403,7 +403,7 @@ export async function POST(
 
             console.log(
                 `${recordingLabel} Starting Speaches streaming transcription`,
-                { model, baseUrl, storagePath: recording.storagePath },
+                { model, baseUrl },
             );
 
             // Shared state between the ReadableStream and the after() handler.

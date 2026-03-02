@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
+const normalizeModelId = (id: string) => id.toLowerCase().trim();
+
 interface SpeachesModel {
     id: string;
     object?: string;
@@ -64,7 +66,11 @@ export function SpeachesModelManager({
     useEffect(() => {
         if (
             installingId !== null &&
-            installedModels.some((m) => m.id === installingId)
+            installedModels.some(
+                (m) =>
+                    normalizeModelId(m.id) ===
+                    normalizeModelId(installingId),
+            )
         ) {
             if (!installSuccessShownRef.current) {
                 toast.success(`Model installed: ${installingId}`);
@@ -176,7 +182,13 @@ export function SpeachesModelManager({
                 pollIntervalRef.current = setInterval(async () => {
                     const models = await fetchInstalledSilent();
                     setInstalledModels(models);
-                    if (models.some((m) => m.id === modelId)) {
+                    if (
+                        models.some(
+                            (m) =>
+                                normalizeModelId(m.id) ===
+                                normalizeModelId(modelId),
+                        )
+                    ) {
                         clearInterval(pollIntervalRef.current!);
                         pollIntervalRef.current = null;
                         clearTimeout(pollTimeout);

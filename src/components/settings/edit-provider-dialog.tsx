@@ -176,7 +176,7 @@ export function EditProviderDialog({
             setBaseUrl(preset.baseUrl);
             setDefaultModel(preset.defaultModel);
             if (value === "Speaches") {
-                fetchSpeachesModels(preset.baseUrl);
+                fetchSpeachesModels();
             }
         }
     };
@@ -387,10 +387,7 @@ export function EditProviderDialog({
                                         aria-label="Refresh model list"
                                         disabled={isLoadingModels}
                                         onClick={() =>
-                                            fetchSpeachesModels(
-                                                baseUrl ||
-                                                    "http://localhost:8000/v1",
-                                            )
+                                            fetchSpeachesModels()
                                         }
                                         className="shrink-0 flex items-center justify-center h-10 w-10 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
                                     >
@@ -535,11 +532,7 @@ export function EditProviderDialog({
                     open={showModelManager}
                     onOpenChange={setShowModelManager}
                     baseUrl={baseUrl || "http://localhost:8000/v1"}
-                    onModelsChanged={() =>
-                        fetchSpeachesModels(
-                            baseUrl || "http://localhost:8000/v1",
-                        )
-                    }
+                    onModelsChanged={() => fetchSpeachesModels()}
                 />
             )}
         </>

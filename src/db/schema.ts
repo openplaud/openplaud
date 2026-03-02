@@ -323,6 +323,11 @@ export const userSettings = pgTable("user_settings", {
     syncTitleToPlaud: boolean("sync_title_to_plaud").notNull().default(false),
     // Title generation prompt configuration
     titleGenerationPrompt: jsonb("title_generation_prompt"), // { preset: string, customPrompt?: string }
+    // Silence removal settings
+    silenceThresholdDb: integer("silence_threshold_db").notNull().default(-40), // dB, audio below this is silence
+    silenceDurationSeconds: real("silence_duration_seconds")
+        .notNull()
+        .default(1.0), // min silence length to remove
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

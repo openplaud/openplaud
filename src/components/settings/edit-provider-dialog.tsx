@@ -1,6 +1,6 @@
 "use client";
 
-import { RefreshCw, Shield } from "lucide-react";
+import { Info, RefreshCw, Shield } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { MetalButton } from "@/components/metal-button";
@@ -302,6 +302,7 @@ export function EditProviderDialog({
                             <Input
                                 id="apiKey"
                                 type="password"
+                                autoComplete="new-password"
                                 placeholder={
                                     selectedPreset?.localProvider
                                         ? `Leave blank to keep current key`
@@ -467,6 +468,54 @@ export function EditProviderDialog({
                                 </label>
                             )}
                         </Panel>
+
+                        {isSpeaches && (
+                            <div className="flex gap-2.5 rounded-md border border-blue-200 bg-blue-50 px-3 py-2.5 text-xs text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300">
+                                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                <div className="space-y-1">
+                                    <p className="font-medium">
+                                        Reduce hallucinations with Silero VAD
+                                    </p>
+                                    <p className="text-blue-700 dark:text-blue-400">
+                                        Installing{" "}
+                                        <code className="rounded bg-blue-100 px-1 dark:bg-blue-900">
+                                            silero-vad
+                                        </code>{" "}
+                                        in your Speaches container enables Voice
+                                        Activity Detection, which automatically
+                                        removes trailing silence and background
+                                        noise before transcription — preventing
+                                        Whisper hallucinations on quiet
+                                        recordings.
+                                    </p>
+                                    <p className="font-mono text-blue-700 dark:text-blue-400">
+                                        docker exec &lt;container&gt; pip
+                                        install silero-vad
+                                    </p>
+                                    <p className="text-blue-600 dark:text-blue-500">
+                                        OpenPlaud works without it — silero-vad
+                                        is used automatically when available.
+                                    </p>
+                                    <p className="font-medium mt-2">
+                                        Enable speaker detection (who said what)
+                                    </p>
+                                    <p className="text-blue-700 dark:text-blue-400">
+                                        Installing{" "}
+                                        <code className="rounded bg-blue-100 px-1 dark:bg-blue-900">
+                                            onnx-diarization
+                                        </code>{" "}
+                                        enables the "Generate with Speakers"
+                                        button, which identifies individual
+                                        speakers and shows colored speaker
+                                        blocks in the transcription.
+                                    </p>
+                                    <p className="font-mono text-blue-700 dark:text-blue-400">
+                                        docker exec &lt;container&gt; pip
+                                        install onnx-diarization
+                                    </p>
+                                </div>
+                            </div>
+                        )}
 
                         <div className="flex gap-2">
                             <MetalButton

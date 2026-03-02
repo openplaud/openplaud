@@ -248,6 +248,7 @@ export function AddProviderDialog({
                             <Input
                                 id="apiKey"
                                 type="password"
+                                autoComplete="new-password"
                                 placeholder={
                                     selectedPreset?.localProvider
                                         ? `Leave blank or enter a value (e.g. "${selectedPreset.placeholder}")`

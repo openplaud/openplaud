@@ -103,3 +103,7 @@ Required: `DATABASE_URL`, `BETTER_AUTH_SECRET` (≥32 chars), `APP_URL`, `ENCRYP
 Optional: `SMTP_*` for email, `S3_*` for cloud storage, `LOCAL_STORAGE_PATH` (default: `./storage`)
 
 See `.env.example` for the full list.
+
+## Language
+
+All code and comments must be written in **English**.

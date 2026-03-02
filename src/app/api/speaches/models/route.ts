@@ -89,8 +89,27 @@ export async function POST(request: Request) {
             );
         }
 
-        const data = await response.json();
-        return NextResponse.json(data);
+        // Speaches returns 201 for both a fresh download and a stale cached model.
+        // Read the (small, immediately-closed) body to detect the "already exists"
+        // case, which indicates an incompatible cache entry (e.g. pre-0.8.0 format).
+        // In that case: delete the stale cache and re-queue a fresh download.
+        const body = await response.text();
+        if (body.includes("already exist")) {
+            console.log(
+                `[speaches] "${modelId}" cached but not listed — deleting stale cache and re-downloading`,
+            );
+            await fetch(`${baseUrl}/models/${encodedModelId}`, { method: "DELETE" });
+            // Fire-and-forget: Speaches downloads asynchronously; the client polls
+            // GET /v1/models every 2.5 s until the model appears.
+            fetch(`${baseUrl}/models/${encodedModelId}`, { method: "POST" }).catch(
+                () => {},
+            );
+        }
+
+        // Return immediately — Speaches downloads the model asynchronously after
+        // returning 201. Closing this connection does not cancel the download.
+        // The client polls GET /v1/models every 2.5 s until the model appears.
+        return NextResponse.json({ success: true });
     } catch (error) {
         console.error("Error installing Speaches model:", error);
         return NextResponse.json(

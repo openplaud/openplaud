@@ -45,6 +45,9 @@ export function SpeachesModelManager({
     const [installingId, setInstallingId] = useState<string | null>(null);
     const [removingId, setRemovingId] = useState<string | null>(null);
     const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    // Prevents duplicate success toasts when both the poll and the safety-net
+    // useEffect detect the model at the same time.
+    const installSuccessShownRef = useRef(false);
 
     // Clear poll on unmount
     useEffect(() => {
@@ -52,6 +55,29 @@ export function SpeachesModelManager({
             if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
         };
     }, []);
+
+    // Safety net: when the model being installed appears in installedModels,
+    // clear the flag regardless of whether the polling promise resolved.
+    // This handles edge cases where the ID comparison in the poll fails
+    // (e.g. Speaches returns a slightly different ID format than the registry).
+    // biome-ignore lint/correctness/useExhaustiveDependencies: only react when installedModels changes
+    useEffect(() => {
+        if (
+            installingId !== null &&
+            installedModels.some((m) => m.id === installingId)
+        ) {
+            if (!installSuccessShownRef.current) {
+                toast.success(`Model installed: ${installingId}`);
+                installSuccessShownRef.current = true;
+            }
+            if (pollIntervalRef.current) {
+                clearInterval(pollIntervalRef.current);
+                pollIntervalRef.current = null;
+            }
+            setInstallingId(null);
+            onModelsChanged();
+        }
+    }, [installedModels]);
 
     const fetchInstalledSilent = async (): Promise<SpeachesModel[]> => {
         try {
@@ -96,8 +122,8 @@ export function SpeachesModelManager({
             fetchInstalled();
             fetchRegistry();
         }
-        // biome-ignore lint/correctness/useExhaustiveDependencies: fetch fns are stable within render
-    }, [open, fetchInstalled, fetchRegistry]);
+        // biome-ignore lint/correctness/useExhaustiveDependencies: only open matters; fetch fns are recreated each render
+    }, [open]);
 
     // Always refresh the parent list when the dialog closes
     const handleOpenChange = (isOpen: boolean) => {
@@ -111,12 +137,13 @@ export function SpeachesModelManager({
     };
 
     const handleInstall = async (modelId: string) => {
+        installSuccessShownRef.current = false;
         setInstallingId(modelId);
 
-        // Polling promise: resolves as soon as the model appears in the
-        // installed list. This lets us clear the loading state immediately
-        // even if the POST connection is still open.
-        const POLL_TIMEOUT_MS = 5 * 60 * 1000; // 5-minute hard limit
+        // Poll every 2.5 s until the model appears in the installed list.
+        // The POST only queues the download on the Speaches side and returns
+        // immediately, so polling is the only reliable completion signal.
+        const POLL_TIMEOUT_MS = 30 * 60 * 1000; // 30-minute hard limit (large models can take a while)
         const pollPromise = new Promise<void>((resolve, reject) => {
             const pollTimeout = setTimeout(() => {
                 if (pollIntervalRef.current) {
@@ -137,24 +164,22 @@ export function SpeachesModelManager({
             }, 2500);
         });
 
-        // POST promise: resolves when the server confirms the download.
-        const installPromise = fetch(
-            `/api/speaches/models?baseUrl=${encodeURIComponent(baseUrl)}`,
-            {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ modelId }),
-            },
-        ).then((res) => {
-            if (!res.ok) throw new Error("Failed to install");
-        });
-
         try {
-            // Whichever signal arrives first unblocks the UI.
-            // Suppress any later rejection from installPromise so it doesn't
-            // become an unhandled promise rejection when pollPromise wins first.
-            installPromise.catch(() => {});
-            await Promise.race([pollPromise, installPromise]);
+            // Trigger the download. Await only to catch immediate errors
+            // (e.g. network failure, 4xx). The response returns before the
+            // model is fully downloaded, so we rely on polling for completion.
+            const res = await fetch(
+                `/api/speaches/models?baseUrl=${encodeURIComponent(baseUrl)}`,
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ modelId }),
+                },
+            );
+            if (!res.ok) throw new Error("Failed to install");
+
+            // Wait until polling confirms the model is installed.
+            await pollPromise;
             toast.success(`Model installed: ${modelId}`);
             await fetchInstalled();
             onModelsChanged();

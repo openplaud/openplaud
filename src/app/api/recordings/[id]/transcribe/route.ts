@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { OpenAI } from "openai";
 import { db } from "@/db";
 import {
@@ -15,8 +15,12 @@ import { decrypt } from "@/lib/encryption";
 import { createPlaudClient } from "@/lib/plaud/client";
 import { createUserStorageProvider } from "@/lib/storage/factory";
 import { postProcessTranscription } from "@/lib/transcription/post-process";
-import { trimTrailingSilence } from "@/lib/transcription/trim-silence";
+import {
+    normalizeForDiarization,
+    trimTrailingSilence,
+} from "@/lib/transcription/trim-silence";
 import { audioFilenameWithExt, getAudioMimeType } from "@/lib/utils";
+import type { DiarizedSegment } from "@/types/transcription";
 
 export async function DELETE(
     request: Request,
@@ -105,6 +109,10 @@ export async function POST(
 
         const { id } = await params;
 
+        console.log(
+            `[transcribe:${id.slice(0, 8)}] POST received from user ${session.user.id.slice(0, 8)}`,
+        );
+
         const [recording] = await db
             .select()
             .from(recordings)
@@ -142,95 +150,30 @@ export async function POST(
             );
         }
 
-        // Get storage provider and download audio
-        const storage = await createUserStorageProvider(session.user.id);
-        const rawAudioBuffer = await storage.downloadFile(
-            recording.storagePath,
-        );
-        // Trim trailing silence to prevent end-of-audio hallucinations
-        const audioBuffer = await trimTrailingSilence(
-            rawAudioBuffer,
-            recording.storagePath,
+        const diarize =
+            new URL(request.url).searchParams.get("diarize") === "true";
+
+        console.log(
+            `[transcribe:${id.slice(0, 8)}] provider=${credentials.provider} streaming=${credentials.streamingEnabled} diarize=${diarize} model=${credentials.defaultModel}`,
         );
 
-        // Speaches streaming path
-        if (
-            credentials.provider === "Speaches" &&
-            credentials.streamingEnabled
-        ) {
+        // Get storage provider
+        const storage = await createUserStorageProvider(session.user.id);
+
+        // Speaches diarization path — non-streaming request to Speaches but
+        // wrapped in SSE to browser so heartbeats keep the proxy alive.
+        if (credentials.provider === "Speaches" && diarize) {
             const baseUrl = credentials.baseUrl || "http://localhost:8000/v1";
             const model = credentials.defaultModel || "whisper-1";
             const apiKey = decrypt(credentials.apiKey);
-
-            // Build FormData for Speaches streaming request
-            const formData = new FormData();
-            formData.append(
-                "file",
-                new File(
-                    [new Uint8Array(audioBuffer)],
-                    audioFilenameWithExt(recording.storagePath),
-                    { type: getAudioMimeType(recording.storagePath) },
-                ),
-            );
-            formData.append("model", model);
-            formData.append("stream", "true");
-
-            // No AbortSignal.timeout here: Speaches sends response headers
-            // immediately (SSE), so undici's default 30 s headersTimeout is
-            // fine for the connection phase. SSE events stream continuously
-            // throughout transcription, so there is no idle body timeout
-            // concern. A fixed timeout would abort arbitrarily long recordings
-            // (e.g. 5 h audio that takes 1–2 h to transcribe).
-            const speachesResponse = await fetch(
-                `${baseUrl}/audio/transcriptions`,
-                {
-                    method: "POST",
-                    headers: { Authorization: `Bearer ${apiKey}` },
-                    body: formData,
-                },
-            );
-
-            if (!speachesResponse.ok) {
-                const errorText = await speachesResponse.text();
-                throw new Error(
-                    `Speaches request failed (${speachesResponse.status}): ${errorText}`,
-                );
-            }
-
-            const contentType =
-                speachesResponse.headers.get("content-type") ?? "";
-
-            if (!contentType.includes("text/event-stream")) {
-                // Speaches returned regular JSON (older version or streaming unsupported)
-                // Fall back to parsing it like the standard path
-                const json = (await speachesResponse.json()) as {
-                    text?: string;
-                };
-                const rawText = json.text ?? "";
-                const transcriptionText = postProcessTranscription(rawText);
-                const detectedLanguage = null;
-
-                await saveTranscription(
-                    id,
-                    session.user.id,
-                    transcriptionText,
-                    detectedLanguage,
-                    credentials,
-                );
-                await runTitleGeneration(
-                    id,
-                    session.user.id,
-                    recording,
-                    transcriptionText,
-                );
-
-                return NextResponse.json({
-                    transcription: transcriptionText,
-                    detectedLanguage,
-                });
-            }
-
             const encoder = new TextEncoder();
+            const recordingLabel = `[diarize:${id.slice(0, 8)}]`;
+
+            console.log(`${recordingLabel} Starting Speaches diarization`, {
+                model,
+                baseUrl,
+                storagePath: recording.storagePath,
+            });
 
             const stream = new ReadableStream({
                 async start(controller) {
@@ -240,80 +183,161 @@ export async function POST(
                         );
                     };
 
-                    // Send SSE comment heartbeats every 15 s so reverse proxies
-                    // with short read timeouts don't close the connection while
-                    // Speaches processes long recordings.
+                    controller.enqueue(
+                        encoder.encode('data: {"type":"ping"}\n\n'),
+                    );
+                    console.log(`${recordingLabel} Initial ping sent`);
+
+                    let heartbeatCount = 0;
                     const heartbeat = setInterval(() => {
                         try {
+                            heartbeatCount++;
                             controller.enqueue(
-                                encoder.encode(": heartbeat\n\n"),
+                                encoder.encode('data: {"type":"ping"}\n\n'),
                             );
+                            if (
+                                heartbeatCount <= 5 ||
+                                heartbeatCount % 20 === 0
+                            ) {
+                                console.log(
+                                    `${recordingLabel} Heartbeat #${heartbeatCount} sent`,
+                                );
+                            }
                         } catch {
                             clearInterval(heartbeat);
                         }
-                    }, 15_000);
+                    }, 3_000);
 
                     try {
-                        const reader = speachesResponse.body?.getReader();
-                        if (!reader)
-                            throw new Error(
-                                "Speaches response body is not readable",
+                        console.log(
+                            `${recordingLabel} Downloading audio from storage…`,
+                        );
+                        const rawAudioBuffer = await storage.downloadFile(
+                            recording.storagePath,
+                        );
+                        console.log(
+                            `${recordingLabel} Download complete — ${(rawAudioBuffer.length / 1_048_576).toFixed(1)} MB. Trimming silence…`,
+                        );
+
+                        const trimmedBuffer = await trimTrailingSilence(
+                            rawAudioBuffer,
+                            recording.storagePath,
+                        );
+                        console.log(
+                            `${recordingLabel} Silence trim complete — ${(trimmedBuffer.length / 1_048_576).toFixed(1)} MB. Normalizing for diarization…`,
+                        );
+
+                        // Normalize to 16 kHz mono WAV with EBU R128 loudness.
+                        // Low-level Plaud recordings cause onnx-diarization to
+                        // compute overlapping speaker embeddings → everything
+                        // mapped to SPEAKER_00. Normalization separates them.
+                        const {
+                            buffer: audioBuffer,
+                            mimeType: audioMimeType,
+                            filename: audioFilename,
+                        } = await normalizeForDiarization(
+                            trimmedBuffer,
+                            recording.storagePath,
+                        );
+                        console.log(
+                            `${recordingLabel} Normalization complete — ${(audioBuffer.length / 1_048_576).toFixed(1)} MB (${audioFilename}). Sending to Speaches for diarization…`,
+                        );
+
+                        const audioFile = new File(
+                            [new Uint8Array(audioBuffer)],
+                            audioFilename,
+                            { type: audioMimeType },
+                        );
+
+                        const formData = new FormData();
+                        formData.append("file", audioFile);
+                        formData.append("model", model);
+                        formData.append("diarization", "true");
+                        // min_speakers=2 hints to onnx-diarization that there
+                        // are at least two speakers; without this hint the model
+                        // may collapse everything into one cluster.
+                        formData.append("min_speakers", "2");
+                        formData.append("response_format", "verbose_json");
+                        formData.append("vad_filter", "true");
+
+                        const speachesResponse = await fetch(
+                            `${baseUrl}/audio/transcriptions`,
+                            {
+                                method: "POST",
+                                headers: { Authorization: `Bearer ${apiKey}` },
+                                body: formData,
+                            },
+                        );
+
+                        console.log(
+                            `${recordingLabel} Speaches responded — HTTP ${speachesResponse.status}`,
+                        );
+
+                        if (speachesResponse.status === 500) {
+                            const errorText = await speachesResponse.text();
+                            console.error(
+                                `${recordingLabel} Speaches diarization 500:`,
+                                errorText.slice(0, 500),
                             );
-                        const decoder = new TextDecoder();
-                        let buffer = "";
-                        let accumulatedText = "";
-
-                        while (true) {
-                            const { done, value } = await reader.read();
-                            if (done) break;
-
-                            buffer += decoder.decode(value, { stream: true });
-                            const blocks = buffer.split("\n\n");
-                            buffer = blocks.pop() ?? "";
-
-                            for (const block of blocks) {
-                                const line = block.trim();
-                                if (!line.startsWith("data:")) continue;
-                                const jsonStr = line.slice(5).trim();
-                                if (!jsonStr) continue;
-
-                                let event: {
-                                    type: string;
-                                    delta?: string;
-                                    transcript?: string;
-                                };
-                                try {
-                                    event = JSON.parse(jsonStr);
-                                } catch {
-                                    continue;
-                                }
-
-                                if (
-                                    event.type === "transcript.text.delta" &&
-                                    event.delta
-                                ) {
-                                    accumulatedText += event.delta;
-                                    send({ type: "chunk", text: event.delta });
-                                } else if (
-                                    event.type === "transcript.text.done"
-                                ) {
-                                    // Use the authoritative full transcript from done event
-                                    if (event.transcript) {
-                                        accumulatedText = event.transcript;
-                                    }
-                                }
-                            }
+                            clearInterval(heartbeat);
+                            send({
+                                type: "error",
+                                message:
+                                    "Speaker detection not available — install onnx-diarization in your Speaches container:\n" +
+                                    "docker exec <container> pip install onnx-diarization",
+                            });
+                            controller.close();
+                            return;
                         }
 
-                        // Post-process and persist
+                        if (!speachesResponse.ok) {
+                            const errorText = await speachesResponse.text();
+                            throw new Error(
+                                `Speaches diarization failed (${speachesResponse.status}): ${errorText}`,
+                            );
+                        }
+
+                        type DiarizeResponse = {
+                            text?: string;
+                            segments?: Array<{
+                                speaker?: string;
+                                text: string;
+                                start?: number;
+                                end?: number;
+                            }>;
+                        };
+
+                        const json =
+                            (await speachesResponse.json()) as DiarizeResponse;
+
+                        const speakersJsonData: DiarizedSegment[] = (
+                            json.segments ?? []
+                        )
+                            .map((seg) => ({
+                                speaker: seg.speaker ?? "SPEAKER_00",
+                                text: seg.text.trim(),
+                                start: seg.start,
+                                end: seg.end,
+                            }))
+                            .filter((seg) => seg.text.length > 0);
+
+                        const rawText =
+                            json.text ??
+                            speakersJsonData.map((s) => s.text).join(" ");
                         const transcriptionText =
-                            postProcessTranscription(accumulatedText);
+                            postProcessTranscription(rawText);
+
+                        console.log(
+                            `${recordingLabel} Diarization complete — ${speakersJsonData.length} segments, ${transcriptionText.length} chars. Saving…`,
+                        );
+
                         await saveTranscription(
                             id,
                             session.user.id,
                             transcriptionText,
                             null,
                             credentials,
+                            speakersJsonData,
                         );
                         await runTitleGeneration(
                             id,
@@ -323,6 +347,439 @@ export async function POST(
                         );
 
                         clearInterval(heartbeat);
+                        console.log(
+                            `${recordingLabel} Done. Sending done event.`,
+                        );
+                        send({
+                            type: "done",
+                            transcription: transcriptionText,
+                            speakersJson: speakersJsonData,
+                            detectedLanguage: null,
+                        });
+                        controller.close();
+                    } catch (err) {
+                        clearInterval(heartbeat);
+                        console.error(
+                            `${recordingLabel} Diarization error:`,
+                            err,
+                        );
+                        try {
+                            send({
+                                type: "error",
+                                message:
+                                    err instanceof Error
+                                        ? err.message
+                                        : "Diarization failed",
+                            });
+                            controller.close();
+                        } catch {
+                            // controller may already be closed
+                        }
+                    }
+                },
+            });
+
+            return new Response(stream, {
+                headers: {
+                    "Content-Type": "text/event-stream",
+                    "Cache-Control": "no-cache, no-transform",
+                    Connection: "keep-alive",
+                    "X-Accel-Buffering": "no",
+                    "Content-Encoding": "identity",
+                },
+            });
+        }
+
+        // Speaches streaming path — return SSE response *immediately* so the
+        // heartbeat keeps the proxy connection alive during the slow
+        // download + trim-silence + upload phase. All blocking I/O happens
+        // inside ReadableStream.start() AFTER the response headers are sent.
+        if (
+            credentials.provider === "Speaches" &&
+            credentials.streamingEnabled
+        ) {
+            const baseUrl = credentials.baseUrl || "http://localhost:8000/v1";
+            const model = credentials.defaultModel || "whisper-1";
+            const apiKey = decrypt(credentials.apiKey);
+            const encoder = new TextEncoder();
+            const recordingLabel = `[speaches:${id.slice(0, 8)}]`;
+
+            console.log(
+                `${recordingLabel} Starting Speaches streaming transcription`,
+                { model, baseUrl, storagePath: recording.storagePath },
+            );
+
+            // Shared state between the ReadableStream and the after() handler.
+            // Declared here so after() can read the latest value even if Bun's
+            // runtime terminates the ReadableStream context early (e.g. when the
+            // client disconnects and "context canceled" bypasses our try/catch).
+            let accumulatedText = "";
+            let transcriptionSaved = false;
+
+            // after() runs after the response is done — even when the browser
+            // disconnects mid-stream.  If the ReadableStream was killed before
+            // it could call saveTranscription(), we save whatever was accumulated.
+            after(async () => {
+                if (transcriptionSaved || accumulatedText.length === 0) return;
+                console.log(
+                    `${recordingLabel} after(): client disconnected — saving ${accumulatedText.length} chars`,
+                );
+                try {
+                    const transcriptionText =
+                        postProcessTranscription(accumulatedText);
+                    await saveTranscription(
+                        id,
+                        session.user.id,
+                        transcriptionText,
+                        null,
+                        credentials,
+                    );
+                    await runTitleGeneration(
+                        id,
+                        session.user.id,
+                        recording,
+                        transcriptionText,
+                    );
+                    console.log(
+                        `${recordingLabel} after(): transcription saved (${transcriptionText.length} chars)`,
+                    );
+                } catch (saveErr) {
+                    console.error(
+                        `${recordingLabel} after(): save failed:`,
+                        saveErr,
+                    );
+                }
+            });
+
+            const stream = new ReadableStream({
+                async start(controller) {
+                    const send = (data: Record<string, unknown>) => {
+                        controller.enqueue(
+                            encoder.encode(`data: ${JSON.stringify(data)}\n\n`),
+                        );
+                    };
+
+                    // Send an immediate ping so nginx/other proxies flush the
+                    // SSE response headers to the browser right away.  Without
+                    // this, proxy buffering keeps the headers held until the
+                    // first body chunk arrives (~10 s later at the first
+                    // heartbeat), by which point proxy_read_timeout may have
+                    // already closed the connection and replaced our SSE
+                    // response with a 504 error page.
+                    controller.enqueue(
+                        encoder.encode('data: {"type":"ping"}\n\n'),
+                    );
+                    console.log(`${recordingLabel} Initial ping sent`);
+
+                    // Continue heartbeats every 3 s to reset proxy read-idle
+                    // timers while the slow download + silence-detect + upload
+                    // phases run.  3 s is intentionally short: HAProxy (and
+                    // some other intermediaries) close SSE connections if no
+                    // data arrives for ~9–10 s, so we must beat that deadline
+                    // comfortably.
+                    let heartbeatCount = 0;
+                    const heartbeat = setInterval(() => {
+                        try {
+                            heartbeatCount++;
+                            controller.enqueue(
+                                encoder.encode('data: {"type":"ping"}\n\n'),
+                            );
+                            if (
+                                heartbeatCount <= 5 ||
+                                heartbeatCount % 20 === 0
+                            ) {
+                                console.log(
+                                    `${recordingLabel} Heartbeat #${heartbeatCount} sent`,
+                                );
+                            }
+                        } catch {
+                            clearInterval(heartbeat);
+                            console.log(
+                                `${recordingLabel} Heartbeat failed — stream cancelled by client`,
+                            );
+                        }
+                    }, 3_000);
+
+                    try {
+                        // Slow I/O runs here, inside the stream, so SSE headers
+                        // are already sent and heartbeats are flowing.
+                        console.log(
+                            `${recordingLabel} Downloading audio from storage…`,
+                        );
+                        const rawAudioBuffer = await storage.downloadFile(
+                            recording.storagePath,
+                        );
+                        console.log(
+                            `${recordingLabel} Download complete — ${(rawAudioBuffer.length / 1_048_576).toFixed(1)} MB. Trimming silence…`,
+                        );
+
+                        const audioBuffer = await trimTrailingSilence(
+                            rawAudioBuffer,
+                            recording.storagePath,
+                        );
+                        console.log(
+                            `${recordingLabel} Silence trim complete — ${(audioBuffer.length / 1_048_576).toFixed(1)} MB. Uploading to Speaches…`,
+                        );
+
+                        // Build FormData for Speaches. Re-usable so we can
+                        // retry without vad_filter if the first attempt fails.
+                        const makeFormData = (withVadFilter: boolean) => {
+                            const fd = new FormData();
+                            fd.append(
+                                "file",
+                                new File(
+                                    [new Uint8Array(audioBuffer)],
+                                    audioFilenameWithExt(recording.storagePath),
+                                    {
+                                        type: getAudioMimeType(
+                                            recording.storagePath,
+                                        ),
+                                    },
+                                ),
+                            );
+                            fd.append("model", model);
+                            fd.append("stream", "true");
+                            if (withVadFilter) {
+                                // Silero VAD — skips non-speech segments before
+                                // Whisper, preventing trailing hallucinations.
+                                // Requires silero-vad in the Speaches environment.
+                                fd.append("vad_filter", "true");
+                            }
+                            return fd;
+                        };
+
+                        let speachesResponse = await fetch(
+                            `${baseUrl}/audio/transcriptions`,
+                            {
+                                method: "POST",
+                                headers: { Authorization: `Bearer ${apiKey}` },
+                                body: makeFormData(true),
+                            },
+                        );
+
+                        // HTTP 500 with vad_filter usually means silero-vad is
+                        // not installed in the Speaches environment. Retry once
+                        // without it so transcription still works for everyone.
+                        if (speachesResponse.status === 500) {
+                            console.log(
+                                `${recordingLabel} Speaches returned 500 with vad_filter — retrying without (silero-vad likely not installed)`,
+                            );
+                            speachesResponse = await fetch(
+                                `${baseUrl}/audio/transcriptions`,
+                                {
+                                    method: "POST",
+                                    headers: {
+                                        Authorization: `Bearer ${apiKey}`,
+                                    },
+                                    body: makeFormData(false),
+                                },
+                            );
+                        }
+
+                        console.log(
+                            `${recordingLabel} Speaches responded — HTTP ${speachesResponse.status}, content-type: ${speachesResponse.headers.get("content-type")}`,
+                        );
+
+                        if (!speachesResponse.ok) {
+                            const errorText = await speachesResponse.text();
+                            throw new Error(
+                                `Speaches request failed (${speachesResponse.status}): ${errorText}`,
+                            );
+                        }
+
+                        const contentType =
+                            speachesResponse.headers.get("content-type") ?? "";
+
+                        if (!contentType.includes("text/event-stream")) {
+                            // Speaches returned regular JSON (older version or
+                            // streaming unsupported) — parse and forward as done.
+                            console.log(
+                                `${recordingLabel} Non-SSE response — parsing JSON fallback`,
+                            );
+                            const json = (await speachesResponse.json()) as {
+                                text?: string;
+                            };
+                            const rawText = json.text ?? "";
+                            const transcriptionText =
+                                postProcessTranscription(rawText);
+
+                            await saveTranscription(
+                                id,
+                                session.user.id,
+                                transcriptionText,
+                                null,
+                                credentials,
+                            );
+                            await runTitleGeneration(
+                                id,
+                                session.user.id,
+                                recording,
+                                transcriptionText,
+                            );
+
+                            clearInterval(heartbeat);
+                            send({
+                                type: "done",
+                                transcription: transcriptionText,
+                                detectedLanguage: null,
+                            });
+                            controller.close();
+                            return;
+                        }
+
+                        console.log(
+                            `${recordingLabel} SSE stream open — reading Speaches chunks…`,
+                        );
+                        const reader = speachesResponse.body?.getReader();
+                        if (!reader)
+                            throw new Error(
+                                "Speaches response body is not readable",
+                            );
+                        const decoder = new TextDecoder();
+                        let buffer = "";
+                        let chunkCount = 0;
+
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) {
+                                console.log(
+                                    `${recordingLabel} Speaches SSE stream closed (reader done). Chunks received: ${chunkCount}, accumulated chars: ${accumulatedText.length}`,
+                                );
+                                break;
+                            }
+
+                            buffer += decoder.decode(value, { stream: true });
+                            const blocks = buffer.split("\n\n");
+                            buffer = blocks.pop() ?? "";
+
+                            for (const block of blocks) {
+                                // Parse all lines in the SSE block.
+                                // Speaches uses the SSE protocol "event:" field for
+                                // the event type, NOT a "type" field inside the JSON.
+                                // Format:
+                                //   event: transcript.text.delta
+                                //   data: {"delta": "hello "}
+                                let sseEventType = "";
+                                let jsonStr = "";
+
+                                for (const line of block.split("\n")) {
+                                    const trimmed = line.trim();
+                                    if (trimmed.startsWith("event:")) {
+                                        sseEventType = trimmed.slice(6).trim();
+                                    } else if (trimmed.startsWith("data:")) {
+                                        jsonStr = trimmed.slice(5).trim();
+                                    }
+                                    // ignore comment lines (": heartbeat")
+                                }
+
+                                if (!jsonStr) continue;
+
+                                let data: {
+                                    type?: string;
+                                    delta?: string;
+                                    transcript?: string;
+                                    text?: string; // Format B: plain Speaches segment
+                                };
+                                try {
+                                    data = JSON.parse(jsonStr);
+                                } catch {
+                                    console.warn(
+                                        `${recordingLabel} Failed to parse SSE data:`,
+                                        jsonStr.slice(0, 200),
+                                    );
+                                    continue;
+                                }
+
+                                // Prefer SSE protocol "event:" field; fall back to
+                                // JSON "type" field for any future format changes.
+                                const eventType =
+                                    sseEventType || data.type || "";
+
+                                if (
+                                    eventType === "transcript.text.delta" &&
+                                    data.delta
+                                ) {
+                                    // Format A: named SSE event + delta field
+                                    accumulatedText += data.delta;
+                                    chunkCount++;
+                                    if (chunkCount === 1) {
+                                        console.log(
+                                            `${recordingLabel} First transcript chunk received`,
+                                        );
+                                    } else if (chunkCount % 50 === 0) {
+                                        console.log(
+                                            `${recordingLabel} ${chunkCount} chunks, ${accumulatedText.length} chars so far`,
+                                        );
+                                    }
+                                    send({ type: "chunk", text: data.delta });
+                                } else if (
+                                    eventType === "transcript.text.done"
+                                ) {
+                                    // Format A: named done event with authoritative transcript
+                                    console.log(
+                                        `${recordingLabel} transcript.text.done received — ${data.transcript?.length ?? 0} chars`,
+                                    );
+                                    if (data.transcript) {
+                                        accumulatedText = data.transcript;
+                                    }
+                                } else if (
+                                    typeof data.text === "string" &&
+                                    data.text
+                                ) {
+                                    // Format B: plain {"text": "..."} segment
+                                    // (Speaches default streaming format — no event: header,
+                                    // no type field, just a text field per segment)
+                                    accumulatedText += data.text;
+                                    chunkCount++;
+                                    if (chunkCount === 1) {
+                                        console.log(
+                                            `${recordingLabel} First transcript chunk received (plain-text format)`,
+                                        );
+                                    } else if (chunkCount % 50 === 0) {
+                                        console.log(
+                                            `${recordingLabel} ${chunkCount} chunks, ${accumulatedText.length} chars so far`,
+                                        );
+                                    }
+                                    send({ type: "chunk", text: data.text });
+                                } else {
+                                    console.log(
+                                        `${recordingLabel} Unhandled SSE event — event="${eventType}" data keys=[${Object.keys(data).join(",")}]`,
+                                    );
+                                }
+                            }
+                        }
+
+                        // Post-process and persist
+                        console.log(
+                            `${recordingLabel} Post-processing ${accumulatedText.length} chars…`,
+                        );
+                        const transcriptionText =
+                            postProcessTranscription(accumulatedText);
+                        console.log(
+                            `${recordingLabel} Saving transcription (${transcriptionText.length} chars)…`,
+                        );
+                        transcriptionSaved = true;
+                        await saveTranscription(
+                            id,
+                            session.user.id,
+                            transcriptionText,
+                            null,
+                            credentials,
+                        );
+                        console.log(
+                            `${recordingLabel} Transcription saved. Running title generation…`,
+                        );
+                        await runTitleGeneration(
+                            id,
+                            session.user.id,
+                            recording,
+                            transcriptionText,
+                        );
+
+                        clearInterval(heartbeat);
+                        console.log(
+                            `${recordingLabel} Done. Sending done event.`,
+                        );
                         send({
                             type: "done",
                             transcription: transcriptionText,
@@ -331,15 +788,73 @@ export async function POST(
                         controller.close();
                     } catch (err) {
                         clearInterval(heartbeat);
-                        console.error("Speaches streaming error:", err);
-                        send({
-                            type: "error",
-                            message:
-                                err instanceof Error
-                                    ? err.message
-                                    : "Transcription failed",
-                        });
-                        controller.close();
+
+                        // Speaches (and some other servers) close the streaming
+                        // connection with TCP RST instead of a clean FIN after
+                        // sending all data.  Bun's fetch surfaces this as an
+                        // ECONNRESET.  If we already have accumulated text the
+                        // stream completed normally — save it and send "done".
+                        if (accumulatedText.length > 0) {
+                            console.log(
+                                `${recordingLabel} Speaches connection reset after receiving ${accumulatedText.length} chars — treating as done`,
+                            );
+                            try {
+                                const transcriptionText =
+                                    postProcessTranscription(accumulatedText);
+                                transcriptionSaved = true;
+                                await saveTranscription(
+                                    id,
+                                    session.user.id,
+                                    transcriptionText,
+                                    null,
+                                    credentials,
+                                );
+                                await runTitleGeneration(
+                                    id,
+                                    session.user.id,
+                                    recording,
+                                    transcriptionText,
+                                );
+                                send({
+                                    type: "done",
+                                    transcription: transcriptionText,
+                                    detectedLanguage: null,
+                                });
+                                controller.close();
+                            } catch (saveErr) {
+                                console.error(
+                                    `${recordingLabel} Failed to save partial transcript:`,
+                                    saveErr,
+                                );
+                                try {
+                                    send({
+                                        type: "error",
+                                        message: "Failed to save transcription",
+                                    });
+                                    controller.close();
+                                } catch {
+                                    /* controller already closed */
+                                }
+                            }
+                            return;
+                        }
+
+                        console.error(
+                            `${recordingLabel} Speaches streaming error:`,
+                            err,
+                        );
+                        try {
+                            send({
+                                type: "error",
+                                message:
+                                    err instanceof Error
+                                        ? err.message
+                                        : "Transcription failed",
+                            });
+                            controller.close();
+                        } catch {
+                            // controller may already be closed (client disconnect)
+                        }
                     }
                 },
             });
@@ -347,13 +862,32 @@ export async function POST(
             return new Response(stream, {
                 headers: {
                     "Content-Type": "text/event-stream",
-                    "Cache-Control": "no-cache",
+                    // no-transform: tells HAProxy (and any other proxy) NOT to
+                    // gzip-compress this response.  Gzip on SSE buffers all
+                    // events until the stream closes, so the client never sees
+                    // individual chunks — it gets everything at once at the end.
+                    "Cache-Control": "no-cache, no-transform",
                     Connection: "keep-alive",
+                    // Disable nginx proxy buffering so SSE events reach the
+                    // client immediately instead of being held until the buffer fills.
+                    "X-Accel-Buffering": "no",
+                    // Explicitly signal no content-encoding so proxies don't
+                    // compress the stream.
+                    "Content-Encoding": "identity",
                 },
             });
         }
 
         // Standard (non-streaming) path for all other providers
+        const rawAudioBuffer = await storage.downloadFile(
+            recording.storagePath,
+        );
+        // Trim trailing silence to prevent end-of-audio hallucinations
+        const audioBuffer = await trimTrailingSilence(
+            rawAudioBuffer,
+            recording.storagePath,
+        );
+
         const apiKey = decrypt(credentials.apiKey);
 
         // Create OpenAI client (works with all OpenAI-compatible APIs)
@@ -373,11 +907,15 @@ export async function POST(
         );
 
         // Transcribe with verbose JSON to get language detection
+        console.log(
+            `[transcribe:${id.slice(0, 8)}] Sending to ${credentials.provider} (${credentials.defaultModel}) — ${(audioBuffer.length / 1_048_576).toFixed(1)} MB`,
+        );
         const transcription = await openai.audio.transcriptions.create({
             file: audioFile,
             model: credentials.defaultModel || "whisper-1",
             response_format: "verbose_json",
         });
+        console.log(`[transcribe:${id.slice(0, 8)}] ${credentials.provider} responded OK`);
 
         type VerboseTranscription = {
             text: string;
@@ -432,10 +970,11 @@ export async function POST(
         });
     } catch (error) {
         console.error("Error transcribing:", error);
-        return NextResponse.json(
-            { error: "Failed to transcribe recording" },
-            { status: 500 },
-        );
+        const message =
+            error instanceof Error
+                ? error.message
+                : "Failed to transcribe recording";
+        return NextResponse.json({ error: message }, { status: 500 });
     }
 }
 
@@ -447,7 +986,10 @@ async function saveTranscription(
     text: string,
     detectedLanguage: string | null,
     credentials: { provider: string; defaultModel: string | null },
+    speakersJson?: DiarizedSegment[],
 ) {
+    const speakersJsonStr = speakersJson ? JSON.stringify(speakersJson) : null;
+
     const [existingTranscription] = await db
         .select()
         .from(transcriptions)
@@ -463,6 +1005,7 @@ async function saveTranscription(
                 transcriptionType: "server",
                 provider: credentials.provider,
                 model: credentials.defaultModel || "whisper-1",
+                speakersJson: speakersJsonStr,
             })
             .where(eq(transcriptions.id, existingTranscription.id));
     } else {
@@ -474,6 +1017,7 @@ async function saveTranscription(
             transcriptionType: "server",
             provider: credentials.provider,
             model: credentials.defaultModel || "whisper-1",
+            speakersJson: speakersJsonStr,
         });
     }
 }

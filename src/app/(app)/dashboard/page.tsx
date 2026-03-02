@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { recordings, transcriptions } from "@/db/schema";
 import { requireAuth } from "@/lib/auth-server";
 import { serializeRecording } from "@/types/recording";
+import type { DiarizedSegment } from "@/types/transcription";
 
 export default async function DashboardPage() {
     const session = await requireAuth();
@@ -28,6 +29,7 @@ export default async function DashboardPage() {
             recordingId: transcriptions.recordingId,
             text: transcriptions.text,
             language: transcriptions.detectedLanguage,
+            speakersJson: transcriptions.speakersJson,
         })
         .from(transcriptions)
         .where(eq(transcriptions.userId, session.user.id));
@@ -37,7 +39,13 @@ export default async function DashboardPage() {
     const transcriptionMap = new Map(
         userTranscriptions.map((t) => [
             t.recordingId,
-            { text: t.text, language: t.language || undefined },
+            {
+                text: t.text,
+                language: t.language || undefined,
+                speakersJson: t.speakersJson
+                    ? (JSON.parse(t.speakersJson) as DiarizedSegment[])
+                    : undefined,
+            },
         ]),
     );
 

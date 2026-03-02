@@ -181,6 +181,8 @@ export const transcriptions = pgTable(
             .default("server"), // 'server' or 'browser'
         provider: varchar("provider", { length: 100 }).notNull(), // e.g., 'openai', 'groq', 'browser'
         model: varchar("model", { length: 100 }).notNull(), // e.g., 'whisper-1', 'whisper-large-v3-turbo', 'whisper-base'
+        // JSON array of DiarizedSegment — only set when transcription was done with speaker detection
+        speakersJson: text("speakers_json"),
         createdAt: timestamp("created_at").notNull().defaultNow(),
     },
     (table) => ({

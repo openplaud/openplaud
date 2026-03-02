@@ -1,6 +1,7 @@
 "use client";
 
-import { Clock, HardDrive, Play } from "lucide-react";
+import { Clock, ExternalLink, HardDrive, Play } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatDateTime } from "@/lib/format-date";
@@ -96,9 +97,19 @@ export function RecordingList({
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2 mb-1">
                                             <Play className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                                            <h3 className="font-medium truncate">
+                                            <h3 className="font-medium truncate flex-1">
                                                 {recording.filename}
                                             </h3>
+                                            <Link
+                                                href={`/recordings/${recording.id}`}
+                                                onClick={(e) =>
+                                                    e.stopPropagation()
+                                                }
+                                                className="shrink-0 text-muted-foreground hover:text-foreground"
+                                                title="Open detail view"
+                                            >
+                                                <ExternalLink className="w-3.5 h-3.5" />
+                                            </Link>
                                         </div>
                                         <div className="flex items-center gap-4 text-sm text-muted-foreground ml-6">
                                             <div className="flex items-center gap-1">

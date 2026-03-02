@@ -54,7 +54,6 @@ export function RecordingWorkstation({
         }
     }, [recording.id, router]);
 
-
     const handleDelete = useCallback(async () => {
         if (!window.confirm("Are you sure you want to delete this recording?"))
             return;
@@ -104,7 +103,6 @@ export function RecordingWorkstation({
             setIsRemovingSilence(false);
         }
     }, [recording.id, router]);
-
 
     return (
         <div className="bg-background">

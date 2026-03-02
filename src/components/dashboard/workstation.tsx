@@ -189,7 +189,6 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
         }
     }, [currentRecording, router]);
 
-
     const handleDelete = useCallback(async () => {
         if (!currentRecording) return;
 
@@ -250,7 +249,6 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
             setIsRemovingSilence(false);
         }
     }, [currentRecording, router]);
-
 
     return (
         <>

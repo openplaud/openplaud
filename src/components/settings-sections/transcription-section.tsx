@@ -233,7 +233,6 @@ export function TranscriptionSection() {
         }
     };
 
-
     const handleSilenceSettingChange = async (updates: {
         silenceThresholdDb?: number;
         silenceDurationSeconds?: number;
@@ -279,7 +278,6 @@ export function TranscriptionSection() {
             toast.error("Failed to save settings. Changes reverted.");
         }
     };
-
 
     if (isLoadingSettings) {
         return (

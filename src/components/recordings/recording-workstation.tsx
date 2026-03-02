@@ -1,10 +1,6 @@
 "use client";
 
-import {
-    ArrowLeft,
-    CloudUpload,
-    Pencil,
-} from "lucide-react";
+import { ArrowLeft, CloudUpload, Pencil } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";

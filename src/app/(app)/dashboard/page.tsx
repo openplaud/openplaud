@@ -16,6 +16,8 @@ export default async function DashboardPage() {
             startTime: recordings.startTime,
             filesize: recordings.filesize,
             deviceSn: recordings.deviceSn,
+            plaudFileId: recordings.plaudFileId,
+            filenameModified: recordings.filenameModified,
         })
         .from(recordings)
         .where(eq(recordings.userId, session.user.id))

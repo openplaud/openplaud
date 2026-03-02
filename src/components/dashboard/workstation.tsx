@@ -37,6 +37,11 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
         recordings.length > 0 ? recordings[0] : null,
     );
     const [isTranscribing, setIsTranscribing] = useState(false);
+    const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
+    const [isEditingTitle, setIsEditingTitle] = useState(false);
+    const [editTitleValue, setEditTitleValue] = useState("");
+    const [isSavingTitle, setIsSavingTitle] = useState(false);
+    const [isSyncingToPlaud, setIsSyncingToPlaud] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [onboardingOpen, setOnboardingOpen] = useState(false);
     const [providers, setProviders] = useState<
@@ -64,6 +69,23 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
     const currentTranscription = currentRecording
         ? transcriptions.get(currentRecording.id)
         : undefined;
+
+    const isProcessing =
+        isTranscribing ||
+        isGeneratingTitle ||
+        isSavingTitle ||
+        isSyncingToPlaud;
+
+    // Keep currentRecording in sync with the recordings prop (updated after router.refresh()).
+    // If the previously-selected recording is no longer present (e.g. just deleted),
+    // clear the selection rather than holding a stale reference.
+    useEffect(() => {
+        setCurrentRecording((prev) => {
+            if (!prev) return prev;
+            const updated = recordings.find((r) => r.id === prev.id);
+            return updated ?? null;
+        });
+    }, [recordings]);
 
     useEffect(() => {
         getSyncSettings().then(setSyncSettings);
@@ -174,6 +196,88 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
         }
     }, [currentRecording, router]);
 
+    const handleGenerateTitle = useCallback(async () => {
+        if (!currentRecording) return;
+
+        setIsGeneratingTitle(true);
+        try {
+            const response = await fetch(
+                `/api/recordings/${currentRecording.id}/generate-title`,
+                { method: "POST" },
+            );
+
+            if (response.ok) {
+                const data = await response.json();
+                toast.success(`Title generated: "${data.title}"`);
+                router.refresh();
+            } else {
+                const error = await response.json();
+                toast.error(error.error || "Failed to generate title");
+            }
+        } catch {
+            toast.error("Failed to generate title");
+        } finally {
+            setIsGeneratingTitle(false);
+        }
+    }, [currentRecording, router]);
+
+    const handleSaveTitle = useCallback(async () => {
+        if (!currentRecording) return;
+        const trimmed = editTitleValue.trim();
+        if (!trimmed || trimmed === currentRecording.filename) {
+            setIsEditingTitle(false);
+            return;
+        }
+
+        setIsSavingTitle(true);
+        try {
+            const response = await fetch(
+                `/api/recordings/${currentRecording.id}`,
+                {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ filename: trimmed }),
+                },
+            );
+
+            if (response.ok) {
+                setIsEditingTitle(false);
+                router.refresh();
+            } else {
+                const error = await response.json();
+                toast.error(error.error || "Failed to save title");
+            }
+        } catch {
+            toast.error("Failed to save title");
+        } finally {
+            setIsSavingTitle(false);
+        }
+    }, [currentRecording, editTitleValue, router]);
+
+    const handleSyncToPlaud = useCallback(async () => {
+        if (!currentRecording) return;
+
+        setIsSyncingToPlaud(true);
+        try {
+            const response = await fetch(
+                `/api/recordings/${currentRecording.id}/sync-title`,
+                { method: "POST" },
+            );
+
+            if (response.ok) {
+                toast.success("Title synced to Plaud");
+                router.refresh();
+            } else {
+                const error = await response.json();
+                toast.error(error.error || "Failed to sync title");
+            }
+        } catch {
+            toast.error("Failed to sync title");
+        } finally {
+            setIsSyncingToPlaud(false);
+        }
+    }, [currentRecording, router]);
+
     return (
         <>
             <div className="bg-background">
@@ -258,7 +362,10 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                 <RecordingList
                                     recordings={recordings}
                                     currentRecording={currentRecording}
-                                    onSelect={setCurrentRecording}
+                                    onSelect={(r) => {
+                                        setIsEditingTitle(false);
+                                        setCurrentRecording(r);
+                                    }}
                                 />
                             </div>
 
@@ -267,6 +374,24 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                     <>
                                         <RecordingPlayer
                                             recording={currentRecording}
+                                            onEditTitle={() => {
+                                                setEditTitleValue(
+                                                    currentRecording.filename,
+                                                );
+                                                setIsEditingTitle(true);
+                                            }}
+                                            isEditingTitle={isEditingTitle}
+                                            editTitleValue={editTitleValue}
+                                            onEditTitleChange={
+                                                setEditTitleValue
+                                            }
+                                            onSaveTitle={handleSaveTitle}
+                                            onCancelEdit={() =>
+                                                setIsEditingTitle(false)
+                                            }
+                                            isSavingTitle={isSavingTitle}
+                                            onSyncToPlaud={handleSyncToPlaud}
+                                            isSyncingToPlaud={isSyncingToPlaud}
                                             onEnded={() => {
                                                 const currentIndex =
                                                     recordings.findIndex(
@@ -279,6 +404,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                                     currentIndex <
                                                         recordings.length - 1
                                                 ) {
+                                                    setIsEditingTitle(false);
                                                     setCurrentRecording(
                                                         recordings[
                                                             currentIndex + 1
@@ -292,6 +418,13 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                             transcription={currentTranscription}
                                             isTranscribing={isTranscribing}
                                             onTranscribe={handleTranscribe}
+                                            isGeneratingTitle={
+                                                isGeneratingTitle
+                                            }
+                                            onGenerateTitle={
+                                                handleGenerateTitle
+                                            }
+                                            disabled={isProcessing}
                                         />
                                     </>
                                 ) : (

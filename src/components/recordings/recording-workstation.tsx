@@ -27,6 +27,10 @@ export function RecordingWorkstation({
 }: RecordingWorkstationProps) {
     const router = useRouter();
     const [isTranscribing, setIsTranscribing] = useState(false);
+    const [isDeletingTranscription, setIsDeletingTranscription] =
+        useState(false);
+
+    const anyBusy = isTranscribing || isDeletingTranscription;
 
     const handleTranscribe = useCallback(async () => {
         setIsTranscribing(true);
@@ -49,6 +53,34 @@ export function RecordingWorkstation({
             toast.error("Failed to transcribe recording");
         } finally {
             setIsTranscribing(false);
+        }
+    }, [recording.id, router]);
+
+    const handleDeleteTranscription = useCallback(async () => {
+        if (
+            !window.confirm(
+                "Remove the transcription? Re-transcribing costs API credits.",
+            )
+        )
+            return;
+        setIsDeletingTranscription(true);
+        try {
+            const response = await fetch(
+                `/api/recordings/${recording.id}/transcribe`,
+                { method: "DELETE" },
+            );
+
+            if (response.ok) {
+                toast.success("Transcription removed");
+                router.refresh();
+            } else {
+                const error = await response.json();
+                toast.error(error.error || "Failed to remove transcription");
+            }
+        } catch {
+            toast.error("Failed to remove transcription");
+        } finally {
+            setIsDeletingTranscription(false);
         }
     }, [recording.id, router]);
 
@@ -82,6 +114,9 @@ export function RecordingWorkstation({
                         transcription={transcription}
                         isTranscribing={isTranscribing}
                         onTranscribe={handleTranscribe}
+                        isDeletingTranscription={isDeletingTranscription}
+                        onDeleteTranscription={handleDeleteTranscription}
+                        disabled={anyBusy}
                     />
 
                     {/* Metadata */}

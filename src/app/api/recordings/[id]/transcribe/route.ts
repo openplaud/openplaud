@@ -644,6 +644,32 @@ export async function POST(
                         while (true) {
                             const { done, value } = await reader.read();
                             if (done) {
+                                // Flush remaining TextDecoder bytes and process any trailing SSE block.
+                                buffer += decoder.decode();
+                                if (buffer.trim()) {
+                                    const trailingBlocks = buffer.split("\n\n");
+                                    for (const block of trailingBlocks) {
+                                        let jsonStr = "";
+                                        for (const line of block.split("\n")) {
+                                            const trimmed = line.trim();
+                                            if (trimmed.startsWith("data:")) {
+                                                jsonStr = trimmed.slice(5).trim();
+                                            }
+                                        }
+                                        if (!jsonStr) continue;
+                                        try {
+                                            const data = JSON.parse(jsonStr);
+                                            const delta =
+                                                data.delta ?? data.text ?? "";
+                                            if (delta) {
+                                                accumulatedText += delta;
+                                                chunkCount++;
+                                            }
+                                        } catch {
+                                            // ignore unparseable trailing data
+                                        }
+                                    }
+                                }
                                 console.log(
                                     `${recordingLabel} Speaches SSE stream closed (reader done). Chunks received: ${chunkCount}, accumulated chars: ${accumulatedText.length}`,
                                 );
@@ -1062,7 +1088,12 @@ async function runTitleGeneration(
                         filenameModified: true,
                         updatedAt: new Date(),
                     })
-                    .where(eq(recordings.id, recordingId));
+                    .where(
+                        and(
+                            eq(recordings.id, recordingId),
+                            eq(recordings.filenameModified, false),
+                        ),
+                    );
 
                 const isLocallyCreated =
                     recording.plaudFileId.startsWith("split-") ||

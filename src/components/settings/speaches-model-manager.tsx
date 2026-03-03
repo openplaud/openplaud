@@ -310,7 +310,9 @@ export function SpeachesModelManager({
                             <div className="space-y-1">
                                 {availableToInstall.map((model) => {
                                     const isInstalling =
-                                        installingId === model.id;
+                                        installingId !== null &&
+                                        normalizeModelId(installingId) ===
+                                            normalizeModelId(model.id);
                                     return (
                                         <div
                                             key={model.id}

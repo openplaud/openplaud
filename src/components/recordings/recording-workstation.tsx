@@ -38,6 +38,7 @@ export function RecordingWorkstation({
     const router = useRouter();
     const [isTranscribing, setIsTranscribing] = useState(false);
     const [streamingText, setStreamingText] = useState("");
+    const [statusMessage, setStatusMessage] = useState("");
     // Transcription received directly in the SSE done event — used to show
     // the result immediately without waiting for router.refresh() to complete.
     const [localTranscription, setLocalTranscription] = useState<
@@ -183,13 +184,19 @@ export function RecordingWorkstation({
                                 }
 
                                 if (event.type === "chunk" && event.text) {
+                                    setStatusMessage("");
                                     streamingAccumulatorRef.current +=
                                         event.text;
                                     setStreamingText(
                                         (prev) => prev + event.text,
                                     );
+                                } else if (event.type === "status") {
+                                    setStatusMessage(
+                                        event.message ?? "",
+                                    );
                                 } else if (event.type === "done") {
                                     receivedDone = true;
+                                    setStatusMessage("");
                                     // Show result immediately from the done event so
                                     // the UI doesn't flash blank while router.refresh()
                                     // fetches the updated page from the server.
@@ -295,6 +302,7 @@ export function RecordingWorkstation({
                 if (!keepTranscribing) {
                     setIsTranscribing(false);
                     setStreamingText("");
+                    setStatusMessage("");
                 }
             }
         },
@@ -677,6 +685,7 @@ export function RecordingWorkstation({
                         onGenerateTitle={handleGenerateTitle}
                         disabled={isProcessing}
                         streamingText={streamingText}
+                        statusMessage={statusMessage}
                         supportsDiarization={
                             transcriptionProvider === "Speaches"
                         }

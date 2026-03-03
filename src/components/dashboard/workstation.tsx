@@ -69,6 +69,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
     const [isSyncingToPlaud, setIsSyncingToPlaud] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [streamingText, setStreamingText] = useState("");
+    const [statusMessage, setStatusMessage] = useState("");
     const [localTranscription, setLocalTranscription] = useState<
         string | undefined
     >(undefined);
@@ -139,6 +140,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
         setLocalTranscription(undefined);
         setLocalSpeakersJson(undefined);
         setStreamingText("");
+        setStatusMessage("");
         streamingAccumulatorRef.current = "";
     }, [currentRecording?.id]);
 
@@ -343,13 +345,19 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                 }
 
                                 if (event.type === "chunk" && event.text) {
+                                    setStatusMessage("");
                                     streamingAccumulatorRef.current +=
                                         event.text;
                                     setStreamingText(
                                         (prev) => prev + event.text,
                                     );
+                                } else if (event.type === "status") {
+                                    setStatusMessage(
+                                        event.message ?? "",
+                                    );
                                 } else if (event.type === "done") {
                                     receivedDone = true;
+                                    setStatusMessage("");
                                     const finalText =
                                         event.transcription ||
                                         streamingAccumulatorRef.current;
@@ -444,6 +452,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                 if (!keepTranscribing) {
                     setIsTranscribing(false);
                     setStreamingText("");
+                    setStatusMessage("");
                 }
             }
         },
@@ -975,6 +984,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                                 handleGenerateTitle
                                             }
                                             streamingText={streamingText}
+                                            statusMessage={statusMessage}
                                             supportsDiarization={
                                                 transcriptionProvider ===
                                                 "Speaches"

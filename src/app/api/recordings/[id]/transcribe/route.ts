@@ -19,6 +19,7 @@ import {
     normalizeForDiarization,
     trimTrailingSilence,
 } from "@/lib/transcription/trim-silence";
+import { postFormData } from "@/lib/fetch-keepalive";
 import { audioFilenameWithExt, getAudioMimeType } from "@/lib/utils";
 import type { DiarizedSegment } from "@/types/transcription";
 
@@ -206,6 +207,10 @@ export async function POST(
                     }, 3_000);
 
                     try {
+                        send({
+                            type: "status",
+                            message: "Downloading audio...",
+                        });
                         console.log(
                             `${recordingLabel} Downloading audio from storage…`,
                         );
@@ -216,6 +221,10 @@ export async function POST(
                             `${recordingLabel} Download complete — ${(rawAudioBuffer.length / 1_048_576).toFixed(1)} MB. Trimming silence…`,
                         );
 
+                        send({
+                            type: "status",
+                            message: "Removing silence...",
+                        });
                         const trimmedBuffer = await trimTrailingSilence(
                             rawAudioBuffer,
                             recording.storagePath,
@@ -228,6 +237,11 @@ export async function POST(
                         // Low-level Plaud recordings cause onnx-diarization to
                         // compute overlapping speaker embeddings → everything
                         // mapped to SPEAKER_00. Normalization separates them.
+                        send({
+                            type: "status",
+                            message:
+                                "Preparing audio for speaker detection...",
+                        });
                         const {
                             buffer: audioBuffer,
                             mimeType: audioMimeType,
@@ -265,23 +279,33 @@ export async function POST(
                         );
                         transcribeForm.append("vad_filter", "true");
 
-                        // Run both in parallel for speed
+                        send({
+                            type: "status",
+                            message:
+                                "Detecting speakers and transcribing...",
+                        });
+                        const authHeaders = {
+                            Authorization: `Bearer ${apiKey}`,
+                        };
+
+                        // Use postFormData (node:http with TCP keepalive)
+                        // instead of fetch(). Bun's fetch has an idle socket
+                        // timeout (~5 min) that kills connections where no
+                        // data flows -- diarization on long recordings easily
+                        // exceeds that. TCP keepalive probes every 30 s
+                        // prevent the connection from being considered idle.
                         const [diarizeResponse, transcribeResponse] =
                             await Promise.all([
-                                fetch(`${baseUrl}/audio/diarization`, {
-                                    method: "POST",
-                                    headers: {
-                                        Authorization: `Bearer ${apiKey}`,
-                                    },
-                                    body: diarizeForm,
-                                }),
-                                fetch(`${baseUrl}/audio/transcriptions`, {
-                                    method: "POST",
-                                    headers: {
-                                        Authorization: `Bearer ${apiKey}`,
-                                    },
-                                    body: transcribeForm,
-                                }),
+                                postFormData(
+                                    `${baseUrl}/audio/diarization`,
+                                    diarizeForm,
+                                    authHeaders,
+                                ),
+                                postFormData(
+                                    `${baseUrl}/audio/transcriptions`,
+                                    transcribeForm,
+                                    authHeaders,
+                                ),
                             ]);
 
                         console.log(
@@ -349,15 +373,10 @@ export async function POST(
                                 "response_format",
                                 "verbose_json",
                             );
-                            finalTranscribeResponse = await fetch(
+                            finalTranscribeResponse = await postFormData(
                                 `${baseUrl}/audio/transcriptions`,
-                                {
-                                    method: "POST",
-                                    headers: {
-                                        Authorization: `Bearer ${apiKey}`,
-                                    },
-                                    body: retryForm,
-                                },
+                                retryForm,
+                                authHeaders,
                             );
                         }
 
@@ -400,6 +419,10 @@ export async function POST(
                             `${recordingLabel} Diarize: ${diarizeSegments.length} speaker segments. Transcribe: ${transcribeSegments.length} text segments.`,
                         );
 
+                        send({
+                            type: "status",
+                            message: "Merging speaker data...",
+                        });
                         // Merge: assign a speaker to each transcription segment
                         // by finding the diarization segment with the most
                         // temporal overlap.
@@ -443,6 +466,10 @@ export async function POST(
                             `${recordingLabel} Diarization complete — ${speakersJsonData.length} segments, ${transcriptionText.length} chars. Saving…`,
                         );
 
+                        send({
+                            type: "status",
+                            message: "Saving transcription...",
+                        });
                         await saveTranscription(
                             id,
                             session.user.id,
@@ -615,6 +642,10 @@ export async function POST(
                     try {
                         // Slow I/O runs here, inside the stream, so SSE headers
                         // are already sent and heartbeats are flowing.
+                        send({
+                            type: "status",
+                            message: "Downloading audio...",
+                        });
                         console.log(
                             `${recordingLabel} Downloading audio from storage…`,
                         );
@@ -625,6 +656,10 @@ export async function POST(
                             `${recordingLabel} Download complete — ${(rawAudioBuffer.length / 1_048_576).toFixed(1)} MB. Trimming silence…`,
                         );
 
+                        send({
+                            type: "status",
+                            message: "Removing silence...",
+                        });
                         const audioBuffer = await trimTrailingSilence(
                             rawAudioBuffer,
                             recording.storagePath,
@@ -633,6 +668,10 @@ export async function POST(
                             `${recordingLabel} Silence trim complete — ${(audioBuffer.length / 1_048_576).toFixed(1)} MB. Uploading to Speaches…`,
                         );
 
+                        send({
+                            type: "status",
+                            message: "Uploading to transcription server...",
+                        });
                         // Build FormData for Speaches. Re-usable so we can
                         // retry without vad_filter if the first attempt fails.
                         const makeFormData = (withVadFilter: boolean) => {
@@ -715,6 +754,10 @@ export async function POST(
                             const transcriptionText =
                                 postProcessTranscription(rawText);
 
+                            send({
+                                type: "status",
+                                message: "Saving transcription...",
+                            });
                             await saveTranscription(
                                 id,
                                 session.user.id,
@@ -889,6 +932,10 @@ export async function POST(
                         }
 
                         // Post-process and persist
+                        send({
+                            type: "status",
+                            message: "Saving transcription...",
+                        });
                         console.log(
                             `${recordingLabel} Post-processing ${accumulatedText.length} chars…`,
                         );

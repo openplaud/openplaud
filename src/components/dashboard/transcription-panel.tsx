@@ -32,6 +32,8 @@ interface TranscriptionPanelProps {
     disabled?: boolean;
     /** Live text being streamed during Speaches transcription */
     streamingText?: string;
+    /** Status message showing the current processing step */
+    statusMessage?: string;
     /** Show "Generate with Speakers" button */
     supportsDiarization?: boolean;
     /** Called when user clicks "Generate with Speakers" */
@@ -85,10 +87,7 @@ function formatTimestamp(seconds: number): string {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = Math.floor(seconds % 60);
-    if (h > 0) {
-        return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-    }
-    return `${m}:${String(s).padStart(2, "0")}`;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
 function getSpeakerNumber(
@@ -113,6 +112,7 @@ export function TranscriptionPanel({
     onGenerateTitle,
     disabled,
     streamingText,
+    statusMessage,
     supportsDiarization,
     onTranscribeDiarized,
     speakersJson,
@@ -191,7 +191,7 @@ export function TranscriptionPanel({
                         <div className="flex flex-col items-center justify-center py-12">
                             <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mb-4" />
                             <p className="text-sm text-muted-foreground">
-                                Transcribing audio...
+                                {statusMessage || "Transcribing audio..."}
                             </p>
                         </div>
                     )
@@ -260,7 +260,7 @@ function SpeakerView({ segments }: { segments: DiarizedSegment[] }) {
     const groups = groupConsecutiveSpeakers(segments);
 
     return (
-        <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+        <div className="max-h-96 overflow-y-auto pr-1">
             {groups.map((group, idx) => {
                 const speakerIdx =
                     getSpeakerNumber(speakerMap, group.speaker) %
@@ -270,22 +270,36 @@ function SpeakerView({ segments }: { segments: DiarizedSegment[] }) {
                 const speakerLabel = `Speaker ${speakerIdx + 1}`;
 
                 return (
-                    <div
-                        // biome-ignore lint/suspicious/noArrayIndexKey: static list, no reordering
-                        key={idx}
-                        className={`rounded-lg border p-3 ${colorClass}`}
-                    >
+                    // biome-ignore lint/suspicious/noArrayIndexKey: static list, no reordering
+                    <div key={idx}>
+                        {/* Blank-line separator: a <br> between block-level
+                            cards produces an empty line in copy-paste output. */}
+                        {idx > 0 && (
+                            <br
+                                style={{ lineHeight: 0, fontSize: 0 }}
+                                aria-hidden="true"
+                            />
+                        )}
                         <div
-                            className={`text-xs font-semibold mb-1 flex items-center gap-2 ${labelClass}`}
+                            className={`rounded-lg border p-3 ${colorClass} ${idx > 0 ? "mt-3" : ""}`}
                         >
-                            <span>{speakerLabel}</span>
-                            {group.start !== undefined && (
-                                <span className="font-mono font-normal text-muted-foreground">
-                                    {formatTimestamp(group.start)}
-                                </span>
-                            )}
+                            <div
+                                className={`text-xs font-semibold mb-1 ${labelClass}`}
+                            >
+                                {group.start !== undefined && (
+                                    <>
+                                        <span className="font-mono font-normal text-muted-foreground">
+                                            {formatTimestamp(group.start)}
+                                        </span>
+                                        {"  "}
+                                    </>
+                                )}
+                                <span>{speakerLabel}</span>
+                            </div>
+                            <div className="text-sm leading-relaxed">
+                                {group.text}
+                            </div>
                         </div>
-                        <p className="text-sm leading-relaxed">{group.text}</p>
                     </div>
                 );
             })}

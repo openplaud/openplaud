@@ -191,6 +191,21 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
     useEffect(() => {
         if (!settingsOpen) {
             getSyncSettings().then(setSyncSettings);
+            // Refetch transcription provider — user may have changed the default
+            fetch("/api/settings/ai/providers")
+                .then((r) => r.json())
+                .then((data) => {
+                    const defaultProvider = (
+                        data.providers as Array<{
+                            provider: string;
+                            isDefaultTranscription: boolean;
+                        }>
+                    )?.find((p) => p.isDefaultTranscription);
+                    setTranscriptionProvider(
+                        defaultProvider?.provider ?? null,
+                    );
+                })
+                .catch(() => {});
         }
     }, [settingsOpen]);
 

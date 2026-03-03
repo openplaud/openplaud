@@ -1021,7 +1021,12 @@ async function saveTranscription(
     const [existingTranscription] = await db
         .select()
         .from(transcriptions)
-        .where(eq(transcriptions.recordingId, recordingId))
+        .where(
+            and(
+                eq(transcriptions.recordingId, recordingId),
+                eq(transcriptions.userId, userId),
+            ),
+        )
         .limit(1);
 
     if (existingTranscription) {

@@ -47,6 +47,7 @@ export function SpeachesModelManager({
     const [installingId, setInstallingId] = useState<string | null>(null);
     const [removingId, setRemovingId] = useState<string | null>(null);
     const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     // Prevents duplicate success toasts when both the poll and the safety-net
     // useEffect detect the model at the same time.
     const installSuccessShownRef = useRef(false);
@@ -55,6 +56,10 @@ export function SpeachesModelManager({
     useEffect(() => {
         return () => {
             if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+            if (pollTimeoutRef.current) {
+                clearTimeout(pollTimeoutRef.current);
+                pollTimeoutRef.current = null;
+            }
         };
     }, []);
 
@@ -79,6 +84,10 @@ export function SpeachesModelManager({
             if (pollIntervalRef.current) {
                 clearInterval(pollIntervalRef.current);
                 pollIntervalRef.current = null;
+            }
+            if (pollTimeoutRef.current) {
+                clearTimeout(pollTimeoutRef.current);
+                pollTimeoutRef.current = null;
             }
             setInstallingId(null);
             onModelsChanged();
@@ -168,11 +177,12 @@ export function SpeachesModelManager({
             // Start polling only after the POST succeeds to avoid unhandled
             // promise rejections when the POST itself fails.
             const pollPromise = new Promise<void>((resolve, reject) => {
-                const pollTimeout = setTimeout(() => {
+                pollTimeoutRef.current = setTimeout(() => {
                     if (pollIntervalRef.current) {
                         clearInterval(pollIntervalRef.current);
                         pollIntervalRef.current = null;
                     }
+                    pollTimeoutRef.current = null;
                     reject(
                         new Error(
                             "Model install timed out after 30 minutes",
@@ -191,7 +201,10 @@ export function SpeachesModelManager({
                     ) {
                         clearInterval(pollIntervalRef.current!);
                         pollIntervalRef.current = null;
-                        clearTimeout(pollTimeout);
+                        if (pollTimeoutRef.current) {
+                            clearTimeout(pollTimeoutRef.current);
+                            pollTimeoutRef.current = null;
+                        }
                         resolve();
                     }
                 }, 2500);
@@ -211,6 +224,10 @@ export function SpeachesModelManager({
             if (pollIntervalRef.current) {
                 clearInterval(pollIntervalRef.current);
                 pollIntervalRef.current = null;
+            }
+            if (pollTimeoutRef.current) {
+                clearTimeout(pollTimeoutRef.current);
+                pollTimeoutRef.current = null;
             }
             setInstallingId(null);
         }

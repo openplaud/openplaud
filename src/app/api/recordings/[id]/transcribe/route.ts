@@ -12,6 +12,7 @@ import {
 import { generateTitleFromTranscription } from "@/lib/ai/generate-title";
 import { auth } from "@/lib/auth";
 import { decrypt } from "@/lib/encryption";
+import { postFormData } from "@/lib/fetch-keepalive";
 import { createPlaudClient } from "@/lib/plaud/client";
 import { createUserStorageProvider } from "@/lib/storage/factory";
 import { postProcessTranscription } from "@/lib/transcription/post-process";
@@ -19,7 +20,6 @@ import {
     normalizeForDiarization,
     trimTrailingSilence,
 } from "@/lib/transcription/trim-silence";
-import { postFormData } from "@/lib/fetch-keepalive";
 import { audioFilenameWithExt, getAudioMimeType } from "@/lib/utils";
 import type { DiarizedSegment } from "@/types/transcription";
 
@@ -239,8 +239,7 @@ export async function POST(
                         // mapped to SPEAKER_00. Normalization separates them.
                         send({
                             type: "status",
-                            message:
-                                "Preparing audio for speaker detection...",
+                            message: "Preparing audio for speaker detection...",
                         });
                         const {
                             buffer: audioBuffer,
@@ -281,8 +280,7 @@ export async function POST(
 
                         send({
                             type: "status",
-                            message:
-                                "Detecting speakers and transcribing...",
+                            message: "Detecting speakers and transcribing...",
                         });
                         const authHeaders = {
                             Authorization: `Bearer ${apiKey}`,
@@ -369,10 +367,7 @@ export async function POST(
                             const retryForm = new FormData();
                             retryForm.append("file", makeAudioFile());
                             retryForm.append("model", model);
-                            retryForm.append(
-                                "response_format",
-                                "verbose_json",
-                            );
+                            retryForm.append("response_format", "verbose_json");
                             finalTranscribeResponse = await postFormData(
                                 `${baseUrl}/audio/transcriptions`,
                                 retryForm,
@@ -435,10 +430,7 @@ export async function POST(
                                         const overlap = Math.max(
                                             0,
                                             Math.min(seg.end, dSeg.end) -
-                                                Math.max(
-                                                    seg.start,
-                                                    dSeg.start,
-                                                ),
+                                                Math.max(seg.start, dSeg.start),
                                         );
                                         if (overlap > bestOverlap) {
                                             bestOverlap = overlap;
@@ -456,9 +448,7 @@ export async function POST(
 
                         const rawText =
                             transcribeJson.text ??
-                            speakersJsonData
-                                .map((s) => s.text)
-                                .join(" ");
+                            speakersJsonData.map((s) => s.text).join(" ");
                         const transcriptionText =
                             postProcessTranscription(rawText);
 
@@ -807,7 +797,9 @@ export async function POST(
                                         for (const line of block.split("\n")) {
                                             const trimmed = line.trim();
                                             if (trimmed.startsWith("data:")) {
-                                                jsonStr = trimmed.slice(5).trim();
+                                                jsonStr = trimmed
+                                                    .slice(5)
+                                                    .trim();
                                             }
                                         }
                                         if (!jsonStr) continue;
@@ -1101,7 +1093,9 @@ export async function POST(
             model: credentials.defaultModel || "whisper-1",
             response_format: "verbose_json",
         });
-        console.log(`[transcribe:${id.slice(0, 8)}] ${credentials.provider} responded OK`);
+        console.log(
+            `[transcribe:${id.slice(0, 8)}] ${credentials.provider} responded OK`,
+        );
 
         type VerboseTranscription = {
             text: string;
@@ -1244,7 +1238,7 @@ async function runTitleGeneration(
             );
 
             if (generatedTitle) {
-                await db
+                const updateResult = await db
                     .update(recordings)
                     .set({
                         filename: generatedTitle,
@@ -1258,12 +1252,18 @@ async function runTitleGeneration(
                         ),
                     );
 
+                // Only sync to Plaud if we actually updated the local title.
+                // The conditional WHERE can no-op if a concurrent user rename
+                // already set filenameModified=true.
+                const rowsUpdated = updateResult.rowCount ?? 0;
+
                 const isLocallyCreated =
                     recording.plaudFileId.startsWith("split-") ||
                     recording.plaudFileId.startsWith("silence-removed-") ||
                     recording.plaudFileId.startsWith("uploaded-");
 
                 if (
+                    rowsUpdated > 0 &&
                     syncTitleToPlaud &&
                     !isLocallyCreated &&
                     recording.plaudFileId

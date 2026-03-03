@@ -70,8 +70,10 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
     const [isUploading, setIsUploading] = useState(false);
     const [streamingText, setStreamingText] = useState("");
     const [statusMessage, setStatusMessage] = useState("");
+    // null = optimistic delete (hide server text until router.refresh)
+    // undefined = no local override
     const [localTranscription, setLocalTranscription] = useState<
-        string | undefined
+        string | null | undefined
     >(undefined);
     const [localSpeakersJson, setLocalSpeakersJson] = useState<
         DiarizedSegment[] | undefined
@@ -160,6 +162,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
     // When the transcription prop arrives from the server (via router.refresh),
     // stop polling and clear the transcribing state. Also clear the local
     // speaker data since the server version is now authoritative.
+    // biome-ignore lint/correctness/useExhaustiveDependencies: localTranscription is only read for null-sentinel check, not as a trigger
     useEffect(() => {
         if (currentTranscription?.text && transcribePollRef.current) {
             clearInterval(transcribePollRef.current);
@@ -169,6 +172,11 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
         }
         if (currentTranscription?.text) {
             setLocalSpeakersJson(undefined);
+            setLocalTranscription(undefined);
+        }
+        // Server confirms deletion — clear the optimistic null sentinel
+        if (!currentTranscription?.text && localTranscription === null) {
+            setLocalTranscription(undefined);
         }
     }, [currentTranscription?.text]);
 
@@ -190,28 +198,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
         fetchNotificationPrefs();
     }, []);
 
-    useEffect(() => {
-        if (!settingsOpen) {
-            getSyncSettings().then(setSyncSettings);
-            // Refetch transcription provider — user may have changed the default
-            fetch("/api/settings/ai/providers")
-                .then((r) => r.json())
-                .then((data) => {
-                    const defaultProvider = (
-                        data.providers as Array<{
-                            provider: string;
-                            isDefaultTranscription: boolean;
-                        }>
-                    )?.find((p) => p.isDefaultTranscription);
-                    setTranscriptionProvider(defaultProvider?.provider ?? null);
-                })
-                .catch(() => {});
-        }
-    }, [settingsOpen]);
-
-    // Fetch the default transcription provider on mount so we know whether
-    // to show the "Generate with Speakers" button (Speaches-only feature).
-    useEffect(() => {
+    const fetchDefaultTranscriptionProvider = useCallback(() => {
         fetch("/api/settings/ai/providers")
             .then((r) => r.json())
             .then((data) => {
@@ -225,6 +212,13 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
             })
             .catch(() => {});
     }, []);
+
+    useEffect(() => {
+        if (!settingsOpen) {
+            getSyncSettings().then(setSyncSettings);
+            fetchDefaultTranscriptionProvider();
+        }
+    }, [settingsOpen, fetchDefaultTranscriptionProvider]);
 
     const {
         isAutoSyncing,
@@ -295,6 +289,17 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
             // Flag: when true the finally block leaves isTranscribing alone so
             // the polling useEffect can clear it once the result arrives.
             let keepTranscribing = false;
+
+            const startPollingFallback = () => {
+                if (transcribePollRef.current)
+                    clearInterval(transcribePollRef.current);
+                keepTranscribing = true;
+                router.refresh();
+                transcribePollRef.current = setInterval(() => {
+                    router.refresh();
+                }, 10_000);
+            };
+
             try {
                 const url = diarize
                     ? `/api/recordings/${currentRecording.id}/transcribe?diarize=true`
@@ -325,13 +330,15 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                     stream: true,
                                 });
                             }
-                            const blocks = buffer.split("\n\n");
+                            const blocks = buffer.split(/\r?\n\r?\n/);
                             buffer = blocks.pop() ?? "";
 
                             for (const block of blocks) {
-                                const line = block.trim();
-                                if (!line.startsWith("data:")) continue;
-                                const jsonStr = line.slice(5).trim();
+                                const jsonStr = block
+                                    .split(/\r?\n/)
+                                    .filter((l) => l.startsWith("data:"))
+                                    .map((l) => l.slice(5).trim())
+                                    .join("\n");
                                 if (!jsonStr) continue;
 
                                 let event: {
@@ -400,21 +407,13 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                             throw streamErr;
                         }
                         // Network/connection drop — server still processing.
-                        keepTranscribing = true;
-                        router.refresh();
-                        transcribePollRef.current = setInterval(() => {
-                            router.refresh();
-                        }, 10_000);
+                        startPollingFallback();
                         return;
                     }
 
                     if (!receivedDone) {
                         // Stream closed without done event — start polling.
-                        keepTranscribing = true;
-                        router.refresh();
-                        transcribePollRef.current = setInterval(() => {
-                            router.refresh();
-                        }, 10_000);
+                        startPollingFallback();
                     }
                 } else if (response.ok) {
                     toast.success("Transcription complete");
@@ -429,21 +428,13 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                     if (errorData) {
                         toast.error(errorData.error || "Transcription failed");
                     } else {
-                        keepTranscribing = true;
-                        router.refresh();
-                        transcribePollRef.current = setInterval(() => {
-                            router.refresh();
-                        }, 10_000);
+                        startPollingFallback();
                     }
                 }
             } catch (err) {
                 if (err instanceof Error && err.name === "AbortError") return;
                 if (err instanceof TypeError) {
-                    keepTranscribing = true;
-                    router.refresh();
-                    transcribePollRef.current = setInterval(() => {
-                        router.refresh();
-                    }, 10_000);
+                    startPollingFallback();
                     return;
                 }
                 toast.error(
@@ -483,9 +474,9 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
             );
 
             if (response.ok) {
-                // Clear local state immediately so the UI shows "no transcription"
-                // without waiting for router.refresh() to deliver the server update.
-                setLocalTranscription(undefined);
+                // Use null sentinel to immediately hide server text
+                // without waiting for router.refresh() to deliver the update.
+                setLocalTranscription(null);
                 setLocalSpeakersJson(undefined);
                 toast.success("Transcription removed");
                 router.refresh();
@@ -984,13 +975,17 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                         <TranscriptionPanel
                                             recording={currentRecording}
                                             transcription={
-                                                currentTranscription?.text
-                                                    ? currentTranscription
+                                                // null = optimistic delete; hide
+                                                // server text until refresh
+                                                localTranscription === null
+                                                    ? undefined
                                                     : localTranscription
                                                       ? {
                                                             text: localTranscription,
                                                         }
-                                                      : undefined
+                                                      : currentTranscription?.text
+                                                        ? currentTranscription
+                                                        : undefined
                                             }
                                             isTranscribing={isTranscribing}
                                             onTranscribe={handleTranscribe}

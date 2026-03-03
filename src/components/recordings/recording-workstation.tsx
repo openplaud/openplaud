@@ -136,6 +136,16 @@ export function RecordingWorkstation({
             // Flag: when true the finally block leaves isTranscribing alone so
             // the polling useEffect can clear it once the result arrives.
             let keepTranscribing = false;
+
+            const startPollingFallback = () => {
+                if (transcribePollRef.current)
+                    clearInterval(transcribePollRef.current);
+                keepTranscribing = true;
+                router.refresh();
+                transcribePollRef.current = setInterval(() => {
+                    router.refresh();
+                }, 10_000);
+            };
             try {
                 const url = diarize
                     ? `/api/recordings/${recording.id}/transcribe?diarize=true`
@@ -166,13 +176,15 @@ export function RecordingWorkstation({
                                     stream: true,
                                 });
                             }
-                            const blocks = buffer.split("\n\n");
+                            const blocks = buffer.split(/\r?\n\r?\n/);
                             buffer = blocks.pop() ?? "";
 
                             for (const block of blocks) {
-                                const line = block.trim();
-                                if (!line.startsWith("data:")) continue;
-                                const jsonStr = line.slice(5).trim();
+                                const jsonStr = block
+                                    .split(/\r?\n/)
+                                    .filter((l) => l.startsWith("data:"))
+                                    .map((l) => l.slice(5).trim())
+                                    .join("\n");
                                 if (!jsonStr) continue;
 
                                 let event: {
@@ -248,11 +260,7 @@ export function RecordingWorkstation({
                             "[transcribe] SSE read error — starting polling",
                             streamErr,
                         );
-                        keepTranscribing = true;
-                        router.refresh();
-                        transcribePollRef.current = setInterval(() => {
-                            router.refresh();
-                        }, 10_000);
+                        startPollingFallback();
                         return;
                     }
 
@@ -260,11 +268,7 @@ export function RecordingWorkstation({
                         console.warn(
                             "[transcribe] SSE stream closed without done — starting polling",
                         );
-                        keepTranscribing = true;
-                        router.refresh();
-                        transcribePollRef.current = setInterval(() => {
-                            router.refresh();
-                        }, 10_000);
+                        startPollingFallback();
                     }
                 } else if (response.ok) {
                     toast.success("Transcription complete");
@@ -279,11 +283,7 @@ export function RecordingWorkstation({
                     if (errorData) {
                         toast.error(errorData.error || "Transcription failed");
                     } else {
-                        keepTranscribing = true;
-                        router.refresh();
-                        transcribePollRef.current = setInterval(() => {
-                            router.refresh();
-                        }, 10_000);
+                        startPollingFallback();
                     }
                 }
             } catch (err) {
@@ -291,11 +291,7 @@ export function RecordingWorkstation({
                 // A TypeError usually means the proxy closed the connection
                 // before sending a proper response — start polling.
                 if (err instanceof TypeError) {
-                    keepTranscribing = true;
-                    router.refresh();
-                    transcribePollRef.current = setInterval(() => {
-                        router.refresh();
-                    }, 10_000);
+                    startPollingFallback();
                     return;
                 }
                 toast.error(
@@ -696,7 +692,7 @@ export function RecordingWorkstation({
                         }
                         onTranscribeDiarized={handleTranscribeDiarized}
                         speakersJson={
-                            transcription?.speakersJson ?? localSpeakersJson
+                            localSpeakersJson ?? transcription?.speakersJson
                         }
                     />
 

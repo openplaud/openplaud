@@ -292,17 +292,42 @@ export async function POST(
                         // data flows -- diarization on long recordings easily
                         // exceeds that. TCP keepalive probes every 30 s
                         // prevent the connection from being considered idle.
+                        // 30 min timeout — diarization on multi-hour files
+                        // is slow but should never hang indefinitely.
+                        const DIARIZE_TIMEOUT_MS = 30 * 60 * 1000;
+                        const withTimeout = <T>(
+                            promise: Promise<T>,
+                        ): Promise<T> =>
+                            Promise.race([
+                                promise,
+                                new Promise<never>((_, reject) =>
+                                    setTimeout(
+                                        () =>
+                                            reject(
+                                                new Error(
+                                                    "Speaches request timed out after 30 minutes",
+                                                ),
+                                            ),
+                                        DIARIZE_TIMEOUT_MS,
+                                    ),
+                                ),
+                            ]);
+
                         const [diarizeResponse, transcribeResponse] =
                             await Promise.all([
-                                postFormData(
-                                    `${baseUrl}/audio/diarization`,
-                                    diarizeForm,
-                                    authHeaders,
+                                withTimeout(
+                                    postFormData(
+                                        `${baseUrl}/audio/diarization`,
+                                        diarizeForm,
+                                        authHeaders,
+                                    ),
                                 ),
-                                postFormData(
-                                    `${baseUrl}/audio/transcriptions`,
-                                    transcribeForm,
-                                    authHeaders,
+                                withTimeout(
+                                    postFormData(
+                                        `${baseUrl}/audio/transcriptions`,
+                                        transcribeForm,
+                                        authHeaders,
+                                    ),
                                 ),
                             ]);
 
@@ -689,12 +714,15 @@ export async function POST(
                             return fd;
                         };
 
+                        // 5 min timeout for streaming transcription requests
+                        const STREAM_TIMEOUT_MS = 5 * 60 * 1000;
                         let speachesResponse = await fetch(
                             `${baseUrl}/audio/transcriptions`,
                             {
                                 method: "POST",
                                 headers: { Authorization: `Bearer ${apiKey}` },
                                 body: makeFormData(true),
+                                signal: AbortSignal.timeout(STREAM_TIMEOUT_MS),
                             },
                         );
 
@@ -713,6 +741,9 @@ export async function POST(
                                         Authorization: `Bearer ${apiKey}`,
                                     },
                                     body: makeFormData(false),
+                                    signal: AbortSignal.timeout(
+                                        STREAM_TIMEOUT_MS,
+                                    ),
                                 },
                             );
                         }
@@ -1169,42 +1200,39 @@ async function saveTranscription(
     speakersJson?: DiarizedSegment[],
 ) {
     const speakersJsonStr = speakersJson ? JSON.stringify(speakersJson) : null;
+    const data = {
+        text,
+        detectedLanguage,
+        transcriptionType: "server" as const,
+        provider: credentials.provider,
+        model: credentials.defaultModel || "whisper-1",
+        speakersJson: speakersJsonStr,
+    };
 
-    const [existingTranscription] = await db
-        .select()
-        .from(transcriptions)
-        .where(
-            and(
-                eq(transcriptions.recordingId, recordingId),
-                eq(transcriptions.userId, userId),
-            ),
-        )
-        .limit(1);
+    // Use a transaction to prevent duplicate inserts from concurrent requests.
+    await db.transaction(async (tx) => {
+        const [existing] = await tx
+            .select({ id: transcriptions.id })
+            .from(transcriptions)
+            .where(
+                and(
+                    eq(transcriptions.recordingId, recordingId),
+                    eq(transcriptions.userId, userId),
+                ),
+            )
+            .limit(1);
 
-    if (existingTranscription) {
-        await db
-            .update(transcriptions)
-            .set({
-                text,
-                detectedLanguage,
-                transcriptionType: "server",
-                provider: credentials.provider,
-                model: credentials.defaultModel || "whisper-1",
-                speakersJson: speakersJsonStr,
-            })
-            .where(eq(transcriptions.id, existingTranscription.id));
-    } else {
-        await db.insert(transcriptions).values({
-            recordingId,
-            userId,
-            text,
-            detectedLanguage,
-            transcriptionType: "server",
-            provider: credentials.provider,
-            model: credentials.defaultModel || "whisper-1",
-            speakersJson: speakersJsonStr,
-        });
-    }
+        if (existing) {
+            await tx
+                .update(transcriptions)
+                .set(data)
+                .where(eq(transcriptions.id, existing.id));
+        } else {
+            await tx
+                .insert(transcriptions)
+                .values({ recordingId, userId, ...data });
+        }
+    });
 }
 
 async function runTitleGeneration(

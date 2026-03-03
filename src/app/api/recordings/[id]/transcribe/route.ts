@@ -240,45 +240,67 @@ export async function POST(
                             `${recordingLabel} Normalization complete — ${(audioBuffer.length / 1_048_576).toFixed(1)} MB (${audioFilename}). Sending to Speaches for diarization…`,
                         );
 
-                        const audioFile = new File(
-                            [new Uint8Array(audioBuffer)],
-                            audioFilename,
-                            { type: audioMimeType },
-                        );
+                        // Two-pass approach: Speaches has a separate
+                        // /v1/audio/diarization endpoint that returns speaker
+                        // labels with timestamps (no text). We transcribe in
+                        // parallel to get text with timestamps, then merge.
+                        const makeAudioFile = () =>
+                            new File(
+                                [new Uint8Array(audioBuffer)],
+                                audioFilename,
+                                { type: audioMimeType },
+                            );
 
-                        const formData = new FormData();
-                        formData.append("file", audioFile);
-                        formData.append("model", model);
-                        formData.append("diarization", "true");
-                        // min_speakers=2 hints to onnx-diarization that there
-                        // are at least two speakers; without this hint the model
-                        // may collapse everything into one cluster.
-                        formData.append("min_speakers", "2");
-                        formData.append("response_format", "verbose_json");
-                        formData.append("vad_filter", "true");
+                        // Pass 1: Diarization — speaker segments
+                        const diarizeForm = new FormData();
+                        diarizeForm.append("file", makeAudioFile());
+                        diarizeForm.append("min_speakers", "2");
 
-                        const speachesResponse = await fetch(
-                            `${baseUrl}/audio/transcriptions`,
-                            {
-                                method: "POST",
-                                headers: { Authorization: `Bearer ${apiKey}` },
-                                body: formData,
-                            },
+                        // Pass 2: Transcription — verbose_json for timestamps
+                        const transcribeForm = new FormData();
+                        transcribeForm.append("file", makeAudioFile());
+                        transcribeForm.append("model", model);
+                        transcribeForm.append(
+                            "response_format",
+                            "verbose_json",
                         );
+                        transcribeForm.append("vad_filter", "true");
+
+                        // Run both in parallel for speed
+                        const [diarizeResponse, transcribeResponse] =
+                            await Promise.all([
+                                fetch(`${baseUrl}/audio/diarization`, {
+                                    method: "POST",
+                                    headers: {
+                                        Authorization: `Bearer ${apiKey}`,
+                                    },
+                                    body: diarizeForm,
+                                }),
+                                fetch(`${baseUrl}/audio/transcriptions`, {
+                                    method: "POST",
+                                    headers: {
+                                        Authorization: `Bearer ${apiKey}`,
+                                    },
+                                    body: transcribeForm,
+                                }),
+                            ]);
 
                         console.log(
-                            `${recordingLabel} Speaches responded — HTTP ${speachesResponse.status}`,
+                            `${recordingLabel} Speaches responded — diarize: HTTP ${diarizeResponse.status}, transcribe: HTTP ${transcribeResponse.status}`,
                         );
 
-                        if (speachesResponse.status === 500) {
-                            const errorText = await speachesResponse.text();
+                        // Check diarization response
+                        if (diarizeResponse.status === 500) {
+                            const errorText = await diarizeResponse.text();
                             console.error(
                                 `${recordingLabel} Speaches diarization 500:`,
                                 errorText.slice(0, 500),
                             );
                             clearInterval(heartbeat);
                             const isDiarizationMissing =
-                                errorText.toLowerCase().includes("diarization") ||
+                                errorText
+                                    .toLowerCase()
+                                    .includes("diarization") ||
                                 errorText.toLowerCase().includes("onnx");
                             send({
                                 type: "error",
@@ -291,40 +313,114 @@ export async function POST(
                             return;
                         }
 
-                        if (!speachesResponse.ok) {
-                            const errorText = await speachesResponse.text();
+                        if (!diarizeResponse.ok) {
+                            const errorText = await diarizeResponse.text();
                             throw new Error(
-                                `Speaches diarization failed (${speachesResponse.status}): ${errorText}`,
+                                `Speaches diarization failed (${diarizeResponse.status}): ${errorText}`,
                             );
                         }
 
-                        type DiarizeResponse = {
+                        // Retry transcription without vad_filter if it 500'd
+                        // (silero-vad not installed)
+                        let finalTranscribeResponse = transcribeResponse;
+                        if (transcribeResponse.status === 500) {
+                            console.log(
+                                `${recordingLabel} Transcription 500 with vad_filter — retrying without`,
+                            );
+                            const retryForm = new FormData();
+                            retryForm.append("file", makeAudioFile());
+                            retryForm.append("model", model);
+                            retryForm.append(
+                                "response_format",
+                                "verbose_json",
+                            );
+                            finalTranscribeResponse = await fetch(
+                                `${baseUrl}/audio/transcriptions`,
+                                {
+                                    method: "POST",
+                                    headers: {
+                                        Authorization: `Bearer ${apiKey}`,
+                                    },
+                                    body: retryForm,
+                                },
+                            );
+                        }
+
+                        if (!finalTranscribeResponse.ok) {
+                            const errorText =
+                                await finalTranscribeResponse.text();
+                            throw new Error(
+                                `Speaches transcription failed (${finalTranscribeResponse.status}): ${errorText}`,
+                            );
+                        }
+
+                        // Parse diarization: {duration, segments: [{start, end, speaker}]}
+                        type DiarizeResult = {
+                            segments: Array<{
+                                start: number;
+                                end: number;
+                                speaker: string;
+                            }>;
+                        };
+                        // Parse transcription: {text, segments: [{text, start, end, ...}]}
+                        type TranscribeResult = {
                             text?: string;
                             segments?: Array<{
-                                speaker?: string;
                                 text: string;
-                                start?: number;
-                                end?: number;
+                                start: number;
+                                end: number;
                             }>;
                         };
 
-                        const json =
-                            (await speachesResponse.json()) as DiarizeResponse;
+                        const diarizeJson =
+                            (await diarizeResponse.json()) as DiarizeResult;
+                        const transcribeJson =
+                            (await finalTranscribeResponse.json()) as TranscribeResult;
 
-                        const speakersJsonData: DiarizedSegment[] = (
-                            json.segments ?? []
-                        )
-                            .map((seg) => ({
-                                speaker: seg.speaker ?? "SPEAKER_00",
-                                text: seg.text.trim(),
-                                start: seg.start,
-                                end: seg.end,
-                            }))
-                            .filter((seg) => seg.text.length > 0);
+                        const diarizeSegments = diarizeJson.segments ?? [];
+                        const transcribeSegments =
+                            transcribeJson.segments ?? [];
+
+                        console.log(
+                            `${recordingLabel} Diarize: ${diarizeSegments.length} speaker segments. Transcribe: ${transcribeSegments.length} text segments.`,
+                        );
+
+                        // Merge: assign a speaker to each transcription segment
+                        // by finding the diarization segment with the most
+                        // temporal overlap.
+                        const speakersJsonData: DiarizedSegment[] =
+                            transcribeSegments
+                                .map((seg) => {
+                                    let bestSpeaker = "SPEAKER_00";
+                                    let bestOverlap = 0;
+                                    for (const dSeg of diarizeSegments) {
+                                        const overlap = Math.max(
+                                            0,
+                                            Math.min(seg.end, dSeg.end) -
+                                                Math.max(
+                                                    seg.start,
+                                                    dSeg.start,
+                                                ),
+                                        );
+                                        if (overlap > bestOverlap) {
+                                            bestOverlap = overlap;
+                                            bestSpeaker = dSeg.speaker;
+                                        }
+                                    }
+                                    return {
+                                        speaker: bestSpeaker,
+                                        text: seg.text.trim(),
+                                        start: seg.start,
+                                        end: seg.end,
+                                    };
+                                })
+                                .filter((seg) => seg.text.length > 0);
 
                         const rawText =
-                            json.text ??
-                            speakersJsonData.map((s) => s.text).join(" ");
+                            transcribeJson.text ??
+                            speakersJsonData
+                                .map((s) => s.text)
+                                .join(" ");
                         const transcriptionText =
                             postProcessTranscription(rawText);
 

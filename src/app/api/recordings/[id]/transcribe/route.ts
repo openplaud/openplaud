@@ -393,10 +393,12 @@ export async function POST(
                             retryForm.append("file", makeAudioFile());
                             retryForm.append("model", model);
                             retryForm.append("response_format", "verbose_json");
-                            finalTranscribeResponse = await postFormData(
-                                `${baseUrl}/audio/transcriptions`,
-                                retryForm,
-                                authHeaders,
+                            finalTranscribeResponse = await withTimeout(
+                                postFormData(
+                                    `${baseUrl}/audio/transcriptions`,
+                                    retryForm,
+                                    authHeaders,
+                                ),
                             );
                         }
 
@@ -824,10 +826,13 @@ export async function POST(
                                 if (buffer.trim()) {
                                     const trailingBlocks = buffer.split("\n\n");
                                     for (const block of trailingBlocks) {
+                                        let sseEventType = "";
                                         let jsonStr = "";
                                         for (const line of block.split("\n")) {
                                             const trimmed = line.trim();
-                                            if (trimmed.startsWith("data:")) {
+                                            if (trimmed.startsWith("event:")) {
+                                                sseEventType = trimmed.slice(6).trim();
+                                            } else if (trimmed.startsWith("data:")) {
                                                 jsonStr = trimmed
                                                     .slice(5)
                                                     .trim();
@@ -836,11 +841,20 @@ export async function POST(
                                         if (!jsonStr) continue;
                                         try {
                                             const data = JSON.parse(jsonStr);
-                                            const delta =
-                                                data.delta ?? data.text ?? "";
-                                            if (delta) {
-                                                accumulatedText += delta;
-                                                chunkCount++;
+                                            const eventType =
+                                                sseEventType || data.type || "";
+                                            if (
+                                                eventType === "transcript.text.done" &&
+                                                typeof data.transcript === "string"
+                                            ) {
+                                                accumulatedText = data.transcript;
+                                            } else {
+                                                const delta =
+                                                    data.delta ?? data.text ?? "";
+                                                if (delta) {
+                                                    accumulatedText += delta;
+                                                    chunkCount++;
+                                                }
                                             }
                                         } catch {
                                             // ignore unparseable trailing data

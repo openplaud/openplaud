@@ -15,6 +15,7 @@ interface TranscriptionPanelProps {
     transcription?: Transcription;
     isTranscribing: boolean;
     onTranscribe: () => void;
+    disabled?: boolean;
 }
 
 export function TranscriptionPanel({
@@ -22,6 +23,7 @@ export function TranscriptionPanel({
     transcription,
     isTranscribing,
     onTranscribe,
+    disabled,
 }: TranscriptionPanelProps) {
     return (
         <Card>
@@ -35,7 +37,7 @@ export function TranscriptionPanel({
                         <Button
                             onClick={onTranscribe}
                             size="sm"
-                            disabled={isTranscribing}
+                            disabled={isTranscribing || disabled}
                         >
                             {isTranscribing ? (
                                 <>
@@ -88,7 +90,11 @@ export function TranscriptionPanel({
                         <p className="text-sm text-muted-foreground mb-4">
                             No transcription available
                         </p>
-                        <Button onClick={onTranscribe} size="sm">
+                        <Button
+                            onClick={onTranscribe}
+                            size="sm"
+                            disabled={disabled}
+                        >
                             <Sparkles className="w-4 h-4 mr-2" />
                             Generate Transcription
                         </Button>

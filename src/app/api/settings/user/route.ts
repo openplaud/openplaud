@@ -35,6 +35,7 @@ const DEFAULT_SETTINGS = {
     onboardingCompleted: false,
     autoGenerateTitle: true,
     syncTitleToPlaud: false,
+    splitSegmentMinutes: 60,
 } as const;
 
 // Settings field names (excluding userId, id, createdAt, updatedAt)
@@ -68,6 +69,7 @@ const SETTINGS_FIELDS = [
     "onboardingCompleted",
     "autoGenerateTitle",
     "syncTitleToPlaud",
+    "splitSegmentMinutes",
 ] as const;
 
 // Extract settings from database row to response format

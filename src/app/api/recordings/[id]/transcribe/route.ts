@@ -1223,30 +1223,15 @@ async function saveTranscription(
         speakersJson: speakersJsonStr,
     };
 
-    // Use a transaction to prevent duplicate inserts from concurrent requests.
-    await db.transaction(async (tx) => {
-        const [existing] = await tx
-            .select({ id: transcriptions.id })
-            .from(transcriptions)
-            .where(
-                and(
-                    eq(transcriptions.recordingId, recordingId),
-                    eq(transcriptions.userId, userId),
-                ),
-            )
-            .limit(1);
-
-        if (existing) {
-            await tx
-                .update(transcriptions)
-                .set(data)
-                .where(eq(transcriptions.id, existing.id));
-        } else {
-            await tx
-                .insert(transcriptions)
-                .values({ recordingId, userId, ...data });
-        }
-    });
+    // Atomic upsert — the UNIQUE(recording_id, user_id) constraint
+    // guarantees exactly one transcription per recording per user.
+    await db
+        .insert(transcriptions)
+        .values({ recordingId, userId, ...data })
+        .onConflictDoUpdate({
+            target: [transcriptions.recordingId, transcriptions.userId],
+            set: data,
+        });
 }
 
 async function runTitleGeneration(

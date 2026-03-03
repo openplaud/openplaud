@@ -186,6 +186,8 @@ export const transcriptions = pgTable(
         createdAt: timestamp("created_at").notNull().defaultNow(),
     },
     (table) => ({
+        // Each recording has at most one transcription per user
+        recordingUserUnique: unique().on(table.recordingId, table.userId),
         // Index for looking up transcription by recording (most common query)
         recordingIdIdx: index("transcriptions_recording_id_idx").on(
             table.recordingId,

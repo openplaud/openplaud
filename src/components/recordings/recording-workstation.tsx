@@ -158,9 +158,14 @@ export function RecordingWorkstation({
                     try {
                         while (true) {
                             const { done, value } = await reader.read();
-                            if (done) break;
-
-                            buffer += decoder.decode(value, { stream: true });
+                            if (done) {
+                                // Flush remaining TextDecoder bytes and process any trailing SSE block.
+                                buffer += decoder.decode();
+                            } else {
+                                buffer += decoder.decode(value, {
+                                    stream: true,
+                                });
+                            }
                             const blocks = buffer.split("\n\n");
                             buffer = blocks.pop() ?? "";
 
@@ -191,9 +196,7 @@ export function RecordingWorkstation({
                                         (prev) => prev + event.text,
                                     );
                                 } else if (event.type === "status") {
-                                    setStatusMessage(
-                                        event.message ?? "",
-                                    );
+                                    setStatusMessage(event.message ?? "");
                                 } else if (event.type === "done") {
                                     receivedDone = true;
                                     setStatusMessage("");
@@ -227,6 +230,8 @@ export function RecordingWorkstation({
                                 }
                                 // "ping" events (heartbeat) are ignored
                             }
+
+                            if (done) break;
                         }
                     } catch (streamErr) {
                         if (

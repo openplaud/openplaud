@@ -37,6 +37,11 @@ export async function postFormData(
     const body = Buffer.from(await formResponse.arrayBuffer());
 
     const parsed = new URL(url);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+        throw new Error(
+            `Unsupported protocol: ${parsed.protocol} — only http: and https: are allowed`,
+        );
+    }
     const isHttps = parsed.protocol === "https:";
     const requestFn = isHttps ? httpsRequest : httpRequest;
 
@@ -44,8 +49,7 @@ export async function postFormData(
         const req = requestFn(
             {
                 hostname: parsed.hostname,
-                port:
-                    parsed.port || (isHttps ? "443" : "80"),
+                port: parsed.port || (isHttps ? "443" : "80"),
                 path: parsed.pathname + parsed.search,
                 method: "POST",
                 headers: {

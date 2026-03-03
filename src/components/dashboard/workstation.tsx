@@ -203,9 +203,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                             isDefaultTranscription: boolean;
                         }>
                     )?.find((p) => p.isDefaultTranscription);
-                    setTranscriptionProvider(
-                        defaultProvider?.provider ?? null,
-                    );
+                    setTranscriptionProvider(defaultProvider?.provider ?? null);
                 })
                 .catch(() => {});
         }
@@ -319,9 +317,14 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                     try {
                         while (true) {
                             const { done, value } = await reader.read();
-                            if (done) break;
-
-                            buffer += decoder.decode(value, { stream: true });
+                            if (done) {
+                                // Flush remaining TextDecoder bytes and process any trailing SSE block.
+                                buffer += decoder.decode();
+                            } else {
+                                buffer += decoder.decode(value, {
+                                    stream: true,
+                                });
+                            }
                             const blocks = buffer.split("\n\n");
                             buffer = blocks.pop() ?? "";
 
@@ -352,9 +355,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                         (prev) => prev + event.text,
                                     );
                                 } else if (event.type === "status") {
-                                    setStatusMessage(
-                                        event.message ?? "",
-                                    );
+                                    setStatusMessage(event.message ?? "");
                                 } else if (event.type === "done") {
                                     receivedDone = true;
                                     setStatusMessage("");
@@ -385,6 +386,8 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                 }
                                 // "ping" events (heartbeat) are ignored
                             }
+
+                            if (done) break;
                         }
                     } catch (streamErr) {
                         if (
@@ -812,6 +815,26 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                     recordings={recordings}
                                     currentRecording={currentRecording}
                                     onSelect={(r) => {
+                                        // Abort any in-flight transcription
+                                        // stream before switching recordings
+                                        // to prevent results leaking into the
+                                        // new selection.
+                                        if (isTranscribing) {
+                                            transcribeAbortRef.current?.abort();
+                                            transcribeAbortRef.current = null;
+                                            if (transcribePollRef.current) {
+                                                clearInterval(
+                                                    transcribePollRef.current,
+                                                );
+                                                transcribePollRef.current =
+                                                    null;
+                                            }
+                                            setIsTranscribing(false);
+                                            setStreamingText("");
+                                            setStatusMessage("");
+                                            streamingAccumulatorRef.current =
+                                                "";
+                                        }
                                         setSplitConflict(null);
                                         setCurrentRecording(r);
                                         sessionStorage.setItem(

@@ -34,6 +34,7 @@ interface Provider {
     defaultModel: string | null;
     isDefaultTranscription: boolean;
     isDefaultEnhancement: boolean;
+    streamingEnabled?: boolean;
     createdAt: Date;
 }
 

@@ -303,6 +303,78 @@ Best for: Enterprise compliance, Azure integration
 
 </details>
 
+<details>
+<summary><b>🎙️ Speaches (Self-hosted Whisper with GPU acceleration)</b></summary>
+
+[Speaches](https://github.com/speaches-ai/speaches) is an OpenAI-compatible speech-to-text server that runs Faster Whisper locally. With CUDA support it can transcribe hours-long recordings in minutes and supports **speaker diarization** (detecting who said what).
+
+**OpenPlaud configuration:**
+
+- **Base URL**: `http://<speaches-host>:8000/v1`
+- **API Key**: any non-empty string (e.g. `sk-1`)
+- **Models**: `deepdml/faster-whisper-large-v3-turbo-ct2`
+
+> Enable the **Speaches streaming** toggle in OpenPlaud Settings to get real-time transcription progress and speaker detection.
+
+**Running Speaches with Docker (CUDA)**
+
+Create these two files next to your Speaches `docker-compose.yml`:
+
+`Dockerfile.speaches.cuda`:
+
+```dockerfile
+ARG IMAGE="ghcr.io/speaches-ai/speaches"
+ARG TAG="0.9.0-rc.3-cuda-12.4.1"
+FROM ${IMAGE}:${TAG}
+
+# install extra python libs like silero-vad as VAD-Filter (which removes whisper hallucinations in case of Silence / Noise)
+ARG EXTRA_PY_LIBS="silero-vad"
+RUN uv pip install ${EXTRA_PY_LIBS}
+```
+
+`docker-compose.yml`:
+
+```yaml
+services:
+  whisper:
+    build:
+      context: .
+      dockerfile: Dockerfile.speaches.cuda
+    restart: always
+    ports:
+      - "8000:8000"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    environment:
+      WHISPER__INFERENCE_DEVICE: cuda
+      WHISPER__COMPUTE_TYPE: float16
+      LD_LIBRARY_PATH: /home/ubuntu/speaches/.venv/lib/python3.12/site-packages/nvidia/cudnn/lib
+      # Download models on startup if not already cached
+      PRELOAD_MODELS: '["deepdml/faster-whisper-large-v3-turbo-ct2", "Wespeaker/wespeaker-voxceleb-resnet34-LM", "fedirz/segmentation_community_1"]'
+    volumes:
+      - ./speaches-cache:/home/ubuntu/.cache/huggingface/hub
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+```
+
+Build and start:
+
+```bash
+docker compose up -d --build --force-recreate
+```
+
+> **Note on cuDNN**: The `LD_LIBRARY_PATH` override is required because the pip-installed cuDNN 9.x sub-libraries are in the Python venv, while the system stub at `/usr/lib` only provides the main `libcudnn.so`. Without this, ONNX Runtime (used for speaker diarization) falls back to CPU.
+
+Best for: Self-hosted GPU transcription, speaker diarization, full privacy
+
+</details>
+
 ### 🌐 Browser-Based Transcription (Free!)
 
 OpenPlaud supports **client-side transcription** using Transformers.js, running Whisper models directly in your browser:

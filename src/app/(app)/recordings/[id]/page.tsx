@@ -4,6 +4,7 @@ import { RecordingWorkstation } from "@/components/recordings/recording-workstat
 import { db } from "@/db";
 import { recordings, transcriptions } from "@/db/schema";
 import { requireAuth } from "@/lib/auth-server";
+import type { DiarizedSegment } from "@/types/transcription";
 
 interface RecordingDetailPageProps {
     params: Promise<{ id: string }>;
@@ -49,6 +50,16 @@ export default async function RecordingDetailPage({
                           detectedLanguage:
                               transcription.detectedLanguage || undefined,
                           transcriptionType: transcription.transcriptionType,
+                          speakersJson: (() => {
+                              if (!transcription.speakersJson) return undefined;
+                              try {
+                                  return JSON.parse(
+                                      transcription.speakersJson,
+                                  ) as DiarizedSegment[];
+                              } catch {
+                                  return undefined;
+                              }
+                          })(),
                       }
                     : undefined
             }

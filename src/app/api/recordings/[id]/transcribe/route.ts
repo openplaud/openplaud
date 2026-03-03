@@ -254,7 +254,6 @@ export async function POST(
                         // Pass 1: Diarization — speaker segments
                         const diarizeForm = new FormData();
                         diarizeForm.append("file", makeAudioFile());
-                        diarizeForm.append("min_speakers", "2");
 
                         // Pass 2: Transcription — verbose_json for timestamps
                         const transcribeForm = new FormData();
@@ -290,6 +289,22 @@ export async function POST(
                         );
 
                         // Check diarization response
+                        if (diarizeResponse.status === 404) {
+                            clearInterval(heartbeat);
+                            console.error(
+                                `${recordingLabel} Diarization endpoint not found (404) — Speaches >= v0.9.0 required`,
+                            );
+                            send({
+                                type: "error",
+                                message:
+                                    "Speaker detection requires Speaches v0.9.0 or newer.\n" +
+                                    "Your Speaches server does not have the /v1/audio/diarization endpoint.\n" +
+                                    "Rebuild your Speaches container from source at tag v0.9.0-rc.3 or later.",
+                            });
+                            controller.close();
+                            return;
+                        }
+
                         if (diarizeResponse.status === 500) {
                             const errorText = await diarizeResponse.text();
                             console.error(

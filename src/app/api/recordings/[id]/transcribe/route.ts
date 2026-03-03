@@ -831,8 +831,12 @@ export async function POST(
                                         for (const line of block.split("\n")) {
                                             const trimmed = line.trim();
                                             if (trimmed.startsWith("event:")) {
-                                                sseEventType = trimmed.slice(6).trim();
-                                            } else if (trimmed.startsWith("data:")) {
+                                                sseEventType = trimmed
+                                                    .slice(6)
+                                                    .trim();
+                                            } else if (
+                                                trimmed.startsWith("data:")
+                                            ) {
                                                 jsonStr = trimmed
                                                     .slice(5)
                                                     .trim();
@@ -844,13 +848,18 @@ export async function POST(
                                             const eventType =
                                                 sseEventType || data.type || "";
                                             if (
-                                                eventType === "transcript.text.done" &&
-                                                typeof data.transcript === "string"
+                                                eventType ===
+                                                    "transcript.text.done" &&
+                                                typeof data.transcript ===
+                                                    "string"
                                             ) {
-                                                accumulatedText = data.transcript;
+                                                accumulatedText =
+                                                    data.transcript;
                                             } else {
                                                 const delta =
-                                                    data.delta ?? data.text ?? "";
+                                                    data.delta ??
+                                                    data.text ??
+                                                    "";
                                                 if (delta) {
                                                     accumulatedText += delta;
                                                     chunkCount++;
@@ -1265,7 +1274,7 @@ async function runTitleGeneration(
             );
 
             if (generatedTitle) {
-                const updateResult = await db
+                const updatedRows = await db
                     .update(recordings)
                     .set({
                         filename: generatedTitle,
@@ -1277,12 +1286,13 @@ async function runTitleGeneration(
                             eq(recordings.id, recordingId),
                             eq(recordings.filenameModified, false),
                         ),
-                    );
+                    )
+                    .returning({ id: recordings.id });
 
                 // Only sync to Plaud if we actually updated the local title.
                 // The conditional WHERE can no-op if a concurrent user rename
                 // already set filenameModified=true.
-                const rowsUpdated = updateResult.rowCount ?? 0;
+                const didUpdate = updatedRows.length > 0;
 
                 const isLocallyCreated =
                     recording.plaudFileId.startsWith("split-") ||
@@ -1290,7 +1300,7 @@ async function runTitleGeneration(
                     recording.plaudFileId.startsWith("uploaded-");
 
                 if (
-                    rowsUpdated > 0 &&
+                    didUpdate &&
                     syncTitleToPlaud &&
                     !isLocallyCreated &&
                     recording.plaudFileId

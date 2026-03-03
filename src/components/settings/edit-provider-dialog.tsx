@@ -384,9 +384,7 @@ export function EditProviderDialog({
                                         type="button"
                                         aria-label="Refresh model list"
                                         disabled={isLoadingModels}
-                                        onClick={() =>
-                                            fetchSpeachesModels()
-                                        }
+                                        onClick={() => fetchSpeachesModels()}
                                         className="shrink-0 flex items-center justify-center h-10 w-10 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
                                     >
                                         <RefreshCw

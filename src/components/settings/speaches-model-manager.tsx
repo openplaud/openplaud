@@ -73,8 +73,7 @@ export function SpeachesModelManager({
             installingId !== null &&
             installedModels.some(
                 (m) =>
-                    normalizeModelId(m.id) ===
-                    normalizeModelId(installingId),
+                    normalizeModelId(m.id) === normalizeModelId(installingId),
             )
         ) {
             if (!installSuccessShownRef.current) {
@@ -132,12 +131,12 @@ export function SpeachesModelManager({
         }
     };
 
+    // biome-ignore lint/correctness/useExhaustiveDependencies: fetchInstalled and fetchRegistry are stable by intent — only re-run when open changes
     useEffect(() => {
         if (open) {
             fetchInstalled();
             fetchRegistry();
         }
-        // biome-ignore lint/correctness/useExhaustiveDependencies: only open matters; fetch fns are recreated each render
     }, [open]);
 
     // Always refresh the parent list when the dialog closes
@@ -184,9 +183,7 @@ export function SpeachesModelManager({
                     }
                     pollTimeoutRef.current = null;
                     reject(
-                        new Error(
-                            "Model install timed out after 30 minutes",
-                        ),
+                        new Error("Model install timed out after 30 minutes"),
                     );
                 }, POLL_TIMEOUT_MS);
                 pollIntervalRef.current = setInterval(async () => {
@@ -199,7 +196,8 @@ export function SpeachesModelManager({
                                 normalizeModelId(modelId),
                         )
                     ) {
-                        clearInterval(pollIntervalRef.current!);
+                        if (pollIntervalRef.current)
+                            clearInterval(pollIntervalRef.current);
                         pollIntervalRef.current = null;
                         if (pollTimeoutRef.current) {
                             clearTimeout(pollTimeoutRef.current);

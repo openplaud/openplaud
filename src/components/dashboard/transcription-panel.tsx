@@ -77,7 +77,11 @@ function groupConsecutiveSpeakers(segments: DiarizedSegment[]): SpeakerGroup[] {
         if (last && last.speaker === seg.speaker) {
             last.text += ` ${seg.text}`;
         } else {
-            groups.push({ speaker: seg.speaker, text: seg.text, start: seg.start });
+            groups.push({
+                speaker: seg.speaker,
+                text: seg.text,
+                start: seg.start,
+            });
         }
     }
     return groups;

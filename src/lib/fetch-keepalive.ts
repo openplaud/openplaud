@@ -33,7 +33,8 @@ export async function postFormData(
     // Serialize FormData (including File blobs) into a multipart body.
     // new Response(formData) produces the correct Content-Type with boundary.
     const formResponse = new Response(formData);
-    const contentType = formResponse.headers.get("content-type")!;
+    const contentType =
+        formResponse.headers.get("content-type") ?? "application/octet-stream";
     const body = Buffer.from(await formResponse.arrayBuffer());
 
     const parsed = new URL(url);

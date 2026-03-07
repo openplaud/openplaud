@@ -10,6 +10,12 @@ export const PLAUD_SERVERS = {
             "EU server — used by European accounts (api-euc1.plaud.ai)",
         apiBase: "https://api-euc1.plaud.ai",
     },
+    apse1: {
+        label: "Asia Pacific – Singapore (api-apse1.plaud.ai)",
+        description:
+            "Asia Pacific server — used by APAC accounts (api-apse1.plaud.ai)",
+        apiBase: "https://api-apse1.plaud.ai",
+    },
 } as const;
 
 export type PlaudServerKey = keyof typeof PLAUD_SERVERS;

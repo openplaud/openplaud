@@ -76,13 +76,28 @@ export async function POST(
         const audioBuffer = await storage.downloadFile(recording.storagePath);
 
         // Create a File object for the transcription API
-        // Determine content type from storage path
-        const contentType = recording.storagePath.endsWith(".mp3")
+        // Detect actual audio format from magic bytes since Plaud files
+        // may have .mp3 extension but contain OGG/Opus data
+        const header = new Uint8Array(audioBuffer.slice(0, 4));
+        const isOgg =
+            header[0] === 0x4f &&
+            header[1] === 0x67 &&
+            header[2] === 0x67 &&
+            header[3] === 0x53; // "OggS"
+
+        const ext = isOgg ? "ogg" : recording.storagePath.split(".").pop() || "mp3";
+        const contentType = isOgg ? "audio/ogg" : recording.storagePath.endsWith(".mp3")
             ? "audio/mpeg"
             : "audio/opus";
+
+        // Ensure filename has a valid extension so the API can detect the format
+        const filename = recording.filename.match(/\.\w{2,4}$/)
+            ? recording.filename
+            : `${recording.filename}.${ext}`;
+
         const audioFile = new File(
             [new Uint8Array(audioBuffer)],
-            recording.filename,
+            filename,
             {
                 type: contentType,
             },

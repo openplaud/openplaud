@@ -25,6 +25,10 @@ Do NOT generate entries for:
 - If a DB migration is required, add a **⚠️ Migration Required** note at the top
 
 ## Entry Format
-Each entry should reference the PR number exactly once. Do NOT duplicate the PR reference.
-Correct: `Add local audio file upload (#29)`
-Wrong: `Add local audio file upload (#29) (#29)`
+`- <description> (#<pr_number>)`
+
+IMPORTANT: Each PR number must appear EXACTLY ONCE per entry. Never repeat it.
+
+## Items to Omit
+- Do NOT include a "Needs Review" or "Uncertain" section. If unsure about categorization, use 🔧 Internal.
+- Skip items that are purely internal refactors, migration script tweaks, or dependency lockfile updates.

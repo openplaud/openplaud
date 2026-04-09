@@ -9,7 +9,13 @@ import {
     vi,
 } from "vitest";
 import { DEFAULT_PLAUD_API_BASE, PlaudClient } from "../lib/plaud/client";
-import { DEFAULT_SERVER_KEY, PLAUD_SERVERS } from "../lib/plaud/servers";
+import {
+    DEFAULT_SERVER_KEY,
+    isValidPlaudApiUrl,
+    PLAUD_SERVERS,
+    resolveApiBase,
+    serverKeyFromApiBase,
+} from "../lib/plaud/servers";
 
 const originalFetch = global.fetch;
 let mockFetch: Mock;
@@ -230,6 +236,78 @@ describe("PlaudClient", () => {
         it("should reject unknown server keys", () => {
             const unknownKey = "evil";
             expect(unknownKey in PLAUD_SERVERS).toBe(false);
+        });
+    });
+
+    describe("isValidPlaudApiUrl", () => {
+        it("should accept valid plaud.ai HTTPS URLs", () => {
+            expect(isValidPlaudApiUrl("https://api.plaud.ai")).toBe(true);
+            expect(isValidPlaudApiUrl("https://api-euc1.plaud.ai")).toBe(true);
+            expect(isValidPlaudApiUrl("https://api-apse1.plaud.ai")).toBe(true);
+            expect(isValidPlaudApiUrl("https://api-usw1.plaud.ai")).toBe(true);
+        });
+
+        it("should reject non-plaud domains", () => {
+            expect(isValidPlaudApiUrl("https://evil.com")).toBe(false);
+            expect(isValidPlaudApiUrl("https://plaud.ai.evil.com")).toBe(false);
+            expect(isValidPlaudApiUrl("https://notplaud.ai")).toBe(false);
+        });
+
+        it("should reject non-HTTPS URLs", () => {
+            expect(isValidPlaudApiUrl("http://api.plaud.ai")).toBe(false);
+        });
+
+        it("should reject invalid URLs", () => {
+            expect(isValidPlaudApiUrl("")).toBe(false);
+            expect(isValidPlaudApiUrl("not-a-url")).toBe(false);
+        });
+    });
+
+    describe("resolveApiBase", () => {
+        it("should resolve known server keys", () => {
+            expect(resolveApiBase("global")).toBe("https://api.plaud.ai");
+            expect(resolveApiBase("eu")).toBe("https://api-euc1.plaud.ai");
+            expect(resolveApiBase("apse1")).toBe("https://api-apse1.plaud.ai");
+        });
+
+        it("should resolve custom key with valid URL", () => {
+            expect(resolveApiBase("custom", "https://api-usw1.plaud.ai")).toBe(
+                "https://api-usw1.plaud.ai",
+            );
+        });
+
+        it("should strip trailing slashes from custom URLs", () => {
+            expect(resolveApiBase("custom", "https://api.plaud.ai/")).toBe(
+                "https://api.plaud.ai",
+            );
+        });
+
+        it("should return null for custom key with invalid URL", () => {
+            expect(resolveApiBase("custom", "https://evil.com")).toBeNull();
+            expect(resolveApiBase("custom", "")).toBeNull();
+            expect(resolveApiBase("custom")).toBeNull();
+        });
+
+        it("should return null for unknown server keys", () => {
+            expect(resolveApiBase("evil")).toBeNull();
+        });
+    });
+
+    describe("serverKeyFromApiBase", () => {
+        it("should return known keys for known URLs", () => {
+            expect(serverKeyFromApiBase("https://api.plaud.ai")).toBe("global");
+            expect(serverKeyFromApiBase("https://api-euc1.plaud.ai")).toBe(
+                "eu",
+            );
+            expect(serverKeyFromApiBase("https://api-apse1.plaud.ai")).toBe(
+                "apse1",
+            );
+        });
+
+        it("should return 'custom' for unknown URLs", () => {
+            expect(serverKeyFromApiBase("https://api-usw1.plaud.ai")).toBe(
+                "custom",
+            );
         });
     });
 

@@ -52,6 +52,7 @@ export function OnboardingDialog({
     const [step, setStep] = useState<OnboardingStep>("welcome");
     const [bearerToken, setBearerToken] = useState("");
     const [server, setServer] = useState<PlaudServerKey>(DEFAULT_SERVER_KEY);
+    const [customApiBase, setCustomApiBase] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [hasPlaudConnection, setHasPlaudConnection] = useState(false);
     const [hasAiProvider, setHasAiProvider] = useState(false);
@@ -65,6 +66,9 @@ export function OnboardingDialog({
                         setHasPlaudConnection(true);
                         if (data.server) {
                             setServer(data.server as PlaudServerKey);
+                        }
+                        if (data.apiBase) {
+                            setCustomApiBase(data.apiBase);
                         }
                     }
                 })
@@ -90,6 +94,7 @@ export function OnboardingDialog({
             setStep("welcome");
             setBearerToken("");
             setServer(DEFAULT_SERVER_KEY);
+            setCustomApiBase("");
             setIsLoading(false);
             setHasPlaudConnection(false);
             setHasAiProvider(false);
@@ -107,7 +112,11 @@ export function OnboardingDialog({
             const response = await fetch("/api/plaud/connect", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ bearerToken, server }),
+                body: JSON.stringify({
+                    bearerToken,
+                    server,
+                    ...(server === "custom" && { customApiBase }),
+                }),
             });
 
             if (!response.ok) {
@@ -363,6 +372,20 @@ export function OnboardingDialog({
                                                         .description
                                                 }
                                             </p>
+                                            {server === "custom" && (
+                                                <div className="mt-2">
+                                                    <Input
+                                                        placeholder="https://api-xxx.plaud.ai"
+                                                        value={customApiBase}
+                                                        onChange={(e) =>
+                                                            setCustomApiBase(
+                                                                e.target.value,
+                                                            )
+                                                        }
+                                                        disabled={isLoading}
+                                                    />
+                                                </div>
+                                            )}
                                         </div>
                                         <div className="space-y-2">
                                             <Label htmlFor="bearer-token">

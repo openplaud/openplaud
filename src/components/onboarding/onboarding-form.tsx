@@ -27,6 +27,7 @@ export function OnboardingForm() {
     const [step, setStep] = useState<Step>("plaud");
     const [bearerToken, setBearerToken] = useState("");
     const [server, setServer] = useState<PlaudServerKey>(DEFAULT_SERVER_KEY);
+    const [customApiBase, setCustomApiBase] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
 
@@ -41,7 +42,11 @@ export function OnboardingForm() {
             const response = await fetch("/api/plaud/connect", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ bearerToken, server }),
+                body: JSON.stringify({
+                    bearerToken,
+                    server,
+                    ...(server === "custom" && { customApiBase }),
+                }),
             });
 
             if (!response.ok) throw new Error("Failed to connect");
@@ -126,6 +131,18 @@ export function OnboardingForm() {
                         <p className="text-xs text-muted-foreground">
                             {PLAUD_SERVERS[server].description}
                         </p>
+                        {server === "custom" && (
+                            <div className="mt-2">
+                                <Input
+                                    placeholder="https://api-xxx.plaud.ai"
+                                    value={customApiBase}
+                                    onChange={(e) =>
+                                        setCustomApiBase(e.target.value)
+                                    }
+                                    disabled={isLoading}
+                                />
+                            </div>
+                        )}
                     </div>
 
                     <div className="space-y-2">

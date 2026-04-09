@@ -51,3 +51,4 @@ next-env.d.ts
 # local storage
 /storage
 /audio
+plans/

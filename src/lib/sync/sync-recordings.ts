@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { plaudConnections, recordings, userSettings, users } from "@/db/schema";
 import { env } from "@/lib/env";
@@ -39,6 +39,38 @@ interface SyncContext {
 }
 
 /**
+ * Generate a unique storage key for a recording, appending (2), (3) etc.
+ * if another recording with the same name already exists in the DB.
+ */
+async function uniqueStorageKey(
+    userId: string,
+    baseName: string,
+    ext: string,
+    plaudFileId: string,
+): Promise<string> {
+    const candidate = (suffix: string) =>
+        `${userId}/${baseName}${suffix}.${ext}`;
+
+    for (let i = 0; i < 100; i++) {
+        const suffix = i === 0 ? "" : ` (${i + 1})`;
+        const key = candidate(suffix);
+        const [existing] = await db
+            .select({ id: recordings.id })
+            .from(recordings)
+            .where(
+                and(
+                    eq(recordings.storagePath, key),
+                    ne(recordings.plaudFileId, plaudFileId),
+                ),
+            )
+            .limit(1);
+        if (!existing) return key;
+    }
+    // Absolute fallback: use the plaud ID
+    return `${userId}/${plaudFileId}.${ext}`;
+}
+
+/**
  * Process a single recording - download and save to database
  */
 async function processRecording(
@@ -76,7 +108,8 @@ async function processRecording(
         );
 
         const fileExtension = "mp3";
-        const storageKey = `${context.userId}/${plaudRecording.id}.${fileExtension}`;
+        const safeName = plaudRecording.filename.replace(/[/\\:*?"<>|]/g, "-").trim() || plaudRecording.id;
+        const storageKey = await uniqueStorageKey(context.userId, safeName, fileExtension, plaudRecording.id);
         const contentType = "audio/mpeg";
         await storage.uploadFile(storageKey, audioBuffer, contentType);
 

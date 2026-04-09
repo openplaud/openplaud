@@ -28,6 +28,9 @@ export async function POST(
         }
 
         const { id } = await params;
+        const body = await request.json().catch(() => ({}));
+        const overrideProviderId = body.providerId as string | undefined;
+        const overrideModel = body.model as string | undefined;
 
         const [recording] = await db
             .select()
@@ -48,16 +51,28 @@ export async function POST(
         }
 
         // Get user's transcription API credentials
-        const [credentials] = await db
-            .select()
-            .from(apiCredentials)
-            .where(
-                and(
-                    eq(apiCredentials.userId, session.user.id),
-                    eq(apiCredentials.isDefaultTranscription, true),
-                ),
-            )
-            .limit(1);
+        // If a specific provider was requested, look it up by ID
+        const [credentials] = overrideProviderId
+            ? await db
+                  .select()
+                  .from(apiCredentials)
+                  .where(
+                      and(
+                          eq(apiCredentials.id, overrideProviderId),
+                          eq(apiCredentials.userId, session.user.id),
+                      ),
+                  )
+                  .limit(1)
+            : await db
+                  .select()
+                  .from(apiCredentials)
+                  .where(
+                      and(
+                          eq(apiCredentials.userId, session.user.id),
+                          eq(apiCredentials.isDefaultTranscription, true),
+                      ),
+                  )
+                  .limit(1);
 
         if (!credentials) {
             return NextResponse.json(
@@ -107,7 +122,7 @@ export async function POST(
             type: contentType,
         });
 
-        const model = credentials.defaultModel || "whisper-1";
+        const model = overrideModel || credentials.defaultModel || "whisper-1";
         const responseFormat = getResponseFormat(model);
 
         const transcription = await openai.audio.transcriptions.create({
@@ -134,7 +149,7 @@ export async function POST(
                     detectedLanguage,
                     transcriptionType: "server",
                     provider: credentials.provider,
-                    model: credentials.defaultModel || "whisper-1",
+                    model,
                 })
                 .where(eq(transcriptions.id, existingTranscription.id));
         } else {
@@ -145,7 +160,7 @@ export async function POST(
                 detectedLanguage,
                 transcriptionType: "server",
                 provider: credentials.provider,
-                model: credentials.defaultModel || "whisper-1",
+                model,
             });
         }
 

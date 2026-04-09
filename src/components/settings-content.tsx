@@ -7,6 +7,7 @@ import { NotificationsSection } from "./settings-sections/notifications-section"
 import { PlaybackSection } from "./settings-sections/playback-section";
 import { ProvidersSection } from "./settings-sections/providers-section";
 import { StorageSection } from "./settings-sections/storage-section";
+import { SummarySection } from "./settings-sections/summary-section";
 import { SyncSection } from "./settings-sections/sync-section";
 import { TranscriptionSection } from "./settings-sections/transcription-section";
 
@@ -36,6 +37,8 @@ export function SettingsContent({
             return <ProvidersSection initialProviders={initialProviders} />;
         case "transcription":
             return <TranscriptionSection />;
+        case "summary":
+            return <SummarySection />;
         case "sync":
             return <SyncSection />;
         case "playback":

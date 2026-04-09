@@ -121,6 +121,10 @@ export async function GET(request: Request) {
         if (settings.titleGenerationPrompt) {
             settingsData.titleGenerationPrompt = settings.titleGenerationPrompt;
         }
+        // Include summaryPrompt if it exists
+        if (settings.summaryPrompt) {
+            settingsData.summaryPrompt = settings.summaryPrompt;
+        }
         return NextResponse.json({
             ...settingsData,
             userEmail, // Include user email in response
@@ -180,6 +184,14 @@ export async function PUT(request: Request) {
             insertData.titleGenerationPrompt = body.titleGenerationPrompt;
         } else if (!existing) {
             insertData.titleGenerationPrompt = null;
+        }
+
+        // Handle summaryPrompt separately (jsonb field)
+        if (body.summaryPrompt !== undefined) {
+            updateData.summaryPrompt = body.summaryPrompt;
+            insertData.summaryPrompt = body.summaryPrompt;
+        } else if (!existing) {
+            insertData.summaryPrompt = null;
         }
 
         // Handle barkPushUrl separately

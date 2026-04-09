@@ -5,6 +5,7 @@
 export type SettingsSection =
     | "providers"
     | "transcription"
+    | "summary"
     | "storage"
     | "sync"
     | "playback"

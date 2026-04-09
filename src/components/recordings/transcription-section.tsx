@@ -55,17 +55,28 @@ export function TranscriptionSection({
     const [summaryExpanded, setSummaryExpanded] = useState(true);
     const [summaryPreset, setSummaryPreset] = useState("general");
 
-    // Fetch existing summary on mount
+    // Key to force re-fetch summary (e.g. after re-transcription)
+    const [summaryFetchKey, setSummaryFetchKey] = useState(0);
+
+    // Fetch existing summary on mount / after re-transcribe
+    // biome-ignore lint/correctness/useExhaustiveDependencies: summaryFetchKey is an intentional re-fetch trigger
     useEffect(() => {
-        fetch(`/api/recordings/${recordingId}/summary`)
+        const controller = new AbortController();
+        fetch(`/api/recordings/${recordingId}/summary`, {
+            signal: controller.signal,
+        })
             .then((res) => res.json())
             .then((data) => {
                 if (data.summary) {
                     setSummaryData(data);
+                } else {
+                    setSummaryData(null);
                 }
             })
             .catch(() => {});
-    }, [recordingId]);
+
+        return () => controller.abort();
+    }, [recordingId, summaryFetchKey]);
 
     const handleTranscribe = async () => {
         setIsProcessing(true);
@@ -96,6 +107,9 @@ export function TranscriptionSection({
             setTranscription(data.transcription);
             setDetectedLanguage(data.detectedLanguage);
             setTranscriptionType("server");
+            // Invalidate cached summary — it was based on old text
+            setSummaryData(null);
+            setSummaryFetchKey((k) => k + 1);
             toast.success("Transcription complete");
         } catch {
             toast.error("Transcription failed. Please try again.");
@@ -132,6 +146,10 @@ export function TranscriptionSection({
     }, [recordingId, summaryPreset]);
 
     const handleDeleteSummary = useCallback(async () => {
+        // Optimistic delete
+        const previous = summaryData;
+        setSummaryData(null);
+
         try {
             const response = await fetch(
                 `/api/recordings/${recordingId}/summary`,
@@ -139,15 +157,16 @@ export function TranscriptionSection({
             );
 
             if (response.ok) {
-                setSummaryData(null);
                 toast.success("Summary deleted");
             } else {
+                setSummaryData(previous);
                 toast.error("Failed to delete summary");
             }
         } catch {
+            setSummaryData(previous);
             toast.error("Failed to delete summary");
         }
-    }, [recordingId]);
+    }, [recordingId, summaryData]);
 
     return (
         <div className="space-y-6">
@@ -318,15 +337,20 @@ export function TranscriptionSection({
                                                     </h4>
                                                     <ul className="space-y-1">
                                                         {summaryData.keyPoints.map(
-                                                            (point) => (
-                                                                <li
-                                                                    key={point}
-                                                                    className="text-sm text-muted-foreground flex items-start gap-2"
-                                                                >
-                                                                    <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-accent-cyan shrink-0" />
-                                                                    {point}
-                                                                </li>
-                                                            ),
+                                                            (point) => {
+                                                                const key = `kp-${point.slice(0, 32)}`;
+                                                                return (
+                                                                    <li
+                                                                        key={
+                                                                            key
+                                                                        }
+                                                                        className="text-sm text-muted-foreground flex items-start gap-2"
+                                                                    >
+                                                                        <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-accent-cyan shrink-0" />
+                                                                        {point}
+                                                                    </li>
+                                                                );
+                                                            },
                                                         )}
                                                     </ul>
                                                 </div>
@@ -341,15 +365,20 @@ export function TranscriptionSection({
                                                     </h4>
                                                     <ul className="space-y-1">
                                                         {summaryData.actionItems.map(
-                                                            (item) => (
-                                                                <li
-                                                                    key={item}
-                                                                    className="text-sm text-muted-foreground flex items-start gap-2"
-                                                                >
-                                                                    <ListChecks className="w-3.5 h-3.5 mt-0.5 text-accent-cyan shrink-0" />
-                                                                    {item}
-                                                                </li>
-                                                            ),
+                                                            (item) => {
+                                                                const key = `ai-${item.slice(0, 32)}`;
+                                                                return (
+                                                                    <li
+                                                                        key={
+                                                                            key
+                                                                        }
+                                                                        className="text-sm text-muted-foreground flex items-start gap-2"
+                                                                    >
+                                                                        <ListChecks className="w-3.5 h-3.5 mt-0.5 text-accent-cyan shrink-0" />
+                                                                        {item}
+                                                                    </li>
+                                                                );
+                                                            },
                                                         )}
                                                     </ul>
                                                 </div>

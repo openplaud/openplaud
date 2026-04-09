@@ -150,9 +150,21 @@ export async function POST(
         });
 
         // Use a chat model, not whisper
+        // If the configured model is a transcription-only model,
+        // fall back to a reasonable chat model for the provider
         let model = credentials.defaultModel || "gpt-4o-mini";
         if (model.includes("whisper")) {
-            model = "gpt-4o-mini";
+            // Pick a lightweight chat model appropriate for the provider
+            const baseUrl = credentials.baseUrl || "";
+            if (baseUrl.includes("groq")) {
+                model = "llama-3.1-8b-instant";
+            } else if (baseUrl.includes("together")) {
+                model = "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo";
+            } else if (baseUrl.includes("openrouter")) {
+                model = "openai/gpt-4o-mini";
+            } else {
+                model = "gpt-4o-mini";
+            }
         }
 
         // Truncate transcription if too long

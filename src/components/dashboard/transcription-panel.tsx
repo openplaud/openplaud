@@ -11,7 +11,7 @@ import {
     Sparkles,
     Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,13 +55,28 @@ export function TranscriptionPanel({
     const [isSummarizing, setIsSummarizing] = useState(false);
     const [summaryExpanded, setSummaryExpanded] = useState(true);
     const [summaryPreset, setSummaryPreset] = useState("general");
+    // Key to force re-fetch summary (e.g. after transcription text changes)
+    const [summaryFetchKey, setSummaryFetchKey] = useState(0);
+    const transcriptionTextRef = React.useRef(transcription?.text);
+
+    // Detect when transcription text actually changes → invalidate summary
+    if (transcription?.text !== transcriptionTextRef.current) {
+        transcriptionTextRef.current = transcription?.text;
+        // will trigger the useEffect below on next render
+        setSummaryFetchKey((k) => k + 1);
+        setSummaryData(null);
+    }
 
     // Fetch existing summary when recording changes
+    // biome-ignore lint/correctness/useExhaustiveDependencies: summaryFetchKey is an intentional re-fetch signal
     useEffect(() => {
         setSummaryData(null);
         if (!recording?.id) return;
 
-        fetch(`/api/recordings/${recording.id}/summary`)
+        const controller = new AbortController();
+        fetch(`/api/recordings/${recording.id}/summary`, {
+            signal: controller.signal,
+        })
             .then((res) => res.json())
             .then((data) => {
                 if (data.summary) {
@@ -69,7 +84,9 @@ export function TranscriptionPanel({
                 }
             })
             .catch(() => {});
-    }, [recording?.id]);
+
+        return () => controller.abort();
+    }, [recording?.id, summaryFetchKey]);
 
     const handleSummarize = useCallback(async () => {
         setIsSummarizing(true);
@@ -99,6 +116,10 @@ export function TranscriptionPanel({
     }, [recording.id, summaryPreset]);
 
     const handleDeleteSummary = useCallback(async () => {
+        // Optimistic delete
+        const previous = summaryData;
+        setSummaryData(null);
+
         try {
             const response = await fetch(
                 `/api/recordings/${recording.id}/summary`,
@@ -106,15 +127,16 @@ export function TranscriptionPanel({
             );
 
             if (response.ok) {
-                setSummaryData(null);
                 toast.success("Summary deleted");
             } else {
+                setSummaryData(previous);
                 toast.error("Failed to delete summary");
             }
         } catch {
+            setSummaryData(previous);
             toast.error("Failed to delete summary");
         }
-    }, [recording.id]);
+    }, [recording.id, summaryData]);
 
     return (
         <div className="space-y-4">
@@ -176,7 +198,10 @@ export function TranscriptionPanel({
                                     </div>
                                 )}
                                 <div>
-                                    {transcription.text.split(/\s+/).length}{" "}
+                                    {transcription.text.trim()
+                                        ? transcription.text.trim().split(/\s+/)
+                                              .length
+                                        : 0}{" "}
                                     words
                                 </div>
                                 <div>
@@ -305,15 +330,20 @@ export function TranscriptionPanel({
                                                     </h4>
                                                     <ul className="space-y-1">
                                                         {summaryData.keyPoints.map(
-                                                            (point) => (
-                                                                <li
-                                                                    key={point}
-                                                                    className="text-sm text-muted-foreground flex items-start gap-2"
-                                                                >
-                                                                    <span className="text-primary mt-1.5 w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
-                                                                    {point}
-                                                                </li>
-                                                            ),
+                                                            (point) => {
+                                                                const key = `kp-${point.slice(0, 32)}`;
+                                                                return (
+                                                                    <li
+                                                                        key={
+                                                                            key
+                                                                        }
+                                                                        className="text-sm text-muted-foreground flex items-start gap-2"
+                                                                    >
+                                                                        <span className="text-primary mt-1.5 w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+                                                                        {point}
+                                                                    </li>
+                                                                );
+                                                            },
                                                         )}
                                                     </ul>
                                                 </div>
@@ -329,15 +359,20 @@ export function TranscriptionPanel({
                                                     </h4>
                                                     <ul className="space-y-1">
                                                         {summaryData.actionItems.map(
-                                                            (item) => (
-                                                                <li
-                                                                    key={item}
-                                                                    className="text-sm text-muted-foreground flex items-start gap-2"
-                                                                >
-                                                                    <ListChecks className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" />
-                                                                    {item}
-                                                                </li>
-                                                            ),
+                                                            (item) => {
+                                                                const key = `ai-${item.slice(0, 32)}`;
+                                                                return (
+                                                                    <li
+                                                                        key={
+                                                                            key
+                                                                        }
+                                                                        className="text-sm text-muted-foreground flex items-start gap-2"
+                                                                    >
+                                                                        <ListChecks className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" />
+                                                                        {item}
+                                                                    </li>
+                                                                );
+                                                            },
                                                         )}
                                                     </ul>
                                                 </div>

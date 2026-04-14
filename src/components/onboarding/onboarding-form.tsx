@@ -98,8 +98,7 @@ export function OnboardingForm() {
                             <li>Refresh the page</li>
                             <li>Find any request to the Plaud API server</li>
                             <li>
-                                Copy the Authorization header value (starts with
-                                &quot;Bearer &quot;)
+                                Copy the Authorization header value (just the token part after &quot;Bearer &quot;)
                             </li>
                         </ol>
                     </Panel>
@@ -150,7 +149,7 @@ export function OnboardingForm() {
                         <Input
                             id="bearerToken"
                             type="text"
-                            placeholder="Bearer ..."
+                            placeholder="eyJhbGciOiJ..."
                             value={bearerToken}
                             onChange={(e) => setBearerToken(e.target.value)}
                             disabled={isLoading}

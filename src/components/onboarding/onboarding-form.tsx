@@ -98,7 +98,8 @@ export function OnboardingForm() {
                             <li>Refresh the page</li>
                             <li>Find any request to the Plaud API server</li>
                             <li>
-                                Copy the Authorization header value (just the token part after &quot;Bearer &quot;)
+                                Copy the Authorization header value (just the
+                                token part after &quot;Bearer &quot;)
                             </li>
                         </ol>
                     </Panel>

@@ -131,10 +131,11 @@ The onboarding wizard will guide you through:
 2. Open DevTools (`F12`) → **Network** tab
 3. Refresh the page
 4. Find any request to the Plaud API server (e.g. `api.plaud.ai` or `api-euc1.plaud.ai` for EU accounts)
-5. Copy the **Authorization** header value (starts with `Bearer `)
+5. Copy the **Authorization** header value (just the JWT token after `Bearer ` — do not include the word "Bearer")
 6. Note which API server hostname appears in the requests — you will need to select it during onboarding
 
 > 💡 **Tip**: The bearer token is used to sync recordings from your Plaud device. Keep it secure!
+> ⚠️ **Note**: Only paste the JWT token (e.g., `eyJhbGciOiJ...`), not the full `Bearer eyJ...` header value.
 
 ### 💾 Storage Options
 

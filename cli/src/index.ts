@@ -6,6 +6,7 @@ import { recordingsCommand } from "./commands/recordings";
 import { downloadCommand } from "./commands/download";
 import { transcribeCommand } from "./commands/transcribe";
 import { syncCommand } from "./commands/sync";
+import { dictionaryCommand } from "./commands/dictionary";
 
 const program = new Command()
     .name("openplaud")
@@ -20,5 +21,6 @@ program.addCommand(recordingsCommand);
 program.addCommand(downloadCommand);
 program.addCommand(transcribeCommand);
 program.addCommand(syncCommand);
+program.addCommand(dictionaryCommand);
 
 program.parse();

@@ -120,9 +120,38 @@ openplaud sync --json                        # JSON output for scripting
 openplaud sync -l de                         # Language hint for all transcriptions
 ```
 
+### `openplaud dictionary`
+
+Manage a dictionary of domain-specific terms and correction rules that improve transcription accuracy. Terms are passed to the Whisper `prompt` parameter to bias recognition. Correction rules are also applied as post-processing find-and-replace on the output.
+
+```bash
+openplaud dictionary              # Show all terms and corrections
+openplaud dictionary show         # Same as above
+openplaud dictionary edit         # Open in $EDITOR
+openplaud dictionary path         # Print the file path
+openplaud dictionary add TiVA     # Add a term
+openplaud dictionary add "Plot → Plaud"  # Add a correction rule
+```
+
+The dictionary file lives at `~/.config/openplaud-cli/dictionary.txt`. Format:
+
+```
+# Terms — bias Whisper toward recognizing these words
+TiVA
+Preclinics
+Smartkomm
+
+# Corrections — also replace in output if Whisper still gets it wrong
+Plot → Plaud
+Diva → TiVA
+Smart-Com → Smartkomm
+```
+
+The dictionary is loaded automatically on every transcription — no flags needed.
+
 ## Configuration
 
-Credentials are stored in `~/.config/openplaud-cli/config.json` with `0600` permissions (owner-only read/write). Sync state is tracked in `~/.config/openplaud-cli/state.json`.
+Credentials are stored in `~/.config/openplaud-cli/config.json` with `0600` permissions (owner-only read/write). Sync state is tracked in `~/.config/openplaud-cli/state.json`. The dictionary is at `~/.config/openplaud-cli/dictionary.txt`.
 
 ### Getting Your Plaud Bearer Token
 

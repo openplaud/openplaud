@@ -1,10 +1,19 @@
 import { OpenAI } from "openai";
 import type { CliConfig } from "./config";
+import {
+    loadDictionary,
+    buildWhisperPrompt,
+    applyCorrections,
+} from "./dictionary";
 
 export const DEFAULT_WHISPER_MODEL = "whisper-1";
 
 /**
  * Transcribe an audio buffer using the OpenAI-compatible Whisper API.
+ *
+ * Automatically loads the dictionary from ~/.config/openplaud-cli/dictionary.txt:
+ * - Terms are passed as the Whisper `prompt` parameter to bias recognition
+ * - Correction rules (wrong → right) are applied as post-processing
  *
  * Works with any OpenAI-compatible provider:
  * - OpenAI (default): whisper-1
@@ -33,6 +42,10 @@ export async function transcribeAudio(
     const model = config.whisperModel || DEFAULT_WHISPER_MODEL;
     const filename = options?.filename || "recording.mp3";
 
+    // Load dictionary for Whisper prompt and post-processing
+    const dictionary = loadDictionary();
+    const whisperPrompt = buildWhisperPrompt(dictionary);
+
     // Detect content type from buffer magic bytes
     const contentType = detectAudioType(audioBuffer);
 
@@ -44,9 +57,17 @@ export async function transcribeAudio(
         file,
         model,
         ...(options?.language && { language: options.language }),
+        ...(whisperPrompt && { prompt: whisperPrompt }),
     });
 
-    return response.text;
+    let text = response.text;
+
+    // Apply correction rules from dictionary
+    if (dictionary.corrections.length > 0) {
+        text = applyCorrections(text, dictionary.corrections);
+    }
+
+    return text;
 }
 
 /**

@@ -227,9 +227,22 @@ export const syncCommand = new Command("sync")
                 }
             }
 
-            // Only advance lastSyncAt if at least one recording succeeded.
-            // This ensures failed recordings are retried on the next sync.
-            if (anySucceeded) {
+            // Advance lastSyncAt carefully: if any recordings still need
+            // retry (transcription failed or download error), set the cutoff
+            // just before the oldest unfinished recording so it's re-fetched
+            // on the next default sync.  If everything succeeded, advance to now.
+            const needsRetry = results.filter((r) => r.status !== "ok");
+            if (needsRetry.length > 0) {
+                const oldestRetryMs = Math.min(
+                    ...newRecordings
+                        .filter((rec) =>
+                            needsRetry.some((r) => r.id === rec.id),
+                        )
+                        .map((rec) => rec.start_time),
+                );
+                // Set cutoff 1 ms before the oldest unfinished recording
+                state.lastSyncAt = new Date(oldestRetryMs - 1).toISOString();
+            } else if (anySucceeded) {
                 state.lastSyncAt = new Date().toISOString();
             }
             saveState(state);

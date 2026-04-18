@@ -8,28 +8,33 @@ import type { PlaudRecording } from "@/types/plaud";
 import type { PlaudClient } from "@/lib/plaud/client";
 
 const SEARCH_PAGE_SIZE = 100;
-const MAX_SEARCH_PAGES = 10;
 
 /**
  * Find a recording by ID using paginated search.
  * The Plaud API doesn't expose a single-recording endpoint,
  * so we page through until we find it.
+ *
+ * No hard page cap — we search until the API returns fewer
+ * results than the page size (indicating the last page).
  */
 async function findRecordingById(
     client: PlaudClient,
     id: string,
 ): Promise<PlaudRecording | null> {
-    for (let page = 0; page < MAX_SEARCH_PAGES; page++) {
+    let skip = 0;
+    while (true) {
         const response = await client.getRecordings(
-            page * SEARCH_PAGE_SIZE,
+            skip,
             SEARCH_PAGE_SIZE,
             0,
             "edit_time",
             true,
         );
-        const match = response.data_file_list.find((r) => r.id === id);
+        const page = response.data_file_list;
+        const match = page.find((r) => r.id === id);
         if (match) return match;
-        if (response.data_file_list.length < SEARCH_PAGE_SIZE) break;
+        if (page.length < SEARCH_PAGE_SIZE) break;
+        skip += SEARCH_PAGE_SIZE;
     }
     return null;
 }

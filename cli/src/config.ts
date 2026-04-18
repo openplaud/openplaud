@@ -1,4 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+    chmodSync,
+    existsSync,
+    mkdirSync,
+    readFileSync,
+    writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { PlaudServerKey } from "@/lib/plaud/servers";
@@ -50,6 +56,8 @@ export function saveConfig(config: CliConfig): void {
         encoding: "utf-8",
         mode: 0o600,
     });
+    // Ensure permissions are correct even if the file already existed
+    chmodSync(CONFIG_FILE, 0o600);
 }
 
 export function loadState(): CliState {
@@ -67,6 +75,8 @@ export function saveState(state: CliState): void {
         encoding: "utf-8",
         mode: 0o600,
     });
+    // Ensure permissions are correct even if the file already existed
+    chmodSync(STATE_FILE, 0o600);
 }
 
 export function requireConfig(): CliConfig {

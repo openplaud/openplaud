@@ -140,9 +140,15 @@ export const syncCommand = new Command("sync")
                         rec.id,
                         false,
                     );
-                    const safeName =
+                    const baseName =
                         rec.filename.replace(/[/\\:*?"<>|]/g, "-").trim() ||
                         rec.id;
+                    // Include recording ID suffix to prevent filename collisions
+                    const shortId = rec.id.slice(-8);
+                    const safeName =
+                        baseName === rec.id
+                            ? baseName
+                            : `${baseName}_${shortId}`;
                     const audioPath = resolve(outputDir, `${safeName}.mp3`);
                     writeFileSync(audioPath, audioBuffer);
                     const sizeMB = (
@@ -152,6 +158,7 @@ export const syncCommand = new Command("sync")
                     process.stderr.write(`OK (${sizeMB} MB)`);
 
                     let transcription: string | undefined;
+                    let transcriptionFailed = false;
 
                     // Transcribe if configured and not skipped
                     if (opts.transcribe !== false && config.whisperApiKey) {
@@ -174,6 +181,7 @@ export const syncCommand = new Command("sync")
                             writeFileSync(txtPath, transcription);
                             process.stderr.write("OK");
                         } catch (err) {
+                            transcriptionFailed = true;
                             process.stderr.write(
                                 `FAILED (${err instanceof Error ? err.message : String(err)})`,
                             );
@@ -182,6 +190,9 @@ export const syncCommand = new Command("sync")
 
                     process.stderr.write("\n");
 
+                    const status = transcriptionFailed
+                        ? "transcription_failed"
+                        : "ok";
                     results.push({
                         id: rec.id,
                         filename: rec.filename,
@@ -189,12 +200,16 @@ export const syncCommand = new Command("sync")
                         transcription,
                         durationMs: rec.duration,
                         recordedAt: new Date(rec.start_time).toISOString(),
-                        status: "ok",
+                        status,
                     });
 
-                    // Track this recording as synced
-                    if (!state.knownRecordings) state.knownRecordings = {};
-                    state.knownRecordings[rec.id] = rec.version_ms;
+                    // Only mark as synced if fully successful — failed
+                    // transcriptions will be retried on the next sync run
+                    if (!transcriptionFailed) {
+                        if (!state.knownRecordings)
+                            state.knownRecordings = {};
+                        state.knownRecordings[rec.id] = rec.version_ms;
+                    }
                     anySucceeded = true;
                 } catch (err) {
                     process.stderr.write(
@@ -222,13 +237,18 @@ export const syncCommand = new Command("sync")
             // Summary
             const succeeded = results.filter((r) => r.status === "ok");
             const failed = results.filter((r) => r.status === "error");
+            const txFailed = results.filter(
+                (r) => r.status === "transcription_failed",
+            );
 
             if (opts.json) {
                 console.log(JSON.stringify(results, null, 2));
             } else {
-                console.log(
-                    `\nSync complete: ${succeeded.length} succeeded, ${failed.length} failed.`,
-                );
+                let summary = `\nSync complete: ${succeeded.length} succeeded, ${failed.length} failed.`;
+                if (txFailed.length > 0) {
+                    summary += ` ${txFailed.length} transcription(s) failed (will retry next sync).`;
+                }
+                console.log(summary);
 
                 if (succeeded.length > 0) {
                     console.log(`\nTranscriptions saved to: ${outputDir}`);
@@ -249,6 +269,6 @@ interface SyncResult {
     transcription?: string;
     durationMs?: number;
     recordedAt?: string;
-    status: "ok" | "error";
+    status: "ok" | "error" | "transcription_failed";
     error?: string;
 }

@@ -13,13 +13,13 @@ export const devicesCommand = new Command("devices")
             const response = await client.listDevices();
             const devices = response.data_devices;
 
-            if (devices.length === 0) {
-                console.log("No devices found on this account.");
+            if (opts.json) {
+                console.log(JSON.stringify(devices, null, 2));
                 return;
             }
 
-            if (opts.json) {
-                console.log(JSON.stringify(devices, null, 2));
+            if (devices.length === 0) {
+                console.log("No devices found on this account.");
                 return;
             }
 

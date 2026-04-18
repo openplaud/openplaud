@@ -42,8 +42,14 @@ export async function transcribeAudio(
     const model = config.whisperModel || DEFAULT_WHISPER_MODEL;
     const filename = options?.filename || "recording.mp3";
 
-    // Load dictionary for Whisper prompt and post-processing
-    const dictionary = loadDictionary();
+    // Load dictionary for Whisper prompt and post-processing.
+    // Gracefully fall back to empty if the file can't be read (e.g. permissions).
+    let dictionary: ReturnType<typeof loadDictionary>;
+    try {
+        dictionary = loadDictionary();
+    } catch {
+        dictionary = { terms: [], corrections: [] };
+    }
     const whisperPrompt = buildWhisperPrompt(dictionary);
 
     // Detect content type from buffer magic bytes

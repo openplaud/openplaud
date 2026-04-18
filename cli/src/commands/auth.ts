@@ -21,7 +21,6 @@ export const authCommand = new Command("auth")
     .option(
         "-s, --server <server>",
         `Plaud API server: ${SERVER_KEYS.join(", ")}, or a custom URL`,
-        "eu",
     )
     .option(
         "--whisper-key <key>",
@@ -76,18 +75,34 @@ export const authCommand = new Command("auth")
             process.exit(1);
         }
 
-        // Resolve API server
+        // Resolve API server — only overwrite when --server was explicitly passed
         let apiServer: PlaudServerKey = existing?.apiServer ?? "eu";
         let customApiBase: string | undefined = existing?.customApiBase;
 
-        if (opts.server) {
+        if (opts.server !== undefined) {
             if (opts.server in PLAUD_SERVERS) {
                 apiServer = opts.server as PlaudServerKey;
                 customApiBase = undefined;
-            } else if (
-                opts.server.startsWith("https://") &&
-                opts.server.includes("plaud.ai")
-            ) {
+            } else if (opts.server.startsWith("https://")) {
+                // Validate the hostname is exactly plaud.ai or a subdomain of it
+                let hostname: string;
+                try {
+                    hostname = new URL(opts.server).hostname;
+                } catch {
+                    console.error(
+                        `Invalid server URL: ${opts.server}`,
+                    );
+                    process.exit(1);
+                }
+                if (
+                    hostname !== "plaud.ai" &&
+                    !hostname.endsWith(".plaud.ai")
+                ) {
+                    console.error(
+                        `Custom server must be a plaud.ai domain (got: ${hostname})`,
+                    );
+                    process.exit(1);
+                }
                 apiServer = "custom";
                 customApiBase = opts.server.replace(/\/+$/, "");
             } else {

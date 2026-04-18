@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { readFileSync, appendFileSync } from "node:fs";
 import { Command } from "commander";
 import {
@@ -30,12 +30,16 @@ dictionaryCommand
         const path = ensureDictionaryFile();
         const editor = process.env.EDITOR || process.env.VISUAL || "vi";
         console.log(`Opening ${path} in ${editor}...`);
-        try {
-            execFileSync(editor, [path], { stdio: "inherit" });
-        } catch {
+        // Use shell: true so $EDITOR values with arguments (e.g. "code --wait") work
+        const result = spawnSync(`${editor} "${path}"`, {
+            stdio: "inherit",
+            shell: true,
+        });
+        if (result.error || result.status !== 0) {
             console.error(
                 `Failed to open editor. Edit the file directly: ${path}`,
             );
+            process.exit(1);
         }
     });
 

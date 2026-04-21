@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { Github } from "@/components/icons/icons";
 import { Logo } from "@/components/icons/logo";
+import { GitHubStarsPill } from "@/components/landing/github-stars-pill";
 import { MetalButton } from "@/components/metal-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -17,15 +17,8 @@ export function LandingNav() {
                         OpenPlaud
                     </span>
                 </Link>
-                <nav className="flex items-center gap-4">
-                    <Link
-                        href="https://github.com/openplaud/openplaud"
-                        target="_blank"
-                        className="hidden md:flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                        <Github className="size-4" />
-                        GitHub
-                    </Link>
+                <nav className="flex items-center gap-3">
+                    <GitHubStarsPill />
                     <ThemeToggle />
                     <Link href="/login">
                         <MetalButton

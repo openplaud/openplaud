@@ -75,8 +75,10 @@ export const plaudConnections = pgTable("plaud_connections", {
     userId: text("user_id")
         .notNull()
         .references(() => users.id, { onDelete: "cascade" }),
-    // Encrypted bearer token
+    // Encrypted bearer token (access token)
     bearerToken: text("bearer_token").notNull(),
+    // Encrypted refresh token (from OTP login flow)
+    refreshToken: text("refresh_token"),
     // Regional API server base URL (e.g. https://api-euc1.plaud.ai for EU users)
     apiBase: text("api_base").notNull().default("https://api.plaud.ai"),
     lastSync: timestamp("last_sync"),

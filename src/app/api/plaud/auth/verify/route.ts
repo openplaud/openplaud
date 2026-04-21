@@ -1,12 +1,20 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { plaudConnections, plaudDevices } from "@/db/schema";
 import { auth } from "@/lib/auth";
 import { encrypt } from "@/lib/encryption";
+import { plaudVerifyOtp } from "@/lib/plaud/auth";
 import { PlaudClient } from "@/lib/plaud/client";
-import { DEFAULT_SERVER_KEY, resolveApiBase } from "@/lib/plaud/servers";
 
+/**
+ * POST /api/plaud/auth/verify
+ *
+ * Verifies the OTP code against Plaud's API, obtains access + refresh
+ * tokens, encrypts them, and stores the connection.
+ *
+ * Source: https://github.com/openplaud/openplaud/blob/main/src/app/api/plaud/auth/verify/route.ts
+ */
 export async function POST(request: Request) {
     try {
         const session = await auth.api.getSession({
@@ -20,49 +28,43 @@ export async function POST(request: Request) {
             );
         }
 
-        const {
-            bearerToken: rawToken,
-            server: serverKey,
-            customApiBase,
-        } = await request.json();
+        const { code, otpToken, apiBase } = await request.json();
 
-        if (!rawToken) {
+        if (!code || !otpToken || !apiBase) {
             return NextResponse.json(
-                { error: "Bearer token is required" },
+                { error: "Code, OTP token, and API base are required" },
                 { status: 400 },
             );
         }
 
-        // Strip "Bearer " prefix if the user accidentally pasted the full header
-        const bearerToken = rawToken.replace(/^Bearer\s+/i, "");
+        // Verify OTP with Plaud → get access + refresh tokens
+        const { accessToken, refreshToken } = await plaudVerifyOtp(
+            code,
+            otpToken,
+            apiBase,
+        );
 
-        const resolvedKey = (serverKey ?? DEFAULT_SERVER_KEY) as string;
-        const apiBase = resolveApiBase(resolvedKey, customApiBase);
-        if (!apiBase) {
-            return NextResponse.json(
-                {
-                    error:
-                        resolvedKey === "custom"
-                            ? "Please enter a valid Plaud API URL (https://...plaud.ai)"
-                            : `Unknown server: ${resolvedKey}`,
-                },
-                { status: 400 },
-            );
-        }
-        const client = new PlaudClient(bearerToken, apiBase);
+        // Validate the token actually works
+        const client = new PlaudClient(accessToken, apiBase);
         const isValid = await client.testConnection();
 
         if (!isValid) {
             return NextResponse.json(
-                { error: "Invalid bearer token" },
+                { error: "Login succeeded but token validation failed" },
                 { status: 400 },
             );
         }
 
+        // Fetch devices
         const deviceList = await client.listDevices();
 
-        const encryptedToken = encrypt(bearerToken);
+        // Encrypt tokens
+        const encryptedAccessToken = encrypt(accessToken);
+        const encryptedRefreshToken = refreshToken
+            ? encrypt(refreshToken)
+            : null;
 
+        // Upsert connection
         const [existingConnection] = await db
             .select()
             .from(plaudConnections)
@@ -73,7 +75,8 @@ export async function POST(request: Request) {
             await db
                 .update(plaudConnections)
                 .set({
-                    bearerToken: encryptedToken,
+                    bearerToken: encryptedAccessToken,
+                    refreshToken: encryptedRefreshToken,
                     apiBase,
                     updatedAt: new Date(),
                 })
@@ -81,21 +84,18 @@ export async function POST(request: Request) {
         } else {
             await db.insert(plaudConnections).values({
                 userId: session.user.id,
-                bearerToken: encryptedToken,
+                bearerToken: encryptedAccessToken,
+                refreshToken: encryptedRefreshToken,
                 apiBase,
             });
         }
 
+        // Upsert devices
         for (const device of deviceList.data_devices) {
             const [existingDevice] = await db
                 .select()
                 .from(plaudDevices)
-                .where(
-                    and(
-                        eq(plaudDevices.userId, session.user.id),
-                        eq(plaudDevices.serialNumber, device.sn),
-                    ),
-                )
+                .where(eq(plaudDevices.serialNumber, device.sn))
                 .limit(1);
 
             if (existingDevice) {
@@ -124,10 +124,15 @@ export async function POST(request: Request) {
             devices: deviceList.data_devices,
         });
     } catch (error) {
-        console.error("Error connecting to Plaud:", error);
+        console.error("Error verifying Plaud OTP:", error);
         return NextResponse.json(
-            { error: "Failed to connect to Plaud" },
-            { status: 500 },
+            {
+                error:
+                    error instanceof Error
+                        ? error.message
+                        : "Verification failed",
+            },
+            { status: 400 },
         );
     }
 }

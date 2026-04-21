@@ -283,6 +283,12 @@ export async function syncRecordingsForUser(
         const plaudClient = await createPlaudClient(
             connection.bearerToken,
             connection.apiBase,
+            connection.refreshToken
+                ? {
+                      encryptedRefreshToken: connection.refreshToken,
+                      connectionId: connection.id,
+                  }
+                : undefined,
         );
         const storage = await createUserStorageProvider(userId);
         const allNewRecordingNames: string[] = [];

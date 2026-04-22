@@ -1,6 +1,6 @@
 "use client";
 
-import { Mic, RefreshCw, Settings, Upload } from "lucide-react";
+import { LogOut, Mic, RefreshCw, Settings, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -10,6 +10,7 @@ import { SyncStatus } from "@/components/sync-status";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAutoSync } from "@/hooks/use-auto-sync";
+import { signOut } from "@/lib/auth-client";
 import {
     requestNotificationPermission,
     showNewRecordingNotification,
@@ -282,8 +283,22 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                 onClick={() => setSettingsOpen(true)}
                                 variant="outline"
                                 size="icon"
+                                aria-label="Settings"
                             >
                                 <Settings className="w-4 h-4" />
+                            </Button>
+                            <Button
+                                onClick={async () => {
+                                    await signOut();
+                                    router.push("/");
+                                    router.refresh();
+                                }}
+                                variant="outline"
+                                size="icon"
+                                aria-label="Log out"
+                                title="Log out"
+                            >
+                                <LogOut className="w-4 h-4" />
                             </Button>
                         </div>
                     </div>

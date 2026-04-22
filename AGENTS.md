@@ -6,6 +6,18 @@ OpenPlaud is a self-hosted interface for Plaud Note voice recorders. It replaces
 
 Users authenticate against Plaud's API via OTP (email verification code), then OpenPlaud pulls recordings from the regional Plaud server on a schedule. The app runs as a Next.js app behind Docker — locally, on a VPS, or as a hosted SaaS.
 
+## 🚨 We Have Real Users
+
+OpenPlaud is live and in use. This is not a toy project or a pre-launch experiment — people depend on it to access their recordings, their transcripts, and their storage. Every decision should be weighed against that:
+
+- **Backwards compatibility matters.** Existing DB rows, stored tokens, synced recordings, and user settings must keep working across deploys. Schema changes are additive by default; destructive migrations need an explicit user-impact assessment.
+- **Don't break the sync loop.** If sync stops working, users stop trusting the product. Test against a real Plaud account before shipping anything that touches `src/lib/sync/` or `src/lib/plaud/`.
+- **Don't break existing integrations.** Users have configured AI providers, storage backends, SMTP, Bark — changes to those surfaces need deprecation paths, not flag-day rewrites.
+- **Ship incrementally; fail loudly.** Add logging + Sentry context when changing hot paths so regressions surface fast instead of silently corrupting user data.
+- **Communicate breaking changes** in `CHANGELOG.md` with a migration note — self-hosters read this to decide when to upgrade.
+
+When in doubt, ask: *"If this goes wrong, how many users notice, and how fast can they recover?"*
+
 ## Positioning
 
 OpenPlaud is **open source (AGPL-3.0)** and targets **anyone who owns a Plaud device** (Plaud Note, Note Pro, or NotePin) and doesn't want to pay Plaud's AI subscription. Within that audience, the landing copy speaks to two positioning slices with different decision drivers:

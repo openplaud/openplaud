@@ -92,6 +92,7 @@ export function OnboardingForm() {
                     code: trimmed,
                     otpToken,
                     apiBase,
+                    email,
                 }),
             });
 

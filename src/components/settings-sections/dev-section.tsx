@@ -14,7 +14,7 @@ interface PlaudInfo {
         id: string;
         apiBase: string;
         server: string;
-        hasRefreshToken: boolean;
+        plaudEmail: string | null;
         createdAt: string;
         updatedAt: string;
     };
@@ -122,12 +122,11 @@ export function DevSection() {
                                         {plaudInfo.connection?.apiBase}
                                     </dd>
                                     <dt className="text-muted-foreground">
-                                        refreshToken
+                                        email
                                     </dt>
                                     <dd>
-                                        {plaudInfo.connection?.hasRefreshToken
-                                            ? "stored"
-                                            : "missing"}
+                                        {plaudInfo.connection?.plaudEmail ??
+                                            "—"}
                                     </dd>
                                     <dt className="text-muted-foreground">
                                         devices

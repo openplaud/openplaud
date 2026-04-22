@@ -25,30 +25,20 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * Plaud API Client
- * Handles all communication with Plaud API
+ * Handles all communication with Plaud API.
+ *
+ * Note: Plaud's OTP login flow issues long-lived access tokens (~300 day
+ * lifetime, per decoded JWT claims). There is no refresh token — when the
+ * access token eventually expires, the user re-authenticates via the
+ * "Switch/reconnect Plaud account" UI.
  */
-/**
- * Optional callback invoked when the client detects a 401 and needs a fresh
- * access token. Should attempt a refresh and return the new plaintext token,
- * or throw if refresh is not possible.
- */
-export type TokenRefresher = () => Promise<string>;
-
 export class PlaudClient {
     private bearerToken: string;
     private apiBase: string;
-    private refreshToken?: TokenRefresher;
 
-    constructor(
-        bearerToken: string,
-        apiBase: string = DEFAULT_PLAUD_API_BASE,
-        options?: {
-            refreshToken?: TokenRefresher;
-        },
-    ) {
+    constructor(bearerToken: string, apiBase: string = DEFAULT_PLAUD_API_BASE) {
         this.bearerToken = bearerToken;
         this.apiBase = apiBase;
-        this.refreshToken = options?.refreshToken;
     }
 
     /**
@@ -70,21 +60,6 @@ export class PlaudClient {
                     "Content-Type": "application/json",
                 },
             });
-
-            // Token expired — attempt refresh once
-            if (
-                response.status === 401 &&
-                retryCount === 0 &&
-                this.refreshToken
-            ) {
-                try {
-                    const newToken = await this.refreshToken();
-                    this.bearerToken = newToken;
-                    return this.request<T>(endpoint, options, retryCount + 1);
-                } catch {
-                    // Refresh failed — fall through to throw the 401 error
-                }
-            }
 
             if (response.status === 429 && retryCount < MAX_RETRIES) {
                 const retryAfter = response.headers.get("Retry-After");
@@ -248,52 +223,15 @@ export class PlaudClient {
 }
 
 /**
- * Create Plaud client from encrypted bearer token.
- *
- * If an encrypted refresh token and a connection ID are provided,
- * the client will automatically attempt a token refresh on 401
- * and persist the new access token back to the database.
+ * Create Plaud client from an encrypted bearer token stored in the DB.
  */
 export async function createPlaudClient(
     encryptedToken: string,
     apiBase: string = DEFAULT_PLAUD_API_BASE,
-    refreshContext?: {
-        encryptedRefreshToken: string;
-        connectionId: string;
-    },
 ): Promise<PlaudClient> {
-    const { decrypt, encrypt } = await import("../encryption");
+    const { decrypt } = await import("../encryption");
     const bearerToken = decrypt(encryptedToken);
-
-    let refresher: TokenRefresher | undefined;
-
-    if (refreshContext?.encryptedRefreshToken) {
-        refresher = async () => {
-            const { plaudRefreshAccessToken } = await import("./auth");
-            const { db } = await import("@/db");
-            const { plaudConnections } = await import("@/db/schema");
-            const { eq } = await import("drizzle-orm");
-
-            const plainRefresh = decrypt(refreshContext.encryptedRefreshToken);
-            const newAccessToken = await plaudRefreshAccessToken(
-                plainRefresh,
-                apiBase,
-            );
-
-            // Persist the new access token
-            await db
-                .update(plaudConnections)
-                .set({
-                    bearerToken: encrypt(newAccessToken),
-                    updatedAt: new Date(),
-                })
-                .where(eq(plaudConnections.id, refreshContext.connectionId));
-
-            return newAccessToken;
-        };
-    }
-
-    return new PlaudClient(bearerToken, apiBase, { refreshToken: refresher });
+    return new PlaudClient(bearerToken, apiBase);
 }
 
 export * from "./types";

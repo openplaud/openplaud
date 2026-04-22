@@ -5,10 +5,11 @@
  * 1. POST /auth/otp-send-code { username } → { status, token }
  *    - If status === -302: user's region differs; response includes
  *      data.domains.api with the correct regional API base.
- * 2. POST /auth/otp-login { code, token } → { access_token, refresh_token }
- * 3. POST /auth/refresh-access-token (with Bearer refresh_token) → { access_token }
+ * 2. POST /auth/otp-login { code, token } → { access_token }
  *
- * Source: reverse-engineered from the Plaud Android app (see openplaud-app/ANALYSIS.md).
+ * Plaud issues long-lived access tokens (~300 day lifetime per decoded JWT
+ * claims) and does NOT return a refresh token in the web OTP flow. When the
+ * token eventually expires, users re-authenticate via the reconnect UI.
  */
 
 import { DEFAULT_PLAUD_API_BASE } from "./client";
@@ -31,22 +32,11 @@ export interface PlaudSendCodeResponse {
 export interface PlaudOtpLoginResponse {
     status: number;
     msg: string;
-    data?: {
-        access_token?: string;
-        refresh_token?: string;
-    };
-    /** Some API versions return tokens at root level */
+    /** Tokens can appear at root (observed) or under data (older/region variants) */
     access_token?: string;
-    refresh_token?: string;
-}
-
-export interface PlaudRefreshResponse {
-    status: number;
-    msg: string;
     data?: {
         access_token?: string;
     };
-    access_token?: string;
 }
 
 // ── API calls ──────────────────────────────────────────────────────────────
@@ -94,7 +84,7 @@ export async function plaudSendCode(
 }
 
 /**
- * Verify the OTP code and obtain access + refresh tokens.
+ * Verify the OTP code and obtain the access token.
  */
 export async function plaudVerifyOtp(
     code: string,
@@ -102,7 +92,6 @@ export async function plaudVerifyOtp(
     apiBase: string = DEFAULT_PLAUD_API_BASE,
 ): Promise<{
     accessToken: string;
-    refreshToken: string;
 }> {
     const res = await fetch(`${apiBase}/auth/otp-login`, {
         method: "POST",
@@ -114,42 +103,11 @@ export async function plaudVerifyOtp(
 
     // Tokens can appear at root or nested under data
     const accessToken =
-        body.data?.access_token ?? body.access_token ?? undefined;
-    const refreshToken =
-        body.data?.refresh_token ?? body.refresh_token ?? undefined;
+        body.access_token ?? body.data?.access_token ?? undefined;
 
     if (!accessToken) {
         throw new Error(body.msg || "Invalid verification code");
     }
 
-    return {
-        accessToken,
-        refreshToken: refreshToken ?? "",
-    };
-}
-
-/**
- * Refresh an expired access token.
- */
-export async function plaudRefreshAccessToken(
-    refreshToken: string,
-    apiBase: string = DEFAULT_PLAUD_API_BASE,
-): Promise<string> {
-    const res = await fetch(`${apiBase}/auth/refresh-access-token`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${refreshToken}`,
-        },
-    });
-
-    const body = (await res.json()) as PlaudRefreshResponse;
-    const accessToken =
-        body.data?.access_token ?? body.access_token ?? undefined;
-
-    if (!accessToken) {
-        throw new Error(body.msg || "Failed to refresh token");
-    }
-
-    return accessToken;
+    return { accessToken };
 }

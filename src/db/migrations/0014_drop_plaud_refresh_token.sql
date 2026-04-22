@@ -1,0 +1,1 @@
+ALTER TABLE "plaud_connections" DROP COLUMN "refresh_token";

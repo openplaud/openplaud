@@ -28,7 +28,7 @@ export async function POST(request: Request) {
             );
         }
 
-        const { code, otpToken, apiBase } = await request.json();
+        const { code, otpToken, apiBase, email } = await request.json();
 
         if (!code || !otpToken || !apiBase) {
             return NextResponse.json(
@@ -37,12 +37,13 @@ export async function POST(request: Request) {
             );
         }
 
-        // Verify OTP with Plaud → get access + refresh tokens
-        const { accessToken, refreshToken } = await plaudVerifyOtp(
-            code,
-            otpToken,
-            apiBase,
-        );
+        const plaudEmail =
+            typeof email === "string" && email.trim().length > 0
+                ? email.trim().toLowerCase()
+                : null;
+
+        // Verify OTP with Plaud → get the (long-lived) access token
+        const { accessToken } = await plaudVerifyOtp(code, otpToken, apiBase);
 
         // Validate the token actually works
         const client = new PlaudClient(accessToken, apiBase);
@@ -58,11 +59,7 @@ export async function POST(request: Request) {
         // Fetch devices
         const deviceList = await client.listDevices();
 
-        // Encrypt tokens
         const encryptedAccessToken = encrypt(accessToken);
-        const encryptedRefreshToken = refreshToken
-            ? encrypt(refreshToken)
-            : null;
 
         // Upsert connection
         const [existingConnection] = await db
@@ -76,8 +73,8 @@ export async function POST(request: Request) {
                 .update(plaudConnections)
                 .set({
                     bearerToken: encryptedAccessToken,
-                    refreshToken: encryptedRefreshToken,
                     apiBase,
+                    plaudEmail,
                     updatedAt: new Date(),
                 })
                 .where(eq(plaudConnections.id, existingConnection.id));
@@ -85,8 +82,8 @@ export async function POST(request: Request) {
             await db.insert(plaudConnections).values({
                 userId: session.user.id,
                 bearerToken: encryptedAccessToken,
-                refreshToken: encryptedRefreshToken,
                 apiBase,
+                plaudEmail,
             });
         }
 

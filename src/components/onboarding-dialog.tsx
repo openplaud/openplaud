@@ -153,6 +153,7 @@ export function OnboardingDialog({
                     code: trimmed,
                     otpToken,
                     apiBase: plaudApiBase,
+                    email: plaudEmail,
                 }),
             });
             const data = await res.json();

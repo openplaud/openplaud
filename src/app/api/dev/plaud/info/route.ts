@@ -41,12 +41,6 @@ export async function GET(request: Request) {
         const client = await createPlaudClient(
             connection.bearerToken,
             connection.apiBase,
-            connection.refreshToken
-                ? {
-                      encryptedRefreshToken: connection.refreshToken,
-                      connectionId: connection.id,
-                  }
-                : undefined,
         );
 
         const startedAt = Date.now();
@@ -83,7 +77,7 @@ export async function GET(request: Request) {
                 id: connection.id,
                 apiBase: connection.apiBase,
                 server: serverKeyFromApiBase(connection.apiBase),
-                hasRefreshToken: Boolean(connection.refreshToken),
+                plaudEmail: connection.plaudEmail,
                 createdAt: connection.createdAt,
                 updatedAt: connection.updatedAt,
             },

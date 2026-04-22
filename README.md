@@ -133,7 +133,7 @@ OpenPlaud signs into Plaud directly using your email — the same way the offici
 2. Plaud sends you a verification code
 3. Enter the code in OpenPlaud — that's it
 
-Your email and code are forwarded directly to Plaud's servers and **never stored** by OpenPlaud. After login, the access token is encrypted (AES-256-GCM) and stored only on your self-hosted instance. Your account region (Global, EU, Asia Pacific) is detected automatically.
+Your verification code is forwarded directly to Plaud's servers and **never stored** by OpenPlaud. Your Plaud email *is* stored alongside the connection so you can see which account is linked and switch accounts later — it lives only on your self-hosted instance. After login, the access token is encrypted (AES-256-GCM) and stored the same way. Your account region (Global, EU, Asia Pacific) is detected automatically.
 
 > 🔓 **Open Source**: Every line that handles your credentials is available for inspection — [send-code route](src/app/api/plaud/auth/send-code/route.ts) · [verify route](src/app/api/plaud/auth/verify/route.ts) · [encryption](src/lib/encryption.ts)
 

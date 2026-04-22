@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { plaudConnections, plaudDevices } from "@/db/schema";
@@ -6,12 +6,13 @@ import { auth } from "@/lib/auth";
 import { encrypt } from "@/lib/encryption";
 import { plaudVerifyOtp } from "@/lib/plaud/auth";
 import { PlaudClient } from "@/lib/plaud/client";
+import { isValidPlaudApiUrl } from "@/lib/plaud/servers";
 
 /**
  * POST /api/plaud/auth/verify
  *
- * Verifies the OTP code against Plaud's API, obtains access + refresh
- * tokens, encrypts them, and stores the connection.
+ * Verifies the OTP code against Plaud's API, obtains a long-lived access
+ * token, encrypts it, and stores the connection.
  *
  * Source: https://github.com/openplaud/openplaud/blob/main/src/app/api/plaud/auth/verify/route.ts
  */
@@ -30,9 +31,27 @@ export async function POST(request: Request) {
 
         const { code, otpToken, apiBase, email } = await request.json();
 
-        if (!code || !otpToken || !apiBase) {
+        if (
+            typeof code !== "string" ||
+            typeof otpToken !== "string" ||
+            typeof apiBase !== "string" ||
+            !code ||
+            !otpToken ||
+            !apiBase
+        ) {
             return NextResponse.json(
                 { error: "Code, OTP token, and API base are required" },
+                { status: 400 },
+            );
+        }
+
+        // SSRF guard: the client sends apiBase back to us (originally obtained
+        // via the regional -302 redirect in send-code). Restrict to plaud.ai
+        // hosts so a tampered client cannot point the server at an arbitrary
+        // URL and coerce it into an internal-network request.
+        if (!isValidPlaudApiUrl(apiBase)) {
+            return NextResponse.json(
+                { error: "Invalid API base" },
                 { status: 400 },
             );
         }
@@ -87,12 +106,19 @@ export async function POST(request: Request) {
             });
         }
 
-        // Upsert devices
+        // Upsert devices — always scope the lookup by (userId, serialNumber)
+        // so we never touch another user's device row (the schema has a
+        // unique constraint on this pair).
         for (const device of deviceList.data_devices) {
             const [existingDevice] = await db
                 .select()
                 .from(plaudDevices)
-                .where(eq(plaudDevices.serialNumber, device.sn))
+                .where(
+                    and(
+                        eq(plaudDevices.userId, session.user.id),
+                        eq(plaudDevices.serialNumber, device.sn),
+                    ),
+                )
                 .limit(1);
 
             if (existingDevice) {
@@ -122,14 +148,28 @@ export async function POST(request: Request) {
         });
     } catch (error) {
         console.error("Error verifying Plaud OTP:", error);
-        return NextResponse.json(
-            {
-                error:
-                    error instanceof Error
-                        ? error.message
-                        : "Verification failed",
-            },
-            { status: 400 },
-        );
+        // Plaud-originated errors ("invalid code", "expired", etc.) are
+        // user-actionable, so we pass them through. Unexpected/internal
+        // errors get a generic message to avoid leaking implementation
+        // details.
+        const message =
+            error instanceof Error && isUserFacingPlaudError(error.message)
+                ? error.message
+                : "Verification failed";
+        return NextResponse.json({ error: message }, { status: 400 });
     }
+}
+
+/**
+ * Plaud API errors surface as `Plaud API error (NNN): <msg>` from
+ * PlaudClient.request or the shape thrown by plaudVerifyOtp. Those are safe
+ * and useful to show the user. Anything else (DB errors, network stacks,
+ * etc.) gets sanitized to a generic message.
+ */
+function isUserFacingPlaudError(msg: string): boolean {
+    return (
+        msg.startsWith("Plaud API error") ||
+        msg === "Invalid verification code" ||
+        msg === "Invalid API base"
+    );
 }

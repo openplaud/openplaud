@@ -9,7 +9,8 @@
         "ignoreUnknown": true,
         "includes": [
             "src/**/*.{js,jsx,ts,tsx,json,css}",
-            "*.{js,jsx,ts,tsx,json}"
+            "*.{js,jsx,ts,tsx,json}",
+            "!src/db/migrations"
         ]
     },
     "formatter": {

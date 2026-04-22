@@ -6,6 +6,7 @@ import { Features } from "@/components/landing/features";
 import { FinalCTA } from "@/components/landing/final-cta";
 import { Hero } from "@/components/landing/hero";
 import { LandingNav } from "@/components/landing/landing-nav";
+import { TheMath } from "@/components/landing/the-math";
 import { getSession } from "@/lib/auth-server";
 
 export default async function HomePage() {
@@ -20,6 +21,7 @@ export default async function HomePage() {
             <LandingNav />
             <main className="flex-1">
                 <Hero />
+                <TheMath />
                 <Features />
                 <Comparison />
                 <Deploy />

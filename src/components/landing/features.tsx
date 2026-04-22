@@ -1,50 +1,46 @@
-import { Cpu, Database, Download, Search, Shield, Zap } from "lucide-react";
+import { Cpu, Database, Download, RefreshCw } from "lucide-react";
+import type { ReactNode } from "react";
 import { Panel } from "@/components/panel";
 
 export function Features() {
     return (
-        <section className="py-24 bg-secondary/20 border-y border-border/40">
+        <section className="py-24">
             <div className="container mx-auto px-4">
-                <div className="text-center mb-16 max-w-3xl mx-auto">
+                <div className="max-w-3xl mb-16">
                     <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-4">
-                        Why OpenPlaud?
+                        What OpenPlaud does.
                     </h2>
-                    <p className="text-muted-foreground text-lg">
-                        We built this because we wanted control over our own
-                        data. Here is why you should switch.
+                    <p className="text-muted-foreground text-lg leading-relaxed">
+                        Four things, in order. Your Plaud Note keeps recording
+                        exactly as it does today — we replace everything that
+                        happens after.
                     </p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl">
                     <FeatureCard
-                        icon={<Database className="size-6" />}
-                        title="Your Data, Your Disk"
-                        description="Recordings are stored on your local filesystem or your own S3 bucket. No vendor lock-in, no mysterious cloud storage."
+                        step="01"
+                        icon={<RefreshCw className="size-5" />}
+                        title="Pulls recordings from your Plaud Note"
+                        description="Log in with your existing Plaud account. OpenPlaud syncs your recordings in the background — no manual exports, no copy-pasting bearer tokens. Works with Plaud Note, Note Pro, and NotePin."
                     />
                     <FeatureCard
-                        icon={<Cpu className="size-6" />}
-                        title="Bring Your Own AI"
-                        description="Connect to OpenAI, Anthropic, Groq, or run local LLMs. Choose the model that fits your budget and privacy needs."
+                        step="02"
+                        icon={<Cpu className="size-5" />}
+                        title="Transcribes with the AI you choose"
+                        description="Plug in OpenAI, Anthropic, Groq, Deepgram, or run Llama locally through Ollama. You pay the provider directly — pennies per hour instead of a subscription. Switch providers any time without re-transcribing."
                     />
                     <FeatureCard
-                        icon={<Search className="size-6" />}
-                        title="Privacy First"
-                        description="No telemetry, no tracking. Use browser-based transcription to keep your audio strictly on your device."
+                        step="03"
+                        icon={<Database className="size-5" />}
+                        title="Stores audio where you choose"
+                        description="Local filesystem, your own S3-compatible bucket (AWS, Cloudflare R2, Backblaze, MinIO, Wasabi), or OpenPlaud-hosted storage if you don't want to think about it. Your recordings, on infrastructure you control."
                     />
                     <FeatureCard
-                        icon={<Zap className="size-6" />}
-                        title="Lightning Fast Sync"
-                        description="Background synchronization keeps your library up to date without you lifting a finger."
-                    />
-                    <FeatureCard
-                        icon={<Download className="size-6" />}
-                        title="Export Anywhere"
-                        description="One-click export to Markdown, JSON, SRT, or VTT. Perfect for Notion, Obsidian, or video editors."
-                    />
-                    <FeatureCard
-                        icon={<Shield className="size-6" />}
-                        title="Open Source (AGPL-3.0)"
-                        description="Audit the code yourself. Contribute features. The community drives the roadmap, not shareholders. Licensed under AGPL-3.0 for maximum freedom and transparency."
+                        step="04"
+                        icon={<Download className="size-5" />}
+                        title="Exports to anything, anywhere"
+                        description="One click to Markdown, JSON, SRT, or VTT — ready for Notion, Obsidian, a video editor, or your own pipeline. Full backups are a single endpoint away. No lock-in, by design."
                     />
                 </div>
             </div>
@@ -53,23 +49,30 @@ export function Features() {
 }
 
 function FeatureCard({
+    step,
     icon,
     title,
     description,
 }: {
-    icon: React.ReactNode;
+    step: string;
+    icon: ReactNode;
     title: string;
     description: string;
 }) {
     return (
         <Panel
             variant="default"
-            className="space-y-4 hover:border-primary/50 transition-colors group h-full"
+            className="space-y-4 h-full hover:border-primary/40 transition-colors"
         >
-            <div className="size-12 rounded-lg bg-primary/10 flex items-center justify-center border border-primary/20 group-hover:scale-105 transition-transform text-primary">
-                {icon}
+            <div className="flex items-center gap-3">
+                <div className="size-10 rounded-lg bg-primary/10 border border-primary/20 text-primary flex items-center justify-center">
+                    {icon}
+                </div>
+                <span className="text-xs font-mono text-muted-foreground tracking-wider">
+                    {step}
+                </span>
             </div>
-            <h3 className="text-xl font-semibold">{title}</h3>
+            <h3 className="text-xl font-semibold leading-tight">{title}</h3>
             <p className="text-muted-foreground text-sm leading-relaxed">
                 {description}
             </p>

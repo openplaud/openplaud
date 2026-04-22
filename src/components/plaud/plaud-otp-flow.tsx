@@ -160,8 +160,10 @@ export function PlaudOtpFlow({
 
                 {!compact && (
                     <p className="text-[11px] text-muted-foreground/60 text-center leading-relaxed">
-                        Your email is forwarded directly to Plaud — never stored
-                        by OpenPlaud.{" "}
+                        Your email is forwarded to Plaud to request the
+                        verification code. OpenPlaud only stores it after you
+                        successfully connect, so it can display which Plaud
+                        account is linked.{" "}
                         <a
                             href={SEND_CODE_SOURCE}
                             target="_blank"

@@ -143,8 +143,8 @@ export function PlaudAccountSection() {
                                         <>
                                             {" · "}
                                             <span>
-                                                Reconnect below to display the
-                                                email
+                                                Use “Switch account” below to
+                                                display the email
                                             </span>
                                         </>
                                     )}

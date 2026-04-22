@@ -30,7 +30,7 @@ export function Deploy() {
                             </div>
                             <div className="flex items-center gap-2">
                                 <div className="size-2 rounded-full bg-blue-500" />
-                                Next.js 15
+                                Next.js 16
                             </div>
                             <div className="flex items-center gap-2">
                                 <div className="size-2 rounded-full bg-yellow-500" />

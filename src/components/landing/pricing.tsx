@@ -110,21 +110,20 @@ export function Pricing() {
                                 ))}
                             </ul>
 
-                            <Link href={tier.cta.href} className="w-full">
-                                <MetalButton
-                                    size="lg"
-                                    className={`w-full ${
-                                        tier.emphasis
-                                            ? "bg-primary text-primary-foreground hover:bg-primary/90 border-primary/50"
-                                            : "bg-background/50"
-                                    }`}
-                                    variant={
-                                        tier.emphasis ? undefined : "default"
-                                    }
-                                >
+                            <MetalButton
+                                asChild
+                                size="lg"
+                                className={`w-full ${
+                                    tier.emphasis
+                                        ? "bg-primary text-primary-foreground hover:bg-primary/90 border-primary/50"
+                                        : "bg-background/50"
+                                }`}
+                                variant={tier.emphasis ? undefined : "default"}
+                            >
+                                <Link href={tier.cta.href}>
                                     {tier.cta.label}
-                                </MetalButton>
-                            </Link>
+                                </Link>
+                            </MetalButton>
                         </div>
                     ))}
                 </div>

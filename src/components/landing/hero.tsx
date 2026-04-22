@@ -26,20 +26,21 @@ export function Hero() {
                         with your own AI keys — pennies per hour, instead of a
                         subscription. Self-host free, or hosted from{" "}
                         <span className="text-foreground font-medium">
-                            $5/mo
+                            $0/mo
                         </span>
                         .
                     </p>
 
                     <div className="flex justify-center mb-10">
-                        <Link href="/register">
-                            <MetalButton
-                                size="lg"
-                                className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 border-primary/50 h-12 px-7 text-base shadow-[0_0_24px_color-mix(in_oklch,var(--primary)_30%,transparent)]"
-                            >
+                        <MetalButton
+                            asChild
+                            size="lg"
+                            className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 border-primary/50 h-12 px-7 text-base shadow-[0_0_24px_color-mix(in_oklch,var(--primary)_30%,transparent)]"
+                        >
+                            <Link href="/register">
                                 Start free <ArrowRight className="size-4" />
-                            </MetalButton>
-                        </Link>
+                            </Link>
+                        </MetalButton>
                     </div>
 
                     <TrustRow />

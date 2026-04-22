@@ -20,14 +20,13 @@ export function LandingNav() {
                 <nav className="flex items-center gap-3">
                     <GitHubStarsPill />
                     <ThemeToggle />
-                    <Link href="/login">
-                        <MetalButton
-                            size="sm"
-                            className="bg-primary text-primary-foreground hover:bg-primary/90 border-primary/50 shadow-[0_0_10px_color-mix(in_oklch,var(--primary)_30%,transparent)]"
-                        >
-                            Login
-                        </MetalButton>
-                    </Link>
+                    <MetalButton
+                        asChild
+                        size="sm"
+                        className="bg-primary text-primary-foreground hover:bg-primary/90 border-primary/50 shadow-[0_0_10px_color-mix(in_oklch,var(--primary)_30%,transparent)]"
+                    >
+                        <Link href="/login">Login</Link>
+                    </MetalButton>
                 </nav>
             </div>
         </header>

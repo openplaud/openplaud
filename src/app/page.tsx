@@ -1,12 +1,13 @@
 import { redirect } from "next/navigation";
 import { Footer } from "@/components/footer";
-import { Comparison } from "@/components/landing/comparison";
 import { Deploy } from "@/components/landing/deploy";
+import { FAQ } from "@/components/landing/faq";
 import { Features } from "@/components/landing/features";
 import { FinalCTA } from "@/components/landing/final-cta";
 import { ForProfessionals } from "@/components/landing/for-professionals";
 import { Hero } from "@/components/landing/hero";
 import { LandingNav } from "@/components/landing/landing-nav";
+import { Pricing } from "@/components/landing/pricing";
 import { RedditQuotes } from "@/components/landing/reddit-quotes";
 import { TheMath } from "@/components/landing/the-math";
 import { getSession } from "@/lib/auth-server";
@@ -27,8 +28,9 @@ export default async function HomePage() {
                 <Features />
                 <RedditQuotes />
                 <ForProfessionals />
-                <Comparison />
+                <Pricing />
                 <Deploy />
+                <FAQ />
                 <FinalCTA />
             </main>
             <Footer />

@@ -1,38 +1,34 @@
+import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { MetalButton } from "@/components/metal-button";
 
 export function FinalCTA() {
     return (
-        <section className="container mx-auto px-4 py-24">
-            <div className="bg-primary/5 rounded-3xl p-8 md:p-16 text-center relative overflow-hidden border border-primary/10">
-                <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_0%,color-mix(in_oklch,var(--primary)_10%,transparent),transparent_70%)]" />
-                <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-6 relative z-10">
-                    Ready to take ownership?
+        <section className="container mx-auto px-4 py-24 md:py-32">
+            <div className="max-w-3xl mx-auto text-center">
+                <h2 className="text-3xl md:text-5xl font-bold tracking-tight mb-6">
+                    Stop renting your own voice.
                 </h2>
-                <p className="text-muted-foreground max-w-xl mx-auto mb-8 relative z-10">
-                    Join the community of audio professionals and developers who
-                    prefer open, transparent, and private tools.
+                <p className="text-muted-foreground text-lg leading-relaxed mb-10 max-w-xl mx-auto">
+                    Your Plaud Note already works. OpenPlaud gives you the rest
+                    of it — transcription, search, export, and a choice about
+                    where it all lives.
                 </p>
-                <div className="flex flex-col sm:flex-row gap-4 justify-center relative z-10">
-                    <Link href="/register">
+                <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+                    <Link href="/register" className="w-full sm:w-auto">
                         <MetalButton
                             size="lg"
-                            className="bg-primary text-primary-foreground hover:bg-primary/90 border-primary/50 w-full sm:w-auto"
+                            className="w-full sm:w-auto gap-2 bg-primary text-primary-foreground hover:bg-primary/90 border-primary/50 h-12 px-6 shadow-[0_0_20px_color-mix(in_oklch,var(--primary)_30%,transparent)]"
                         >
-                            Create Account
+                            Start free <ArrowRight className="size-4" />
                         </MetalButton>
                     </Link>
                     <Link
                         href="https://github.com/openplaud/openplaud"
                         target="_blank"
+                        className="text-sm text-muted-foreground hover:text-foreground transition-colors px-4"
                     >
-                        <MetalButton
-                            size="lg"
-                            variant="default"
-                            className="bg-background/50 w-full sm:w-auto"
-                        >
-                            Star on GitHub
-                        </MetalButton>
+                        or read the code first →
                     </Link>
                 </div>
             </div>

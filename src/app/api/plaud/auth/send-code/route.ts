@@ -41,16 +41,19 @@ export async function POST(request: Request) {
         });
     } catch (error) {
         console.error("Error sending Plaud OTP:", error);
-        // Plaud-originated errors are user-actionable ("email not found",
-        // rate-limited, etc.). Internal/unexpected errors get a generic
-        // message so we don't leak implementation details.
-        const message =
+        // User-actionable Plaud errors (email not found, rate-limited,
+        // region-redirect loop) all surface with a "Plaud API error:"
+        // prefix — pass those through with a 400. Anything else is an
+        // internal bug, generic message, 500.
+        if (
             error instanceof Error &&
-            (error.message.startsWith("Plaud API error") ||
-                error.message === "Failed to send verification code" ||
-                error.message === "Too many region redirects from Plaud API")
-                ? error.message
-                : "Failed to send verification code";
-        return NextResponse.json({ error: message }, { status: 400 });
+            error.message.startsWith("Plaud API error")
+        ) {
+            return NextResponse.json({ error: error.message }, { status: 400 });
+        }
+        return NextResponse.json(
+            { error: "Failed to send verification code" },
+            { status: 500 },
+        );
     }
 }

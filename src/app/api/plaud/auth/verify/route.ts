@@ -148,28 +148,28 @@ export async function POST(request: Request) {
         });
     } catch (error) {
         console.error("Error verifying Plaud OTP:", error);
-        // Plaud-originated errors ("invalid code", "expired", etc.) are
-        // user-actionable, so we pass them through. Unexpected/internal
-        // errors get a generic message to avoid leaking implementation
-        // details.
-        const message =
-            error instanceof Error && isUserFacingPlaudError(error.message)
-                ? error.message
-                : "Verification failed";
-        return NextResponse.json({ error: message }, { status: 400 });
+        // User-actionable errors (invalid code, expired OTP, rate-limited,
+        // bad API base) pass through unchanged and return 400. Anything
+        // else (DB errors, network blowups) is treated as an internal bug
+        // — generic message, 500 status — so we don't leak implementation
+        // details and so clients can distinguish "user's fault" from
+        // "our fault".
+        if (error instanceof Error && isUserFacingPlaudError(error.message)) {
+            return NextResponse.json({ error: error.message }, { status: 400 });
+        }
+        return NextResponse.json(
+            { error: "Verification failed" },
+            { status: 500 },
+        );
     }
 }
 
 /**
- * Plaud API errors surface as `Plaud API error (NNN): <msg>` from
- * PlaudClient.request or the shape thrown by plaudVerifyOtp. Those are safe
- * and useful to show the user. Anything else (DB errors, network stacks,
- * etc.) gets sanitized to a generic message.
+ * User-actionable errors we're willing to surface verbatim:
+ * - `Plaud API error: ...` thrown by PlaudClient.request and by the Plaud
+ *   auth helpers (plaudVerifyOtp etc).
+ * - `Invalid API base` thrown by our own SSRF guard above.
  */
 function isUserFacingPlaudError(msg: string): boolean {
-    return (
-        msg.startsWith("Plaud API error") ||
-        msg === "Invalid verification code" ||
-        msg === "Invalid API base"
-    );
+    return msg.startsWith("Plaud API error") || msg === "Invalid API base";
 }

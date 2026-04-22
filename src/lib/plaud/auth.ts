@@ -70,14 +70,16 @@ export async function plaudSendCode(
     // Region mismatch → retry against the correct regional server
     if (body.status === -302 && body.data?.domains?.api) {
         if (_redirectCount >= MAX_REGION_REDIRECTS) {
-            throw new Error("Too many region redirects from Plaud API");
+            throw new Error("Plaud API error: too many region redirects");
         }
         const regionalBase = body.data.domains.api.replace(/\/+$/, "");
         return plaudSendCode(email, regionalBase, _redirectCount + 1);
     }
 
     if (body.status !== 0 || !body.token) {
-        throw new Error(body.msg || "Failed to send verification code");
+        throw new Error(
+            `Plaud API error: ${body.msg || "failed to send verification code"}`,
+        );
     }
 
     return { token: body.token, apiBase };
@@ -106,7 +108,9 @@ export async function plaudVerifyOtp(
         body.access_token ?? body.data?.access_token ?? undefined;
 
     if (!accessToken) {
-        throw new Error(body.msg || "Invalid verification code");
+        throw new Error(
+            `Plaud API error: ${body.msg || "invalid verification code"}`,
+        );
     }
 
     return { accessToken };

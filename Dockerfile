@@ -25,6 +25,8 @@ RUN bun build src/db/migrate-idempotent.ts --target=bun --outfile=migrate-idempo
 FROM base AS runner
 WORKDIR /app
 
+RUN apt-get update -qq && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
+
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 

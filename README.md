@@ -480,8 +480,10 @@ src/
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/plaud/connect` | Connect Plaud device |
+| `POST` | `/api/plaud/auth/send-code` | Send OTP verification code to Plaud email |
+| `POST` | `/api/plaud/auth/verify` | Verify OTP and store encrypted connection |
 | `GET` | `/api/plaud/connection` | Check connection status |
+| `DELETE` | `/api/plaud/connection` | Disconnect Plaud account (preserves recordings) |
 | `POST` | `/api/plaud/sync` | Manual sync recordings |
 
 </details>

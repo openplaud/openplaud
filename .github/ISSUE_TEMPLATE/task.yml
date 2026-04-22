@@ -1,0 +1,50 @@
+name: Task (internal / agent-handoff)
+description: Internal work item written so an AI agent or human can pick it up cold and ship it
+title: "<type>: "
+labels: ["task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for internal work items where scope and outcome are already known.
+        The goal is that an agent in a fresh session can pick this up and ship a PR without extra clarification.
+
+        Title prefix: `feat:` / `fix:` / `refactor:` / `chore:` / `perf:` / `docs:`
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why this matters and the current state. One paragraph is enough. Include which audience slice this serves (cost-conscious vs professional) if the distinction is relevant.
+      placeholder: |
+        Pagination loop in sync-recordings.ts doesn't honor Retry-After on 429s. PlaudClient.request has retry logic but the pagination wrapper bypasses it, cascading more 429s under load.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: Concrete, verifiable outcomes. The agent knows when to stop.
+      placeholder: |
+        - Pagination inside syncRecordings() uses PlaudClient retries end-to-end (no custom fetch)
+        - Test simulates a 429 mid-pagination and asserts the loop completes
+        - Manual verification against an account with 50+ recordings
+    validations:
+      required: true
+
+  - type: textarea
+    id: files
+    attributes:
+      label: Relevant files
+      description: Optional. Pointers to where changes are likely needed. Saves repo grepping.
+      placeholder: |
+        - src/lib/sync/sync-recordings.ts (pagination loop)
+        - src/lib/plaud/client.ts (retry logic reference)
+        - src/tests/sync.test.ts (add test here)
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional notes
+      description: Optional. Non-obvious constraints, references, related issues.

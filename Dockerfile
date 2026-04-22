@@ -1,48 +1,48 @@
-# Base image with Bun
-FROM oven/bun:1 AS base
+# Multi-stage build for efficient image
+FROM python:3.11-slim as builder
+
 WORKDIR /app
 
-# Install dependencies
-FROM base AS deps
-COPY package.json pnpm-lock.yaml ./
-RUN bun install --frozen-lockfile
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# Build Next.js
-FROM base AS builder
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --user --no-cache-dir -r requirements.txt
+
+
+FROM python:3.11-slim
+
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Python dependencies from builder
+COPY --from=builder /root/.local /root/.local
+
+# Set PATH
+ENV PATH=/root/.local/bin:$PATH
+ENV PYTHONUNBUFFERED=1
+
+# Copy application code
 COPY . .
 
-ENV NEXT_TELEMETRY_DISABLED=1
-ENV NODE_ENV=production
+# Create data directory
+RUN mkdir -p /data/recordings
 
-RUN bun run build
+# Expose ports
+EXPOSE 8000 8501
 
-# Bundle idempotent migration script with all dependencies
-RUN bun build src/db/migrate-idempotent.ts --target=bun --outfile=migrate-idempotent.js
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
 
-# Final runtime image
-FROM base AS runner
-WORKDIR /app
-
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
-
-# Copy Next.js standalone output + public files
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-
-# Copy bundled idempotent migration script (no node_modules needed!)
-COPY --from=builder /app/migrate-idempotent.js ./migrate-idempotent.js
-
-# Copy migrations folder
-COPY --from=builder /app/src/db/migrations ./src/db/migrations
-
-# Copy entrypoint
-COPY docker-entrypoint.sh ./docker-entrypoint.sh
-RUN chmod +x docker-entrypoint.sh
-
-EXPOSE 3000
-ENTRYPOINT ["./docker-entrypoint.sh"]
-CMD ["bun", "server.js"]
+# Default command: start both API and Streamlit
+CMD ["bash", "-c", "uvicorn api.main:app --host 0.0.0.0 --port 8000 & streamlit run streamlit_app.py --server.port=8501 --server.address=0.0.0.0 && wait"]

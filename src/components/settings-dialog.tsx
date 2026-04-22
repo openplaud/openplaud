@@ -11,6 +11,7 @@ import {
     Play,
     RefreshCw,
     Settings as SettingsIcon,
+    Wrench,
 } from "lucide-react";
 import * as React from "react";
 import {
@@ -86,6 +87,15 @@ const settingsNav = [
     },
     { name: "Export/Backup", id: "export" as SettingsSection, icon: Download },
     { name: "Storage", id: "storage" as SettingsSection, icon: HardDrive },
+    ...(process.env.NODE_ENV !== "production"
+        ? [
+              {
+                  name: "Developer Tools",
+                  id: "dev" as SettingsSection,
+                  icon: Wrench,
+              },
+          ]
+        : []),
 ];
 
 const STORAGE_KEY = "settings-last-section";
@@ -272,7 +282,11 @@ export function SettingsDialog({
                                                             ? "page"
                                                             : undefined
                                                     }
-                                                    className="transition-all duration-200"
+                                                    className={
+                                                        item.id === "dev"
+                                                            ? "transition-all duration-200 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 data-[active=true]:bg-red-500/10 data-[active=true]:text-red-700 dark:data-[active=true]:text-red-300"
+                                                            : "transition-all duration-200"
+                                                    }
                                                 >
                                                     <item.icon
                                                         className="w-4 h-4"

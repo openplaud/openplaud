@@ -25,7 +25,12 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * Plaud API Client
- * Handles all communication with Plaud API
+ * Handles all communication with Plaud API.
+ *
+ * Note: Plaud's OTP login flow issues long-lived access tokens (~300 day
+ * lifetime, per decoded JWT claims). There is no refresh token — when the
+ * access token eventually expires, the user re-authenticates via the
+ * "Switch/reconnect Plaud account" UI.
  */
 export class PlaudClient {
     private bearerToken: string;
@@ -218,7 +223,7 @@ export class PlaudClient {
 }
 
 /**
- * Create Plaud client from encrypted bearer token
+ * Create Plaud client from an encrypted bearer token stored in the DB.
  */
 export async function createPlaudClient(
     encryptedToken: string,

@@ -65,14 +65,37 @@ Sign out current user.
 
 ### Plaud Integration
 
-#### POST `/plaud/connect`
+#### POST `/plaud/auth/send-code`
 
-Connect Plaud device using bearer token.
+Send a one-time verification code to the user's Plaud email. Handles regional redirects automatically — if the account lives on a different regional server, the correct `apiBase` is returned.
 
 **Body:**
 ```json
 {
-  "bearerToken": "Bearer eyJhbGc..."
+  "email": "user@example.com"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "otpToken": "eyJhbGc...",
+  "apiBase": "https://api-euc1.plaud.ai"
+}
+```
+
+#### POST `/plaud/auth/verify`
+
+Verify the OTP code, obtain a long-lived access token from Plaud, and store the encrypted connection.
+
+**Body:**
+```json
+{
+  "code": "123456",
+  "otpToken": "eyJhbGc...",
+  "apiBase": "https://api-euc1.plaud.ai",
+  "email": "user@example.com"
 }
 ```
 
@@ -92,8 +115,21 @@ Get current Plaud connection status.
 ```json
 {
   "connected": true,
-  "lastSync": "2025-01-22T12:00:00.000Z",
-  "devices": [...]
+  "server": "eu",
+  "plaudEmail": "user@example.com",
+  "createdAt": "2025-01-22T12:00:00.000Z",
+  "updatedAt": "2025-01-22T12:00:00.000Z"
+}
+```
+
+#### DELETE `/plaud/connection`
+
+Disconnect the current Plaud account. Deletes the stored connection and device records; synced recordings are preserved in OpenPlaud storage.
+
+**Response:**
+```json
+{
+  "success": true
 }
 ```
 

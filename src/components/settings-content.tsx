@@ -1,6 +1,7 @@
 "use client";
 
 import type { SettingsSection } from "@/types/settings";
+import { DevSection } from "./settings-sections/dev-section";
 import { DisplaySection } from "./settings-sections/display-section";
 import { ExportSection } from "./settings-sections/export-section";
 import { NotificationsSection } from "./settings-sections/notifications-section";
@@ -51,6 +52,9 @@ export function SettingsContent({
             return <ExportSection onReRunOnboarding={onReRunOnboarding} />;
         case "storage":
             return <StorageSection />;
+        case "dev":
+            if (process.env.NODE_ENV === "production") return null;
+            return <DevSection />;
         default:
             return null;
     }

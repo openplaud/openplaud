@@ -75,10 +75,13 @@ export const plaudConnections = pgTable("plaud_connections", {
     userId: text("user_id")
         .notNull()
         .references(() => users.id, { onDelete: "cascade" }),
-    // Encrypted bearer token
+    // Encrypted bearer token (long-lived ≈300 days per Plaud's JWT claims)
     bearerToken: text("bearer_token").notNull(),
     // Regional API server base URL (e.g. https://api-euc1.plaud.ai for EU users)
     apiBase: text("api_base").notNull().default("https://api.plaud.ai"),
+    // Email of the linked Plaud account (captured during OTP flow). Null for
+    // legacy connections created via the bearer-token paste flow.
+    plaudEmail: text("plaud_email"),
     lastSync: timestamp("last_sync"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),

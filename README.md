@@ -125,16 +125,17 @@ The onboarding wizard will guide you through:
 
 ## 📖 Configuration Guide
 
-### 🔑 Getting Your Plaud Bearer Token
+### 🔑 Connecting Your Plaud Account
 
-1. Go to [plaud.ai](https://plaud.ai) and log in
-2. Open DevTools (`F12`) → **Network** tab
-3. Refresh the page
-4. Find any request to the Plaud API server (e.g. `api.plaud.ai` or `api-euc1.plaud.ai` for EU accounts)
-5. Copy the **Authorization** header value (starts with `Bearer `)
-6. Note which API server hostname appears in the requests — you will need to select it during onboarding
+OpenPlaud signs into Plaud directly using your email — the same way the official Plaud app does:
 
-> 💡 **Tip**: The bearer token is used to sync recordings from your Plaud device. Keep it secure!
+1. Enter the email address you use on [plaud.ai](https://plaud.ai)
+2. Plaud sends you a verification code
+3. Enter the code in OpenPlaud — that's it
+
+Your verification code is forwarded directly to Plaud's servers and **never stored** by OpenPlaud. Your Plaud email *is* stored alongside the connection so you can see which account is linked and switch accounts later — it lives only on your self-hosted instance. After login, the access token is encrypted (AES-256-GCM) and stored the same way. Your account region (Global, EU, Asia Pacific) is detected automatically.
+
+> 🔓 **Open Source**: Every line that handles your credentials is available for inspection — [send-code route](src/app/api/plaud/auth/send-code/route.ts) · [verify route](src/app/api/plaud/auth/verify/route.ts) · [encryption](src/lib/encryption.ts)
 
 ### 💾 Storage Options
 
@@ -479,8 +480,10 @@ src/
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/plaud/connect` | Connect Plaud device |
+| `POST` | `/api/plaud/auth/send-code` | Send OTP verification code to Plaud email |
+| `POST` | `/api/plaud/auth/verify` | Verify OTP and store encrypted connection |
 | `GET` | `/api/plaud/connection` | Check connection status |
+| `DELETE` | `/api/plaud/connection` | Disconnect Plaud account (preserves recordings) |
 | `POST` | `/api/plaud/sync` | Manual sync recordings |
 
 </details>

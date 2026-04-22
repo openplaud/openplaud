@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
   - name: Questions & Discussions
-    url: https://github.com/yourusername/openplaud/discussions
+    url: https://github.com/openplaud/openplaud/discussions
     about: Ask questions and discuss ideas with the community
   - name: Security Vulnerability
-    url: https://github.com/yourusername/openplaud/security/advisories/new
+    url: https://github.com/openplaud/openplaud/security/advisories/new
     about: Report security vulnerabilities privately
   - name: Documentation
-    url: https://github.com/yourusername/openplaud/tree/main/docs
+    url: https://github.com/openplaud/openplaud/tree/main/docs
     about: Read the documentation

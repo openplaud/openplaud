@@ -45,24 +45,6 @@ export function isValidPlaudApiUrl(url: string): boolean {
 }
 
 /**
- * Resolve a server key (and optional custom URL) to an API base URL.
- * Returns null if the input is invalid.
- */
-export function resolveApiBase(
-    serverKey: string,
-    customApiBase?: string,
-): string | null {
-    if (serverKey === "custom") {
-        if (!customApiBase || !isValidPlaudApiUrl(customApiBase)) return null;
-        // Normalize: strip trailing slash
-        return customApiBase.replace(/\/+$/, "");
-    }
-    if (!Object.hasOwn(PLAUD_SERVERS, serverKey)) return null;
-    return PLAUD_SERVERS[serverKey as Exclude<PlaudServerKey, "custom">]
-        .apiBase;
-}
-
-/**
  * Find the server key for a stored apiBase URL.
  * Returns the key if it matches a known server, otherwise "custom".
  */

@@ -4,8 +4,10 @@ import { Comparison } from "@/components/landing/comparison";
 import { Deploy } from "@/components/landing/deploy";
 import { Features } from "@/components/landing/features";
 import { FinalCTA } from "@/components/landing/final-cta";
+import { ForProfessionals } from "@/components/landing/for-professionals";
 import { Hero } from "@/components/landing/hero";
 import { LandingNav } from "@/components/landing/landing-nav";
+import { RedditQuotes } from "@/components/landing/reddit-quotes";
 import { TheMath } from "@/components/landing/the-math";
 import { getSession } from "@/lib/auth-server";
 
@@ -23,6 +25,8 @@ export default async function HomePage() {
                 <Hero />
                 <TheMath />
                 <Features />
+                <RedditQuotes />
+                <ForProfessionals />
                 <Comparison />
                 <Deploy />
                 <FinalCTA />

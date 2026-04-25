@@ -1,287 +1,327 @@
 # OpenPlaud — Agent Guidelines
 
-## What This Is
+## First task
 
-OpenPlaud is a self-hosted interface for Plaud Note voice recorders. It replaces Plaud's $20/month AI subscription with a user-controlled setup: the user brings their own OpenAI-compatible API keys (OpenAI, Groq, LM Studio, Ollama, etc.), and OpenPlaud handles syncing recordings from Plaud devices, transcription, AI summaries/titles, storage, export, and notifications.
+If the user did not give you a concrete task, read this file + `README.md` + `BRANCHING.md`, then ask which area to work on (sync, transcription, AI, storage, UI, settings, onboarding, notifications, landing).
 
-Users authenticate against Plaud's API via OTP (email verification code), then OpenPlaud pulls recordings from the regional Plaud server on a schedule. The app runs as a Next.js app behind Docker — locally, on a VPS, or as a hosted SaaS.
+## The One Rule
 
-## 🚨 We Have Real Users
+Understand what you're changing. OpenPlaud is live and in use — people depend on it to access their recordings, transcripts, and storage. If you can't explain what your change does and how it interacts with the rest of the system, don't ship it.
 
-OpenPlaud is live and in use. This is not a toy project or a pre-launch experiment — people depend on it to access their recordings, their transcripts, and their storage. Every decision should be weighed against that:
+Using AI to write code is fine. Submitting AI-generated code you don't understand is not.
 
-- **Backwards compatibility matters.** Existing DB rows, stored tokens, synced recordings, and user settings must keep working across deploys. Schema changes are additive by default; destructive migrations need an explicit user-impact assessment.
-- **Don't break the sync loop.** If sync stops working, users stop trusting the product. Test against a real Plaud account before shipping anything that touches `src/lib/sync/` or `src/lib/plaud/`.
-- **Don't break existing integrations.** Users have configured AI providers, storage backends, SMTP, Bark — changes to those surfaces need deprecation paths, not flag-day rewrites.
-- **Ship incrementally; fail loudly.** Add logging + Sentry context when changing hot paths so regressions surface fast instead of silently corrupting user data.
-- **Communicate breaking changes** in `CHANGELOG.md` with a migration note — self-hosters read this to decide when to upgrade.
+## Style
 
-When in doubt, ask: *"If this goes wrong, how many users notice, and how fast can they recover?"*
+- Keep answers short and concise
+- No emojis in commits, issues, PR comments, or code
+- No fluff or cheerful filler text
+- Technical prose only, be kind but direct (e.g., "Thanks @user" not "Thanks so much @user!")
 
-## Positioning
+Marketing surfaces (landing page copy, README feature sections) are exempt — they follow product design, not agent rules.
 
-OpenPlaud is **open source (AGPL-3.0)** and targets **anyone who owns a Plaud device** (Plaud Note, Note Pro, or NotePin) and doesn't want to pay Plaud's AI subscription. Within that audience, the landing copy speaks to two positioning slices with different decision drivers:
+## Code Quality
 
-### Slice 1 — Cost-conscious Plaud users (default path)
+- No `any` types unless absolutely necessary
+- Check `node_modules` for external API type definitions instead of guessing
+- **NEVER use inline imports** — no `await import("./foo")`, no `import("pkg").Type` in type positions. Always top-level imports.
+- NEVER remove or downgrade code to fix type errors from outdated dependencies; upgrade the dependency instead
+- Always ask before removing functionality or code that appears to be intentional
+- Refactor freely and do not preserve backward compatibility on internal code unless the user explicitly asks. Internal code APIs are not a contract; only the **deploy surface** is (see below) — that one is sacred.
 
-The hero, The Math, and Reddit-quotes sections target this slice. Message: *"Plaud charges $XX/month. We charge $0."* These users were sold on the hardware, then surprised by the subscription. Evidence lives on r/PlaudNoteUsers threads about canceling the sub. They mostly want cheap + reliable, don't care deeply where the code runs.
+## Commands
 
-### Slice 2 — Privacy / compliance professionals (`for-professionals.tsx`)
+- After code changes (not docs): `pnpm format-and-lint:fix && pnpm type-check`. Fix all errors and warnings before committing.
+- When running check/typecheck/test commands, capture the full output — do not pipe through `| tail`, `| head`, or otherwise truncate. Hidden errors are the whole problem these commands are supposed to surface.
+- Tests: `pnpm test` (from repo root). Integration tests are opt-in via `PLAUD_BEARER_TOKEN=... bun test src/tests/plaud.integration.test.ts`.
+- If you create or modify a test file, run it and iterate until it passes.
+- Regression tests for a specific bug go at `src/tests/regressions/<issue-number>-<short-slug>.test.ts` (create the directory the first time).
+- **NEVER run without user instruction:** `pnpm dev`, `pnpm build`, `pnpm db:migrate`, `pnpm db:generate`, `docker compose up`, any release command.
+- Dev diagnostics endpoint: `/api/dev/plaud/info` (dev-only, hidden in production) — probes the stored Plaud connection and reports device + recording counts. Useful for "is the connection actually working" without digging into the DB.
 
-Explicitly named: **lawyers, journalists, consultants, researchers**. Decision driver is sovereignty — their conversations are privileged, regulated, or source-protected. They default to **self-host + local AI** (Whisper / Llama via Ollama). They care about auditability (AGPL), infrastructure control, and being able to show clients exactly what processes their recordings.
+## **CRITICAL** Tool Usage Rules **CRITICAL**
 
-> Note on compliance: we do **not** self-attest HIPAA. The compliance claim belongs to the user's AI provider. We provide the knobs (self-host + pluggable AI), they own the story. Never add copy that implies otherwise.
+- NEVER use `sed`/`cat` to read a file or a range of a file. Always use the Read tool (use offset + limit for ranged reads).
+- You MUST read every file you modify in full before editing.
+
+## **CRITICAL** Git Rules **CRITICAL**
+
+Multiple agents may work on the same worktree simultaneously (subagents, parallel sessions). These rules prevent destroying other agents' work and prevent destructive mistakes even in single-agent use.
+
+### Committing
+
+- **ONLY commit files YOU changed in THIS session.**
+- ALWAYS include `fixes #<number>` or `closes #<number>` in the commit message when there is a related issue or PR.
+- NEVER use `git add -A` or `git add .` — these sweep up changes from other agents.
+- ALWAYS use `git add <specific-file-paths>` listing only files you modified.
+- Before committing, run `git status` and verify you are only staging YOUR files.
+- Track which files you created/modified/deleted during the session.
+- It is always fine to include matching `src/db/migrations/*.sql` and `src/db/migrations/meta/*` files alongside the `src/db/schema.ts` change that produced them — they are generated artifacts of your edit, not other agents' work.
+- NEVER commit unless the user asks.
+
+### Forbidden Git Operations
+
+These can destroy work:
+
+- `git reset --hard` — destroys uncommitted changes
+- `git checkout .` — destroys uncommitted changes
+- `git clean -fd` — deletes untracked files
+- `git stash` — stashes ALL changes including other agents' work
+- `git add -A` / `git add .` — stages other agents' uncommitted work
+- `git commit --no-verify` — bypasses required checks, never allowed
+- `git push --force` / `--force-with-lease` — never allowed
+
+### Safe Workflow
+
+```bash
+# 1. Check status first
+git status
+
+# 2. Add ONLY your specific files
+git add src/lib/storage/s3-storage.ts
+git add CHANGELOG.md
+
+# 3. Commit
+git commit -m "fix(storage): correct S3 content-type fallback"
+
+# 4. Push (pull --rebase if needed, but NEVER reset/checkout)
+git pull --rebase && git push
+```
+
+### Commit prefixes
+
+`feat:`, `fix:`, `refactor:`, `chore:`, `perf:`, `docs:` (Conventional-Commits-ish). Squash-merge scoped features into `main`. Regular-merge long-lived branches where per-commit history matters.
+
+### Branch model
+
+`main` is a **rolling integration branch** — may be broken at any commit. Stable deploys come from tagged releases. See [BRANCHING.md](BRANCHING.md).
+
+### PR workflow
+
+- Analyze PRs without pulling locally first.
+- If the user approves: create a feature branch, pull the PR, rebase on `main`, apply adjustments, commit, merge into `main`, push, close the PR, and leave a comment in the user's tone.
+- You never open PRs yourself. Work in feature branches until everything matches the user's requirements, then merge into `main` and push.
+
+### Rebase conflicts
+
+- Resolve conflicts in YOUR files only.
+- If conflict is in a file you didn't modify, abort and ask the user.
+- NEVER force-push.
+
+### User override
+
+If user instructions conflict with these rules, ask for explicit confirmation before executing. Only then override.
+
+## GitHub Issues and PRs
+
+### Reading
+
+- Always read all comments, not just the body.
+- Recipe: `gh issue view <number> --json title,body,comments,labels,state`
+
+### Creating issues
+
+Three templates — pick the right one:
+
+- `bug_report.yml` — user-facing bug
+- `feature_request.yml` — user-facing feature suggestion
+- `task.yml` — internal agent-handoff work item
+
+Task template has three blocks: **Context** (why + current state), **Acceptance Criteria** (concrete verifiable outcomes), **Relevant files** (optional pointers).
+
+Title prefixes match commit prefixes. Labels: `bug`, `enhancement`, `task`, `triage`, `good first issue`, `documentation`, `help wanted`. Don't invent ad-hoc labels.
+
+### Commenting
+
+- Write multi-line comments to a temp file, use `gh issue comment --body-file` / `gh pr comment --body-file`. Never `--body` in shell for multi-line markdown.
+- Preview the exact comment text before posting.
+- Post exactly one final comment unless the user asks for more.
+- If a comment is malformed, delete it and repost one corrected version.
+- Tone: concise, technical, in the user's voice.
+
+### Closing via commit
+
+Include `closes #<n>` or `fixes #<n>` in the commit message — GitHub auto-closes when merged to `main`.
+
+### TODOs
+
+Plans and TODOs that need to survive a session belong in GitHub Issues, not in code comments or `plans/*.md`.
+
+## Changelog
+
+`CHANGELOG.md` is **maintainer-curated at release time.** Contributors do not edit it in PRs.
+
+### Format
+
+Entries go under `## [Unreleased]`. Subsections:
+
+- `### Breaking Changes` — needs a migration note
+- `### Added` — new features
+- `### Changed` — changes to existing functionality
+- `### Fixed` — bug fixes
+- `### Removed` — removed features
+- `### Security` — security-relevant changes
+
+### Rules
+
+- Before adding entries, read the full `[Unreleased]` section to see which subsections exist.
+- New entries ALWAYS go under `## [Unreleased]`.
+- Append to existing subsections; do not create duplicates.
+- NEVER modify already-released version sections (`## [0.1.0]`, etc.) — each is immutable once released.
+
+### Attribution format
+
+- Internal changes: `Fixed sync stall on 429 ([#123](https://github.com/openplaud/openplaud/issues/123))`
+- External contributions: `Added Groq provider ([#456](https://github.com/openplaud/openplaud/pull/456) by [@username](https://github.com/username))`
+
+## Releasing
+
+Agents do not cut releases — that's a maintainer action. The procedure (tag, push, workflows, draft review) lives in [BRANCHING.md](BRANCHING.md).
+
+## Don't break existing deployments
+
+OpenPlaud is self-hosted. The **deploy surface** — DB schema, env vars, `docker-compose.yml` structure, install flow — is a user contract. Internal code is not.
+
+- **Schema changes are additive by default.** Dropping columns or tables requires a user-impact assessment and a migration plan. See the **Database Migrations** block below.
+- **Env var renames need deprecation.** Keep the old name working for at least one release cycle, log a deprecation warning, document both in `CHANGELOG.md`.
+- **`docker-compose.yml` is a user contract.** Breaking structural changes need a CHANGELOG migration note.
+- **Test sync against a real Plaud account** before shipping anything touching `src/lib/sync/` or `src/lib/plaud/`. Sync regressions destroy user trust fastest.
+- **Breaking changes ship with loud logging + Sentry context + CHANGELOG notes.** Never silently.
+
+Ask: *"If this goes wrong, how many users notice, and how fast can they recover?"*
+
+## Product context
+
+OpenPlaud is AGPL-3.0, targets anyone who owns a Plaud device (Note, Note Pro, NotePin) and doesn't want Plaud's AI subscription.
+
+### Audience slices
+
+- **Slice 1 — Cost-conscious Plaud users** (default path; hero, The Math, Reddit quotes target these). Driver: "Plaud charges $X/mo, we charge $0." Don't care where code runs.
+- **Slice 2 — Privacy / compliance professionals** (`for-professionals.tsx`): lawyers, journalists, consultants, researchers. Driver: sovereignty. Default to self-host + local AI (Whisper / Ollama). Care about auditability (AGPL) and infrastructure control.
 
 ### Delivery tiers
 
-The same product is delivered via three surfaces:
+- **Self-host (Free, forever)** — AGPL source, `docker compose up`. Shipped. Default for Slice 2.
+- **Hosted Free / Hosted Pro** — **landing-page-only.** No billing integration, no `plan` column, no subscriptions table, no caps enforcement anywhere. Pricing copy is a placeholder. Do not design features that depend on these tiers being real.
 
-- **Self-host (Free, forever)** — AGPL source, `docker compose up`, unlimited everything bounded only by user hardware + their own API keys. ✅ Implemented. The default for Slice 2.
-- **Hosted Free ($0/mo, with caps)** — zero-setup onboarding. 500 min/mo transcription, 10 GB storage, one device, bring-your-own AI keys. ⚠️ **Landing-page positioning only** — no billing, no plan enforcement, no caps in code.
-- **Hosted Pro ($5/mo, unlimited)** — same product, unlimited everything, priority sync/backups/support. ⚠️ **Landing-page positioning only.**
+### Core invariants
 
-All three serve the same audience; they differ only on who runs the server. Conversion logic is friction vs control, not features: a Slice 1 user who doesn't want to think about infra defaults to Hosted; a Slice 2 user defaults to Self-host.
+- **Self-host is first-class.** If it won't run in `docker compose up`, it doesn't ship. Slice 2 literally cannot use it otherwise.
+- **Local-AI path must keep working.** Transformers.js (browser) and Ollama/LM Studio (local server) are the privacy-critical path. Don't regress them for "better" cloud-provider features.
+- **No vendor lock-in inside OpenPlaud either.** Storage pluggable (local / S3-compatible). AI providers pluggable (any OpenAI-compatible). Don't hardcode to one; don't add a "default cloud" fallback that silently leaks data.
+- **Export parity is non-negotiable.** Full backup (one-archive export → restore elsewhere) is the proof users can leave. Every recording, transcript, summary must round-trip. Do not ship features that can't be backed up.
+- **Never claim compliance we don't own.** HIPAA, SOC2, attorney-client privilege — the claim belongs to the user's AI provider + their self-host setup, not to OpenPlaud. Marketing and product copy both stay honest here.
 
-### Open source posture
+### Marketing-vs-product gap
 
-**Everything is open** — dashboard, sync, transcription, storage adapters, the Plaud API client. Being AGPL is a feature, not a moat: the core value is giving Plaud-device owners an escape hatch from vendor lock-in. Hosted tiers exist to monetise convenience, not gated features. **Do not add proprietary-only features.** Anything shipped to hosted should also work on self-host.
+OpenPlaud has "marketing ahead of code" in several places. **Always cross-check landing / pricing / changelog claims against actual code before designing features that depend on them.** Known gaps:
 
-### The marketing-vs-product gap
+- Hosted tiers (see above) — positioning only.
+- Plaud refresh-token handling was removed in `bed9cd3` — Plaud issues only long-lived access tokens (~300 day JWT). Do not re-add refresh-token plumbing.
+- "Switch Plaud account" flow referenced on the landing page is not wired up yet.
 
-OpenPlaud has a "marketing ahead of code" state in several places. Things you may see that are **NOT actually shipped**:
+### Target UX comparisons
 
-- **Hosted Free / Hosted Pro tiers** on `src/components/landing/pricing.tsx` — no billing integration (no Stripe, no webhook), no `plan` column on users, no subscriptions table, no caps enforcement anywhere. The pricing file itself comments `"sensible placeholders. Adjust as hosted-infra economics settle."`
-- **Plaud refresh-token handling** was removed in `bed9cd3` after a HAR capture confirmed Plaud issues only long-lived access tokens (~300 day JWT expiry). Do not re-add it.
-- The landing page references a "Switch Plaud account" flow that isn't wired yet (Phase 2 follow-up).
+- **Yes:** Plaud's own web app (the thing we're replacing), Linear, Vercel dashboards.
+- **No:** generic self-host transcription stacks (Whisper + a script). OpenPlaud must feel like a product, not a pile of utilities.
 
-**Always cross-check claims in changelog / landing / pricing pages against actual code before designing features that depend on them.**
+## Product principles
 
-### Implications for engineering decisions
+In priority order when in doubt:
 
-- **Self-host users are first-class.** Features cannot require hosted-only infrastructure. If it won't run in `docker compose up`, it doesn't ship. Slice 2 literally cannot use it otherwise.
-- **Local-AI path must keep working.** Browser transcription (Transformers.js) and Ollama-style local providers are the privacy-critical path. Don't regress them in pursuit of "better" cloud-provider features.
-- **No vendor lock-in inside OpenPlaud either.** Storage is pluggable (local / S3-compatible). AI providers are pluggable (any OpenAI-compatible). Don't hardcode to one, don't add a "default cloud" fallback that silently leaks data.
-- **Export parity is non-negotiable.** Full backup (one-archive export → restore elsewhere) is the proof that users can leave. It must stay complete: every recording, transcript, summary. Do not ship a feature that can't be backed up.
-- **Never claim compliance we don't own.** HIPAA, SOC2, attorney-client, etc. — the claim belongs to the user's AI provider + their self-host setup, not to OpenPlaud. Marketing copy and product copy must both stay honest here.
-- **Target UX comparisons:** Plaud's own web app (the thing we're replacing), plus polished SaaS like Linear / Vercel dashboards as the UX bar.
-- **NOT target comparisons:** generic self-host transcription stacks (Whisper + a script). OpenPlaud must feel like a product, not a pile of utilities.
-- **Community contributions are welcome** (`CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`), but the core team is small — write internal docs as internal engineering notes, not contributor pitches.
-
-## Product Principles
-
-These guide the "in-doubt, do this" decisions. In priority order:
-
-### 1. Performance above all else
-
-When in doubt, do the thing that makes the app feel the fastest.
-
-- Optimistic updates everywhere writes happen
-- Custom data-loader patterns + link prewarm on hover
-- No JS or data waterfalls — parallelize fetches, colocate loaders
-- Minimize blocking onboarding states — users should reach "recordings list" ASAP
-
-### 2. Good defaults
-
-Less config is best. Users should expect things to work out of the box:
-
-- Sensible sync intervals, sensible retention, sensible storage paths
-- Auto-detect the Plaud region via the `-302` redirect in `plaudSendCode`
-- Default to browser transcription (zero API cost) when no AI provider is configured
-
-### 3. Convenience
-
-No friction, pleasant to use:
-
-- All shareable URLs are share-ready by default
-- Homepage → latest recording should be ≤ 4 clicks
-- Re-auth flows (when they eventually happen) should be a modal, not a full onboarding reset
-
-### 4. Security
-
-Convenient ≠ insecure:
-
-- AES-256-GCM encryption for all stored tokens (Plaud bearer, AI keys, SMTP creds)
-- Check `userId` on every query that touches user data — never trust route params
-- Be very thoughtful about "public" endpoints — most everything should require an authed session
-- Path-traversal protection in local storage, range-header validation on audio streaming
-
-## Tech Stack
-
-- **Next.js 16** (App Router) + **TypeScript** (strict)
-- **Tailwind CSS v4** + **shadcn/ui** (Radix primitives)
-- **PostgreSQL** + **Drizzle ORM**
-- **Better Auth** for session auth (email + password)
-- **Next.js route handlers** for the API (no separate API framework)
-- **Cloudflare R2 / AWS S3 / MinIO** (S3-compatible) or local filesystem for audio storage
-- **Transformers.js** (`@xenova/transformers`) for in-browser Whisper transcription
-- **OpenAI-compatible HTTP** for server-side transcription + LLM calls (any provider)
-- **nodemailer** for SMTP notifications; Bark for iOS push
-- **Biome** for linting + formatting
-- **pnpm** for package management, **Bun** for running scripts (`bun db:migrate`, etc.)
-- **Vitest** for unit + integration tests
-
-## Project Layout
-
-```
-src/
-├── app/
-│   ├── (app)/          # Authed dashboard (dashboard, recordings, settings, onboarding)
-│   ├── (auth)/         # Login / register
-│   ├── api/            # Route handlers (plaud, recordings, settings, backup, export, dev, health)
-│   ├── layout.tsx      # Root layout
-│   └── page.tsx        # Landing page (sections composed from components/landing/*)
-├── components/
-│   ├── landing/        # Marketing page sections (hero, pricing, features, FAQ, etc.)
-│   ├── settings/       # Settings dialog + sections
-│   ├── recordings/     # Recording workstation UI
-│   ├── dashboard/      # Authed shell
-│   ├── onboarding/     # OTP + initial setup flows
-│   └── ui/             # shadcn primitives
-├── db/
-│   ├── schema.ts       # All Drizzle tables in one file
-│   ├── migrations/     # Generated migrations + meta snapshots
-│   ├── migrate.ts      # Runs pending migrations (used by `bun db:migrate`)
-│   └── index.ts        # Drizzle client
-├── hooks/              # React hooks (use-settings, use-auto-sync, etc.)
-├── lib/
-│   ├── plaud/          # Plaud API client + auth + server regions
-│   ├── sync/           # Recording sync worker + config
-│   ├── transcription/  # Server-side transcription pipeline
-│   ├── ai/             # AI provider abstraction (OpenAI-compatible)
-│   ├── storage/        # Local + S3 storage adapters (pluggable)
-│   ├── notifications/  # Email + Bark
-│   ├── encryption.ts   # AES-256-GCM for tokens/keys
-│   ├── env.ts          # Zod-validated env schema
-│   └── auth.ts         # Better Auth config
-├── tests/              # Vitest unit + integration tests
-└── types/              # Shared TypeScript types (plaud, settings, etc.)
-```
+1. **Performance above all else.** Optimistic updates on writes. Data-loader patterns + link prewarm on hover. No JS or data waterfalls. Minimize blocking onboarding states.
+2. **Good defaults.** Less config is best. Sensible sync intervals, retention, storage paths. Auto-detect Plaud region via `-302` redirect. Default to browser transcription when no AI provider configured.
+3. **Convenience.** Shareable URLs share-ready by default. Homepage → latest recording ≤ 4 clicks. Re-auth flows are modals, not full onboarding resets.
+4. **Security.** AES-256-GCM for all stored tokens. `userId` check on every user-scoped query (see CRITICAL block below). Be thoughtful about "public" endpoints. Path-traversal protection in local storage, range-header validation on audio streaming.
 
 ## Code Conventions
 
-- Prefer **server components**; use `"use client"` only for interactivity
-- Route handlers live under `src/app/api/` using Next.js conventions — one `route.ts` per endpoint
-- Database access through Drizzle; queries may live inline in route handlers for now (no enforced `queries/` layer yet)
-- **Validate user ownership on every query** that touches a user-scoped row — `where(eq(table.userId, session.user.id))` is not optional
-- Environment variables are validated via Zod in `src/lib/env.ts` — add new vars there and access via the validated `env` object, never `process.env.X` directly in feature code
-- Toasts via `sonner`; no `alert()` or custom toast systems
-- Encrypt sensitive values at rest (`src/lib/encryption.ts`) — never store plaintext bearer tokens, refresh tokens (where applicable), or API keys
-- Client components that fetch from our own API should use the existing `/api/...` routes — no duplicate client-side Plaud API calls
+- Prefer **server components**; use `"use client"` only for interactivity.
+- Route handlers live under `src/app/api/` — one `route.ts` per endpoint.
+- Database access via Drizzle. Queries may live inline in route handlers for now (no enforced `queries/` layer yet).
+- Environment variables are validated via Zod in `src/lib/env.ts`. Add new vars there and access via the validated `env` object. **Never `process.env.X` directly in feature code.**
+- Toasts via `sonner`; no `alert()` or custom toast systems.
+- Client components that fetch from our own API use existing `/api/...` routes — no duplicate client-side Plaud API calls.
 
-## Git & PRs
+## **CRITICAL** User-Scoped Queries **CRITICAL**
 
-- **Squash-merge feature branches.** Scoped features land on `main` as a single commit; scaffolding commits on the branch are noise.
-- **Regular-merge long-lived branches** (investigation work, multi-phase refactors, anything where the individual commits carry meaningful context worth preserving in history).
-- Commit prefix conventions: `feat:`, `fix:`, `refactor:`, `chore:`, `perf:`, `docs:` (Conventional Commits-ish).
-- Mixed-concern branches are OK short-term, but split at PR time when themes are unrelated — easier review, cleaner revert.
+Every query that touches user-scoped data **MUST** include `where(eq(table.userId, session.user.id))`. Trusting route params or body fields without this check is a security bug — an attacker can read/modify other users' recordings, transcriptions, tokens, and AI keys.
 
-## Database
+This is not optional, not "I'll add it later," not "it's an internal endpoint." Every query. Every time.
 
-| Command | What it does |
-|---------|-------------|
-| `bun db:migrate` | Run pending migrations |
-| `bun run db:generate` (or `pnpm db:generate`) | Generate a new migration from schema changes |
-| `bun run db:studio` | Open Drizzle Studio GUI |
+## **CRITICAL** Encryption At Rest **CRITICAL**
 
-Schema lives in `src/db/schema.ts`. Migrations are in `src/db/migrations/`.
+These values go through `src/lib/encryption.ts` (AES-256-GCM) before hitting the DB:
 
-**⚠️ NEVER hand-write migration files.** Always edit `src/db/schema.ts` first, then run `bun run db:generate` to produce the migration. Drizzle tracks migrations via snapshot files in `src/db/migrations/meta/` — hand-written SQL files won't generate snapshots, which causes future `db:generate` runs to re-emit already-applied columns (silent history corruption).
+- Plaud bearer tokens (`plaudConnections.bearerToken`)
+- AI API keys (`apiCredentials.apiKey`)
+- SMTP credentials
+- S3 credentials
 
-If drizzle-kit generates SQL that re-adds columns that already exist in the DB, it means meta snapshots are out of sync with reality — fix the drift, don't hand-edit around it. Migrations `0010-0012` are historical examples of this drift; `0013+` are clean.
+Decrypt only at the moment of HTTP request construction. Never log decrypted values. Never return them in API responses.
 
-## Environment
+## **CRITICAL** Database Migrations **CRITICAL**
 
-Copy `.env.example` → `.env.local`. Key vars (validated in `src/lib/env.ts`):
+Always edit `src/db/schema.ts` first, then run `pnpm db:generate` to produce the migration. **NEVER hand-write migration SQL files.** Drizzle tracks migrations via snapshot files in `src/db/migrations/meta/` — hand-written files don't generate snapshots, which causes future `db:generate` runs to re-emit already-applied columns. That's silent history corruption.
 
-- `DATABASE_URL` — PostgreSQL connection string
-- `BETTER_AUTH_SECRET` — auth secret (`openssl rand -hex 32`)
-- `ENCRYPTION_KEY` — AES-256-GCM key for tokens (`openssl rand -hex 32`)
-- `APP_URL` — canonical app URL (used for auth callbacks, emails, etc.)
-- `DEFAULT_STORAGE_TYPE` — `local` (default) or `s3`
-- `LOCAL_STORAGE_PATH` — where recordings go when `DEFAULT_STORAGE_TYPE=local`
-- S3 creds (when using S3): standard AWS-SDK envs
-- `SMTP_*` — optional, for email notifications
-
-## Testing Locally
-
-```
-bun dev              # Next.js dev server
-bun test             # Vitest once
-bun run test:watch   # Vitest watch mode
-bun run type-check   # tsc --noEmit
-bun run format-and-lint      # Biome check
-bun run format-and-lint:fix  # Biome autofix
-```
-
-To test the full Plaud sync flow end-to-end you need a real Plaud account + device. The integration test (`src/tests/plaud.integration.test.ts`) requires a live bearer token and is skipped without it.
-
-Dev diagnostics: Settings → Developer Tools (dev-only, hidden in production builds) exposes `/api/dev/plaud/info` which probes the stored Plaud connection and reports device + recording counts. Useful for "is the connection actually working" checks without digging into the DB.
-
-## Issue Tracking
-
-We use **GitHub Issues** as the primary way to track features, bugs, and tasks. Three templates, two audiences:
-
-| Template | For | Audience |
-|---|---|---|
-| `bug_report.yml` | External bug reports from users | Public contributors |
-| `feature_request.yml` | External feature suggestions | Public contributors |
-| `task.yml` | Internal work items (agent-handoff format) | Us + AI agents |
-
-### Task template (internal)
-
-Written so an agent in a fresh session can pick it up cold and ship a PR without asking clarifying questions. Three required blocks:
-
-1. **Context** — why this matters + current state. One paragraph. Mention which audience Slice it serves (cost-conscious vs professional) if relevant.
-2. **Acceptance Criteria** — concrete, verifiable outcomes. So the agent knows when to stop.
-3. **Relevant files** (optional) — pointers to where changes likely happen. Saves repo grepping.
-
-Keep descriptions factual. Avoid vague asks like "improve onboarding" — say what specifically should change and how to verify it shipped.
-
-### Title prefixes
-
-Matches our commit prefixes:
-
-| Prefix | Use for | Example |
-|--------|---------|---------|
-| `feat:` | New features or capabilities | `feat: switch Plaud account without losing recordings` |
-| `fix:` | Bug fixes | `fix: sync stalls when Plaud returns 429 mid-page` |
-| `refactor:` | Code restructuring, no behavior change | `refactor: extract OTP flow into reusable component` |
-| `chore:` | Maintenance, deps, CI | `chore: bump Drizzle to 0.45` |
-| `perf:` | Performance improvements | `perf: parallelize recording + transcription fetches` |
-| `docs:` | Documentation changes | `docs: document local Whisper setup in README` |
-
-### Labels
-
-- `bug` — broken behavior (auto-applied by bug template alongside `triage`)
-- `enhancement` — new feature or improvement (auto-applied by feature template)
-- `task` — internal agent-handoff work item (auto-applied by task template)
-- `triage` — awaiting initial review / prioritization
-- `good first issue` — small, well-scoped, ideal for a single agent session or outside contributor
-- `documentation`, `help wanted`, `question`, `duplicate`, `invalid`, `wontfix` — standard GitHub defaults
-
-Additional labels will be added as patterns emerge — don't invent ad-hoc labels without a clear recurring use case.
-
-### Workflow
-
-1. Create an issue using the right template
-2. Agent (or human) picks it up, implements on a branch, opens a PR
-3. Reference the issue number in the commit / PR body (e.g. `feat: dedup imports, closes #42`)
-4. After shipping, create follow-up issues for anything deferred — don't let TODOs live only in code comments or in `plans/*.md`
-
-`plans/` and `todo.md` are fine for investigation notes and in-flight design work, but anything that needs to be remembered *across sessions* belongs in a GitHub Issue.
-
-## Plaud API Notes
-
-These are non-obvious facts about Plaud's server that must be respected:
-
-- **No refresh tokens.** The OTP login flow returns only `access_token` — a long-lived JWT (~300 day expiry observed). Do not re-add refresh-token plumbing; when access tokens eventually expire, the user re-authenticates via the reconnect UI.
-- **Regional servers.** `api.plaud.ai` is the global endpoint; accounts may live on `api-euc1.plaud.ai` (EU) or `api-apse1.plaud.ai` (APAC). `/auth/otp-send-code` returns `status: -302` with `data.domains.api` when the user's account lives on a different region. `plaudSendCode` handles this redirect automatically.
-- **Rate limiting.** `PlaudClient` has built-in retry-with-backoff on 429 + 5xx responses (`src/lib/plaud/client.ts`). Respect the Retry-After header.
-- **Bearer tokens are encrypted at rest** in `plaudConnections.bearerToken` via `src/lib/encryption.ts`. Decrypt only at the moment of HTTP request construction.
+If drizzle-kit generates SQL that re-adds columns that already exist, meta snapshots are out of sync with reality. **Fix the drift, don't hand-edit around it.** Migrations `0010-0012` are historical examples of this drift; `0013+` are clean.
 
 ## Architecture Notes
 
-- **Sync is pull-based.** The client polls Plaud's API on a user-configured interval; Plaud has no push. The sync worker (`src/lib/sync/sync-recordings.ts`) is idempotent and paginated.
-- **Transcription runs in two places:** (1) in-browser via Transformers.js for zero-cost, or (2) server-side via any OpenAI-compatible provider the user configured. The choice is per-recording and can be changed from the recording workstation.
-- **Storage is pluggable.** Local filesystem and S3 adapters live behind a common interface in `src/lib/storage/`. New backends should implement the `StorageProvider` interface; don't branch on storage type in feature code.
-- **AI providers are pluggable.** All LLM/STT calls go through the abstraction in `src/lib/ai/`. Any OpenAI-compatible endpoint works — don't hardcode OpenAI-specific behavior.
+- **Sync is pull-based.** Plaud has no push. The sync worker (`src/lib/sync/sync-recordings.ts`) is idempotent and paginated.
+- **Transcription runs in two places:** (1) in-browser via Transformers.js for zero-cost, or (2) server-side via any OpenAI-compatible provider. Per-recording choice, changeable from the workstation.
+- **Storage is pluggable** behind `StorageProvider` (`src/lib/storage/types.ts`). Factory pattern in `factory.ts`. Don't branch on storage type in feature code.
+- **AI is pluggable** via OpenAI-compatible HTTP (`src/lib/ai/`). Users configure `baseURL` + API key per provider; any OpenAI-compatible endpoint works. Don't hardcode OpenAI-specific behavior.
+
+## Plaud API Gotchas
+
+Non-obvious facts about Plaud's server:
+
+- **No refresh tokens.** The OTP login flow returns only `access_token` — a long-lived JWT (~300 day expiry observed). Do not re-add refresh-token plumbing. When access tokens expire, users re-auth via the reconnect UI.
+- **Regional servers.** `api.plaud.ai` is global; accounts may live on `api-euc1.plaud.ai` (EU) or `api-apse1.plaud.ai` (APAC). `/auth/otp-send-code` returns `status: -302` with `data.domains.api` when the account is on a different region. `plaudSendCode` handles the redirect.
+- **Rate limiting.** `PlaudClient` has built-in retry-with-backoff on 429 + 5xx (`src/lib/plaud/client.ts`). Respect `Retry-After`.
+- **Bearer tokens are encrypted at rest** in `plaudConnections.bearerToken` — see Encryption block above. Decrypt only when constructing the HTTP request.
+
+## Extension Points
+
+### Adding a storage adapter
+
+Storage is configured at the **instance level** (env vars), not per-user.
+
+1. Implement `StorageProvider` (`src/lib/storage/types.ts`): `uploadFile`, `downloadFile`, `getSignedUrl`, `deleteFile`, `testConnection`.
+2. Add your adapter class in `src/lib/storage/<name>.ts`.
+3. Add the new type to the `StorageType` union in `types.ts`.
+4. Add a branch in `createStorageProvider()` in `src/lib/storage/factory.ts`.
+5. Add any new env vars to `src/lib/env.ts` (Zod schema) and `.env.example`.
+6. Validate required env vars in the factory and throw a helpful error if missing (see S3 branch for pattern).
+7. Add a settings UI section if the adapter has per-user-visible config (S3 does; Local doesn't).
+
+Don't branch on storage type anywhere outside `factory.ts`.
+
+### Adding an AI provider
+
+OpenPlaud doesn't have a per-provider abstraction — it uses the OpenAI SDK with a custom `baseURL`. "Adding a provider" is usually configuration, not code:
+
+1. If the provider is OpenAI-compatible (OpenAI, Groq, Together, OpenRouter, LM Studio, Ollama, Azure, …): no code change. Users add it via the settings UI — `baseURL` + API key + model names. Document it in `README.md` under the AI Provider Setup section.
+2. If the provider has non-standard auth (e.g., AWS Bedrock with SigV4): write an adapter that fronts the provider behind an OpenAI-compatible surface. Do not branch on provider name in feature code. Keep the abstraction clean.
+
+Adding a new **AI feature** (summary style, title strategy, etc.) is different — that's new code under `src/lib/ai/` following the `generate-title.ts` / prompt-presets pattern.
+
+### Adding a notification backend
+
+Notifications currently have no shared interface — `src/lib/notifications/{bark,browser,email}.ts` are separate files, each invoked directly by callers. If you add a new backend:
+
+1. Write `src/lib/notifications/<name>.ts` exporting a `send<Name>Notification()` function.
+2. Wire it into callers (check how `bark.ts` and `email.ts` are called for the pattern).
+3. Add env vars to `src/lib/env.ts` and `.env.example`.
+4. Add a settings UI toggle if the backend is user-configurable.
+5. Include a timeout (see `bark.ts` for the 3-second pattern) — notifications must never block the sync loop.
+
+Consider introducing a shared `NotificationProvider` interface if you're adding the third or fourth backend. For now, the flat file-per-backend structure is fine.
+
+## Pointers
+
+- [README.md](README.md) — product overview + self-host install
+- [CONTRIBUTING.md](CONTRIBUTING.md) — contributor workflow
+- [BRANCHING.md](BRANCHING.md) — branching and release model
+- [CHANGELOG.md](CHANGELOG.md) — version history
+- [SECURITY.md](SECURITY.md) — vulnerability disclosure

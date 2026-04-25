@@ -7,7 +7,6 @@
 *Replace Plaud's $20/month AI subscription with your own OpenAI-compatible API keys*
 
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
-[![Docker](https://img.shields.io/badge/docker-ready-2496ED?logo=docker&logoColor=white)](https://hub.docker.com/r/openplaud/openplaud)
 [![TypeScript](https://img.shields.io/badge/typescript-5.0-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Next.js](https://img.shields.io/badge/next.js-16-000000?logo=next.js&logoColor=white)](https://nextjs.org/)
 
@@ -62,66 +61,64 @@
 
 ### Installation
 
-**1. Clone the repository**
+OpenPlaud ships as a Docker image on GitHub Container Registry. You don't need to clone the repo to self-host — just grab the compose file and env template from the latest release.
+
+**1. Create a directory and download the install files**
 
 ```bash
-git clone https://github.com/openplaud/openplaud.git
-cd openplaud
+mkdir openplaud && cd openplaud
+
+curl -fLO https://github.com/openplaud/openplaud/releases/latest/download/docker-compose.yml
+curl -fL  https://github.com/openplaud/openplaud/releases/latest/download/.env.example -o .env
 ```
 
-**2. Generate encryption keys**
+**2. Generate secrets and edit `.env`**
 
 ```bash
-# Generate BETTER_AUTH_SECRET
-openssl rand -hex 32
-
-# Generate ENCRYPTION_KEY
-openssl rand -hex 32
+# Print two fresh secrets — paste them into .env
+echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)"
+echo "ENCRYPTION_KEY=$(openssl rand -hex 32)"
 ```
 
-**3. Create and configure .env.local file**
-
-```bash
-cp .env.example .env.local
-```
-
-Edit `.env.local` with your generated keys:
+Open `.env` and set at minimum:
 
 ```env
-# Required
-BETTER_AUTH_SECRET=<your-generated-secret>
-ENCRYPTION_KEY=<your-generated-key>
+BETTER_AUTH_SECRET=<paste>
+ENCRYPTION_KEY=<paste>
 APP_URL=http://localhost:3000
-DATABASE_URL=postgresql://postgres:postgres@db:5432/openplaud
 
-# Optional - Email notifications (SMTP)
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=your-email@example.com
-SMTP_PASSWORD=your-password
-SMTP_FROM=noreply@example.com
-
-# Optional - Storage defaults
-DEFAULT_STORAGE_TYPE=local
-LOCAL_STORAGE_PATH=./storage
+# Optional — pin a specific OpenPlaud version for reproducible deploys.
+# Leave as `latest` for newest stable, or use e.g. `0.1.0` / `dev`.
+OPENPLAUD_VERSION=latest
 ```
 
-**4. Start the application**
+**3. Start the application**
 
 ```bash
 docker compose up -d
 ```
 
-**5. Access OpenPlaud**
+**4. Access OpenPlaud**
 
-Open **http://localhost:3000** and create your account!
+Open **http://localhost:3000** and create your account. The onboarding wizard will guide you through connecting your Plaud device, configuring AI providers, storage, and sync preferences.
 
-The onboarding wizard will guide you through:
-- Connecting your Plaud device
-- Configuring AI providers
-- Setting up storage
-- Customizing sync preferences
+### Upgrading
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+Database migrations run automatically on container start. To pin a version (recommended for production), set `OPENPLAUD_VERSION=0.1.0` in `.env`. To roll back, set it to the previous tag and re-run the command above.
+
+### Image tags
+
+| Tag | What you get | Use when |
+|-----|--------------|----------|
+| `latest` | Newest stable release | Default — most users |
+| `0.1.0`, `0.1` | Specific version / minor line | Production — pin for reproducibility |
+| `dev` | Rolling build from `main` | You want bleeding edge, accept breakage |
+
+> ⚠️ **`main` is a rolling integration branch.** Do not deploy by cloning and building from `main` — use the image tags above. See [BRANCHING.md](BRANCHING.md) for details.
 
 ## 📖 Configuration Guide
 
@@ -395,21 +392,7 @@ OpenPlaud features a **hardware-inspired design** that brings the tactile feel o
 
 ## 🔧 Development
 
-### Local Setup
-
-```bash
-# Install dependencies
-pnpm install
-
-# Setup database
-createdb openplaud
-pnpm db:migrate
-
-# Start dev server
-bun dev
-```
-
-The dev server will start at **http://localhost:3000**
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, code standards, and the PR workflow. See [BRANCHING.md](BRANCHING.md) for the branching and release model.
 
 ### Database Management
 

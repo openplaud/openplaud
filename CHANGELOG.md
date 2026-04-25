@@ -1,11 +1,16 @@
 # Changelog
 
-All notable changes to OpenPlaud will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
 ## [Unreleased]
+
+### Changed
+- Self-host install now uses published Docker images instead of `git clone`. See [README](README.md#-quick-start) and [BRANCHING.md](BRANCHING.md). Existing `git pull && docker compose up --build` setups keep working.
+- Docker tag `:latest` now tracks the newest stable release (previously tracked `main`). New `:dev` tag tracks `main` for bleeding-edge users.
+
+### Added
+- `BRANCHING.md` — branching and release model.
+- `docker-compose.dev.yml` — overlay for building the image from local source.
+- `OPENPLAUD_VERSION` env var for pinning the image tag.
+- GitHub Releases attach `docker-compose.yml` and `.env.example` as install artifacts.
 
 ### Security
 - Added comprehensive error handling system with safe error messages

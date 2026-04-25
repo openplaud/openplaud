@@ -1,0 +1,17 @@
+# Development overlay: builds the app image from local source instead of
+# pulling from GHCR. Use this when working on OpenPlaud itself.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# End users should use docker-compose.yml alone, which pulls the published
+# image from ghcr.io/openplaud/openplaud.
+
+services:
+  app:
+    # Override the pulled `image:` from docker-compose.yml with a local build.
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Unset the image reference so compose doesn't try to pull it first.
+    image: openplaud:dev

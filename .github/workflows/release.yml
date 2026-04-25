@@ -60,5 +60,11 @@ jobs:
           name: ${{ steps.tag.outputs.current }}
           body: ${{ steps.notes.outputs.release-notes }}
           draft: true
+          # Attach self-host install artifacts so users can
+          #   wget .../releases/latest/download/docker-compose.yml
+          # without cloning the repo.
+          files: |
+            docker-compose.yml
+            .env.example
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

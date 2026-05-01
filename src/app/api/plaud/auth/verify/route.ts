@@ -7,6 +7,7 @@ import { encrypt } from "@/lib/encryption";
 import { plaudVerifyOtp } from "@/lib/plaud/auth";
 import { PlaudClient } from "@/lib/plaud/client";
 import { isValidPlaudApiUrl } from "@/lib/plaud/servers";
+import { resolveWorkspaceToken } from "@/lib/plaud/workspace";
 
 /**
  * POST /api/plaud/auth/verify
@@ -61,11 +62,38 @@ export async function POST(request: Request) {
                 ? email.trim().toLowerCase()
                 : null;
 
-        // Verify OTP with Plaud → get the (long-lived) access token
+        // Verify OTP with Plaud → get the (long-lived) user token (UT)
         const { accessToken } = await plaudVerifyOtp(code, otpToken, apiBase);
 
-        // Validate the token actually works
-        const client = new PlaudClient(accessToken, apiBase);
+        // Resolve the personal workspace ID and mint a workspace token (WT)
+        // up front. This catches WT-mint failures at connect time rather than
+        // silently storing a UT that can't read recordings (issue #66).
+        let resolvedWorkspaceId: string | null = null;
+        try {
+            const { workspaceId } = await resolveWorkspaceToken(
+                accessToken,
+                apiBase,
+                null,
+            );
+            resolvedWorkspaceId = workspaceId;
+        } catch (err) {
+            // Don't fail the whole connect — fall through and let the client
+            // fall back to the UT (preserves behavior for any server that
+            // doesn't expose the workspace endpoints). Logged for diagnosis.
+            console.warn(
+                "[plaud/verify] workspace token resolve failed:",
+                err instanceof Error ? err.message : err,
+            );
+        }
+
+        // Validate the token actually works against the recording endpoints
+        // we'll use during sync. With resolvedWorkspaceId in hand the client
+        // mints a WT internally; without it (rare fallback) it uses the UT.
+        const client = new PlaudClient(
+            accessToken,
+            apiBase,
+            resolvedWorkspaceId,
+        );
         const isValid = await client.testConnection();
 
         if (!isValid) {
@@ -94,6 +122,7 @@ export async function POST(request: Request) {
                     bearerToken: encryptedAccessToken,
                     apiBase,
                     plaudEmail,
+                    workspaceId: resolvedWorkspaceId,
                     updatedAt: new Date(),
                 })
                 .where(eq(plaudConnections.id, existingConnection.id));
@@ -103,6 +132,7 @@ export async function POST(request: Request) {
                 bearerToken: encryptedAccessToken,
                 apiBase,
                 plaudEmail,
+                workspaceId: resolvedWorkspaceId,
             });
         }
 

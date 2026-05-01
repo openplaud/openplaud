@@ -5,6 +5,7 @@ import type {
     PlaudTempUrlResponse,
 } from "@/types/plaud";
 import { DEFAULT_SERVER_KEY, PLAUD_SERVERS } from "./servers";
+import { resolveWorkspaceToken } from "./workspace";
 
 export interface PlaudUpdateFilenameResponse {
     status: number;
@@ -27,18 +28,98 @@ function sleep(ms: number): Promise<void> {
  * Plaud API Client
  * Handles all communication with Plaud API.
  *
- * Note: Plaud's OTP login flow issues long-lived access tokens (~300 day
- * lifetime, per decoded JWT claims). There is no refresh token — when the
- * access token eventually expires, the user re-authenticates via the
- * "Switch/reconnect Plaud account" UI.
+ * Plaud uses a two-tier token model:
+ *   - **UT** (User Token, ~300 day lifetime): returned by /auth/otp-login,
+ *     stored encrypted in plaud_connections.bearer_token. Authenticates
+ *     /user/me and the workspace-token mint endpoints.
+ *   - **WT** (Workspace Token, 24h lifetime): minted from a UT, required by
+ *     recording endpoints (/file/simple/web, /device/list, /file/temp-url/*,
+ *     /filetag/, ...). On regional servers (EU, APAC) a UT sent to those
+ *     endpoints returns HTTP 200 with an empty list — i.e. it silently fails
+ *     open. That's the bug behind issue #66.
+ *
+ * The client takes a UT in its constructor and lazily mints a WT the first
+ * time an authenticated request is made. The WT is cached on the client
+ * instance for its lifetime; sync runs are short and the WT is good for 24h
+ * so no refresh logic is needed.
+ *
+ * If the WT mint fails entirely (e.g. global servers historically didn't
+ * require it), the client falls back to using the UT directly. This preserves
+ * pre-fix behavior for any server that still accepts the UT on recording
+ * endpoints.
  */
 export class PlaudClient {
-    private bearerToken: string;
-    private apiBase: string;
+    private readonly userToken: string;
+    private readonly apiBase: string;
+    private workspaceToken?: string;
+    private resolvedWorkspaceId?: string;
+    private workspaceFetchInFlight?: Promise<void>;
+    private workspaceFallbackToUt = false;
 
-    constructor(bearerToken: string, apiBase: string = DEFAULT_PLAUD_API_BASE) {
-        this.bearerToken = bearerToken;
+    constructor(
+        userToken: string,
+        apiBase: string = DEFAULT_PLAUD_API_BASE,
+        workspaceId?: string | null,
+    ) {
+        this.userToken = userToken;
         this.apiBase = apiBase;
+        this.resolvedWorkspaceId = workspaceId ?? undefined;
+    }
+
+    /**
+     * The currently-known workspace ID for this connection. Populated either
+     * by the constructor (cache hit) or after the first authenticated request
+     * (cache empty / cache stale). Callers persist this back to the DB when
+     * it differs from what they passed in.
+     */
+    get workspaceId(): string | undefined {
+        return this.resolvedWorkspaceId;
+    }
+
+    /**
+     * Whether this client fell back to using the UT directly because the WT
+     * mint failed. Useful for diagnostics.
+     */
+    get usingUserTokenFallback(): boolean {
+        return this.workspaceFallbackToUt;
+    }
+
+    /**
+     * Lazily ensure a workspace token is available. Concurrent callers share
+     * a single in-flight resolution so we don't mint multiple WTs per client.
+     */
+    private async ensureWorkspaceToken(): Promise<void> {
+        if (this.workspaceToken || this.workspaceFallbackToUt) return;
+        if (!this.workspaceFetchInFlight) {
+            this.workspaceFetchInFlight = this.fetchWorkspaceToken();
+        }
+        try {
+            await this.workspaceFetchInFlight;
+        } finally {
+            this.workspaceFetchInFlight = undefined;
+        }
+    }
+
+    private async fetchWorkspaceToken(): Promise<void> {
+        try {
+            const { workspaceToken, workspaceId } = await resolveWorkspaceToken(
+                this.userToken,
+                this.apiBase,
+                this.resolvedWorkspaceId,
+            );
+            this.workspaceToken = workspaceToken;
+            this.resolvedWorkspaceId = workspaceId;
+        } catch (err) {
+            // Last-resort fallback: use the UT directly. Preserves pre-fix
+            // behavior for any server / legacy account where the UT still
+            // works on recording endpoints. Logged so the dev info endpoint
+            // can surface it.
+            console.warn(
+                "[plaud] workspace token mint failed, falling back to user token:",
+                err instanceof Error ? err.message : err,
+            );
+            this.workspaceFallbackToUt = true;
+        }
     }
 
     /**
@@ -49,6 +130,9 @@ export class PlaudClient {
         options?: RequestInit,
         retryCount = 0,
     ): Promise<T> {
+        await this.ensureWorkspaceToken();
+
+        const bearer = this.workspaceToken ?? this.userToken;
         const url = `${this.apiBase}${endpoint}`;
 
         try {
@@ -56,7 +140,7 @@ export class PlaudClient {
                 ...options,
                 headers: {
                     ...options?.headers,
-                    Authorization: `Bearer ${this.bearerToken}`,
+                    Authorization: `Bearer ${bearer}`,
                     "Content-Type": "application/json",
                 },
             });
@@ -222,16 +306,9 @@ export class PlaudClient {
     }
 }
 
-/**
- * Create Plaud client from an encrypted bearer token stored in the DB.
- */
-export async function createPlaudClient(
-    encryptedToken: string,
-    apiBase: string = DEFAULT_PLAUD_API_BASE,
-): Promise<PlaudClient> {
-    const { decrypt } = await import("../encryption");
-    const bearerToken = decrypt(encryptedToken);
-    return new PlaudClient(bearerToken, apiBase);
-}
-
 export * from "./types";
+
+// Note: `createPlaudClient` (which decrypts a stored bearer token) lives in
+// ./client-factory so importing the PlaudClient class (e.g. from tests)
+// doesn't pull in the encryption / env validation chain. Production callers
+// import it from "@/lib/plaud/client-factory" directly.

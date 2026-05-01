@@ -10,7 +10,7 @@ import {
 } from "@/db/schema";
 import { generateTitleFromTranscription } from "@/lib/ai/generate-title";
 import { decrypt } from "@/lib/encryption";
-import { createPlaudClient } from "@/lib/plaud/client";
+import { createPlaudClient } from "@/lib/plaud/client-factory";
 import { createUserStorageProvider } from "@/lib/storage/factory";
 import {
     getResponseFormat,
@@ -161,11 +161,28 @@ export async function transcribeRecording(
                                 const plaudClient = await createPlaudClient(
                                     connection.bearerToken,
                                     connection.apiBase,
+                                    connection.workspaceId,
                                 );
                                 await plaudClient.updateFilename(
                                     recording.plaudFileId,
                                     generatedTitle,
                                 );
+                                // Backfill workspaceId if newly resolved.
+                                const resolved = plaudClient.workspaceId;
+                                if (
+                                    resolved &&
+                                    resolved !== connection.workspaceId
+                                ) {
+                                    await db
+                                        .update(plaudConnections)
+                                        .set({ workspaceId: resolved })
+                                        .where(
+                                            eq(
+                                                plaudConnections.id,
+                                                connection.id,
+                                            ),
+                                        );
+                                }
                             }
                         } catch (error) {
                             console.error(

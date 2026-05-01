@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { plaudConnections } from "@/db/schema";
 import { auth } from "@/lib/auth";
-import { createPlaudClient } from "@/lib/plaud/client";
+import { createPlaudClient } from "@/lib/plaud/client-factory";
 import { serverKeyFromApiBase } from "@/lib/plaud/servers";
 
 /**
@@ -41,6 +41,7 @@ export async function GET(request: Request) {
         const client = await createPlaudClient(
             connection.bearerToken,
             connection.apiBase,
+            connection.workspaceId,
         );
 
         const startedAt = Date.now();
@@ -78,6 +79,13 @@ export async function GET(request: Request) {
                 apiBase: connection.apiBase,
                 server: serverKeyFromApiBase(connection.apiBase),
                 plaudEmail: connection.plaudEmail,
+                workspaceId: client.workspaceId ?? connection.workspaceId,
+                workspaceIdSource: connection.workspaceId
+                    ? "cache"
+                    : client.workspaceId
+                      ? "resolved"
+                      : "unresolved",
+                workspaceTokenFallback: client.usingUserTokenFallback,
                 createdAt: connection.createdAt,
                 updatedAt: connection.updatedAt,
             },

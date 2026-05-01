@@ -4,7 +4,7 @@ import { plaudConnections, recordings, userSettings, users } from "@/db/schema";
 import { env } from "@/lib/env";
 import { sendNewRecordingBarkNotification } from "@/lib/notifications/bark";
 import { sendNewRecordingEmail } from "@/lib/notifications/email";
-import { createPlaudClient } from "@/lib/plaud/client";
+import { createPlaudClient } from "@/lib/plaud/client-factory";
 import { createUserStorageProvider } from "@/lib/storage/factory";
 import { transcribeRecording } from "@/lib/transcription/transcribe-recording";
 import type { PlaudRecording } from "@/types/plaud";
@@ -283,6 +283,7 @@ export async function syncRecordingsForUser(
         const plaudClient = await createPlaudClient(
             connection.bearerToken,
             connection.apiBase,
+            connection.workspaceId,
         );
         const storage = await createUserStorageProvider(userId);
         const allNewRecordingNames: string[] = [];
@@ -353,10 +354,20 @@ export async function syncRecordingsForUser(
             page++;
         }
 
-        // Update last sync time
+        // Update last sync time, plus the workspaceId if it was resolved or
+        // changed during this run (cache-empty backfill or stale-cache rescue).
+        const resolvedWorkspaceId = plaudClient.workspaceId;
+        const workspaceIdChanged =
+            !!resolvedWorkspaceId &&
+            resolvedWorkspaceId !== connection.workspaceId;
         await db
             .update(plaudConnections)
-            .set({ lastSync: new Date() })
+            .set({
+                lastSync: new Date(),
+                ...(workspaceIdChanged
+                    ? { workspaceId: resolvedWorkspaceId }
+                    : {}),
+            })
             .where(eq(plaudConnections.id, connection.id));
 
         // Send notifications

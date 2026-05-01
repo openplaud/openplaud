@@ -58,3 +58,56 @@ export interface PlaudApiError {
     status: number;
     msg: string;
 }
+
+/**
+ * Plaud workspace metadata returned by /team-app/workspaces/list.
+ * Personal accounts always have exactly one workspace with workspace_type="0".
+ */
+export interface PlaudWorkspace {
+    workspace_id: string;
+    member_id: string;
+    name: string;
+    role: string;
+    status: string;
+    workspace_type: string;
+    region?: string;
+    api_domain?: string;
+    created_at?: string;
+    creator_user_id?: string;
+}
+
+export interface PlaudWorkspaceListResponse {
+    status: number;
+    msg?: string;
+    data: {
+        workspaces: PlaudWorkspace[];
+    };
+    type?: string;
+}
+
+/**
+ * Plaud workspace token mint response from
+ * POST /user-app/auth/workspace/token/<workspace_id>.
+ *
+ * Note: the response wraps the actual payload in a nested `data` object that
+ * itself has `status: 0` mirroring the outer status. The workspace token (WT)
+ * has JWT typ="WT" and is required by recording endpoints. We mint a fresh WT
+ * from the UT on every PlaudClient instance; we don't persist it or its
+ * refresh_token.
+ */
+export interface PlaudWorkspaceTokenResponse {
+    status: number;
+    msg?: string;
+    data: {
+        status: number;
+        workspace_token: string;
+        expires_in: number;
+        wt_expires_at: number;
+        refresh_token: string;
+        refresh_expires_in: number;
+        refresh_expires_at: number;
+        workspace_id: string;
+        member_id: string;
+        role: string;
+    };
+}

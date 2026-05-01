@@ -23,6 +23,22 @@ import type {
     PlaudWorkspaceListResponse,
     PlaudWorkspaceTokenResponse,
 } from "@/types/plaud";
+import { isValidPlaudApiUrl } from "./servers";
+
+/**
+ * SSRF barrier. `apiBase` is user-influenced (originally chosen at OTP-send
+ * time via Plaud's regional -302 redirect, then round-tripped through the
+ * client and persisted in the DB). The verify route validates it before
+ * insert, but these helpers are also reachable from the sync path which
+ * reads apiBase from the DB — we revalidate here so a tampered DB row can't
+ * coerce the server into requesting an arbitrary URL, and so CodeQL can
+ * see the barrier.
+ */
+function assertSafeApiBase(apiBase: string): void {
+    if (!isValidPlaudApiUrl(apiBase)) {
+        throw new Error("Plaud API error: invalid API base");
+    }
+}
 
 /**
  * List all workspaces accessible to the user. Personal accounts always have
@@ -35,6 +51,7 @@ export async function listPlaudWorkspaces(
     userToken: string,
     apiBase: string,
 ): Promise<PlaudWorkspaceListResponse> {
+    assertSafeApiBase(apiBase);
     const res = await fetch(
         `${apiBase}/team-app/workspaces/list?need_personal_workspace=true`,
         {
@@ -89,6 +106,7 @@ export async function mintPlaudWorkspaceToken(
     workspaceId: string,
     apiBase: string,
 ): Promise<string> {
+    assertSafeApiBase(apiBase);
     const res = await fetch(
         `${apiBase}/user-app/auth/workspace/token/${encodeURIComponent(workspaceId)}`,
         {

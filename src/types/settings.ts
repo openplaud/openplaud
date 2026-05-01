@@ -8,6 +8,7 @@ export type SettingsSection =
     | "summary"
     | "storage"
     | "sync"
+    | "plaud-account"
     | "playback"
     | "display"
     | "notifications"

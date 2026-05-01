@@ -5,6 +5,7 @@ import { DevSection } from "./settings-sections/dev-section";
 import { DisplaySection } from "./settings-sections/display-section";
 import { ExportSection } from "./settings-sections/export-section";
 import { NotificationsSection } from "./settings-sections/notifications-section";
+import { PlaudAccountSection } from "./settings-sections/plaud-account-section";
 import { PlaybackSection } from "./settings-sections/playback-section";
 import { ProvidersSection } from "./settings-sections/providers-section";
 import { StorageSection } from "./settings-sections/storage-section";
@@ -42,6 +43,8 @@ export function SettingsContent({
             return <SummarySection />;
         case "sync":
             return <SyncSection />;
+        case "plaud-account":
+            return <PlaudAccountSection />;
         case "playback":
             return <PlaybackSection />;
         case "display":

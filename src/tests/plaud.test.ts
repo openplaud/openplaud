@@ -34,7 +34,23 @@ describe("PlaudClient", () => {
 
     beforeEach(() => {
         client = new PlaudClient(mockBearerToken);
-        vi.clearAllMocks();
+        // mockReset wipes both call history AND queued one-shot returns,
+        // so leftover mocks from prior tests don't leak in. clearAllMocks
+        // (used previously) preserves queued returns, which breaks ordered
+        // assertions when a synchronous test doesn't consume them.
+        mockFetch.mockReset();
+        // Each authenticated request first attempts to mint a workspace
+        // token (WT) via /team-app/workspaces/list. For the endpoint-URL
+        // assertions in this suite we don't care about the WT flow — we
+        // queue a 500 so the client falls back to the user token, which
+        // is what these tests assert against. Tests that exercise the WT
+        // exchange explicitly live in regressions/66-eu-otp-permissions.
+        mockFetch.mockResolvedValueOnce({
+            ok: false,
+            status: 500,
+            statusText: "Internal Server Error",
+            json: () => Promise.resolve({ status: 500, msg: "server error" }),
+        });
     });
 
     describe("constructor", () => {

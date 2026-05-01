@@ -16,7 +16,7 @@ vi.mock("@/db", () => ({
     },
 }));
 
-vi.mock("@/lib/plaud/client", () => ({
+vi.mock("@/lib/plaud/client-factory", () => ({
     createPlaudClient: vi.fn(),
 }));
 
@@ -40,7 +40,7 @@ vi.mock("@/lib/transcription/transcribe-recording", () => ({
 }));
 
 import { db } from "@/db";
-import { createPlaudClient } from "@/lib/plaud/client";
+import { createPlaudClient } from "@/lib/plaud/client-factory";
 import { syncRecordingsForUser } from "@/lib/sync/sync-recordings";
 
 describe("Sync", () => {

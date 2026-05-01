@@ -53,6 +53,13 @@ jobs:
         env:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
 
+      # softprops/action-gh-release renames hidden files (e.g. `.env.example`)
+      # by prefixing them with `default.` on upload, which breaks predictable
+      # download URLs. Copy to a non-hidden name so the asset is uploaded as
+      # `env.example` and stays curl-friendly.
+      - name: Prepare install artifacts
+        run: cp .env.example env.example
+
       - name: Create draft release
         uses: softprops/action-gh-release@v2
         with:
@@ -61,10 +68,11 @@ jobs:
           body: ${{ steps.notes.outputs.release-notes }}
           draft: true
           # Attach self-host install artifacts so users can
-          #   wget .../releases/latest/download/docker-compose.yml
+          #   curl -fLO .../releases/latest/download/docker-compose.yml
+          #   curl -fL  .../releases/latest/download/env.example -o .env
           # without cloning the repo.
           files: |
             docker-compose.yml
-            .env.example
+            env.example
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

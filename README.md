@@ -69,7 +69,7 @@ OpenPlaud ships as a Docker image on GitHub Container Registry. You don't need t
 mkdir openplaud && cd openplaud
 
 curl -fLO https://github.com/openplaud/openplaud/releases/latest/download/docker-compose.yml
-curl -fL  https://github.com/openplaud/openplaud/releases/latest/download/.env.example -o .env
+curl -fL  https://github.com/openplaud/openplaud/releases/latest/download/env.example -o .env
 ```
 
 **2. Generate secrets and edit `.env`**

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-28
+
 ### Changed
 - Self-host install now uses published Docker images instead of `git clone`. See [README](README.md#-quick-start) and [BRANCHING.md](BRANCHING.md). Existing `git pull && docker compose up --build` setups keep working.
 - Docker tag `:latest` now tracks the newest stable release (previously tracked `main`). New `:dev` tag tracks `main` for bleeding-edge users.

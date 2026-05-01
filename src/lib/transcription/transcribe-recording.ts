@@ -168,6 +168,8 @@ export async function transcribeRecording(
                                     generatedTitle,
                                 );
                                 // Backfill workspaceId if newly resolved.
+                                // Always scope user-owned UPDATEs by userId
+                                // even when filtering by id (per AGENTS.md).
                                 const resolved = plaudClient.workspaceId;
                                 if (
                                     resolved &&
@@ -177,9 +179,15 @@ export async function transcribeRecording(
                                         .update(plaudConnections)
                                         .set({ workspaceId: resolved })
                                         .where(
-                                            eq(
-                                                plaudConnections.id,
-                                                connection.id,
+                                            and(
+                                                eq(
+                                                    plaudConnections.id,
+                                                    connection.id,
+                                                ),
+                                                eq(
+                                                    plaudConnections.userId,
+                                                    userId,
+                                                ),
                                             ),
                                         );
                                 }

@@ -130,33 +130,55 @@ export async function mintPlaudWorkspaceToken(
 
     if (!res.ok) {
         const status = res.status;
+        // 5xx is treated as transient (don't relist on a server hiccup);
+        // 4xx is treated as cache-stale (workspace gone, role revoked, ...).
+        const stale = status >= 400 && status < 500;
         throw new WorkspaceTokenError(
             `Plaud API error (${status}): failed to mint workspace token`,
-            status,
+            { httpStatus: status, stale },
         );
     }
 
     const body = (await res.json()) as PlaudWorkspaceTokenResponse;
     if (body.status !== 0 || !body.data?.workspace_token) {
+        // 2xx response with a business-level error (status != 0) most
+        // commonly means the workspace is no longer valid for this user
+        // (deleted, membership revoked, etc.). Mark as stale so the caller
+        // re-discovers via /team-app/workspaces/list rather than falling
+        // straight back to the UT and silently regressing the fix.
         throw new WorkspaceTokenError(
             `Plaud API error: ${body.msg || "failed to mint workspace token"}`,
+            { stale: true },
         );
     }
     return body.data.workspace_token;
 }
 
 /**
- * Thrown when the workspace-token mint fails. Carries the HTTP status when
- * available so callers can decide whether the cached workspaceId is stale
- * (4xx → invalidate and relist) vs. a transient server issue (5xx → bubble).
+ * Thrown when the workspace-token mint fails.
+ *
+ * `stale` indicates whether the failure looks like a cache-staleness issue
+ * (workspace gone, role revoked, ...) versus a transient server problem.
+ * `resolveWorkspaceToken` uses it to decide whether to relist+remint
+ * (stale) or propagate the error (transient).
+ *
+ * `httpStatus` carries the HTTP status when the failure was at the HTTP
+ * level rather than in a 2xx response body.
  */
+export interface WorkspaceTokenErrorOptions {
+    httpStatus?: number;
+    stale?: boolean;
+}
+
 export class WorkspaceTokenError extends Error {
-    constructor(
-        message: string,
-        public readonly httpStatus?: number,
-    ) {
+    public readonly httpStatus?: number;
+    public readonly stale: boolean;
+
+    constructor(message: string, opts: WorkspaceTokenErrorOptions = {}) {
         super(message);
         this.name = "WorkspaceTokenError";
+        this.httpStatus = opts.httpStatus;
+        this.stale = opts.stale ?? false;
     }
 }
 
@@ -181,13 +203,13 @@ export async function resolveWorkspaceToken(
             );
             return { workspaceToken, workspaceId: cachedWorkspaceId };
         } catch (err) {
-            // Stale cache (workspace deleted/moved) → fall through to relist.
-            // Anything else (5xx, network) → propagate.
-            const status =
-                err instanceof WorkspaceTokenError ? err.httpStatus : undefined;
-            const isStale =
-                typeof status === "number" && status >= 400 && status < 500;
-            if (!isStale) throw err;
+            // Stale cache (workspace deleted/moved/role revoked, including
+            // 2xx-with-status != 0 business errors) → fall through to relist.
+            // Transient failures (5xx, network) → propagate so the client
+            // falls back to the UT rather than burning an extra list call.
+            const stale =
+                err instanceof WorkspaceTokenError ? err.stale : false;
+            if (!stale) throw err;
         }
     }
 

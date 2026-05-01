@@ -356,6 +356,8 @@ export async function syncRecordingsForUser(
 
         // Update last sync time, plus the workspaceId if it was resolved or
         // changed during this run (cache-empty backfill or stale-cache rescue).
+        // Always scope user-owned UPDATEs by userId in addition to the
+        // primary key, per AGENTS.md "User-Scoped Queries" rule.
         const resolvedWorkspaceId = plaudClient.workspaceId;
         const workspaceIdChanged =
             !!resolvedWorkspaceId &&
@@ -368,7 +370,12 @@ export async function syncRecordingsForUser(
                     ? { workspaceId: resolvedWorkspaceId }
                     : {}),
             })
-            .where(eq(plaudConnections.id, connection.id));
+            .where(
+                and(
+                    eq(plaudConnections.id, connection.id),
+                    eq(plaudConnections.userId, userId),
+                ),
+            );
 
         // Send notifications
         if (

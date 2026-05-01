@@ -80,11 +80,20 @@ export async function GET(request: Request) {
                 server: serverKeyFromApiBase(connection.apiBase),
                 plaudEmail: connection.plaudEmail,
                 workspaceId: client.workspaceId ?? connection.workspaceId,
-                workspaceIdSource: connection.workspaceId
-                    ? "cache"
-                    : client.workspaceId
-                      ? "resolved"
-                      : "unresolved",
+                // "cache"      = used the stored workspaceId as-is
+                // "resolved"   = client discovered or replaced it (cache empty
+                //                or stale-cache rescue picked a different id)
+                // "unresolved" = nothing stored and nothing resolved (the UT
+                //                fallback path)
+                workspaceIdSource:
+                    client.workspaceId &&
+                    client.workspaceId !== connection.workspaceId
+                        ? "resolved"
+                        : connection.workspaceId
+                          ? "cache"
+                          : client.workspaceId
+                            ? "resolved"
+                            : "unresolved",
                 workspaceTokenFallback: client.usingUserTokenFallback,
                 createdAt: connection.createdAt,
                 updatedAt: connection.updatedAt,

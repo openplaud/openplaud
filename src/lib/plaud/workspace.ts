@@ -23,21 +23,30 @@ import type {
     PlaudWorkspaceListResponse,
     PlaudWorkspaceTokenResponse,
 } from "@/types/plaud";
-import { isValidPlaudApiUrl } from "./servers";
 
 /**
  * SSRF barrier. `apiBase` is user-influenced (originally chosen at OTP-send
  * time via Plaud's regional -302 redirect, then round-tripped through the
  * client and persisted in the DB). The verify route validates it before
  * insert, but these helpers are also reachable from the sync path which
- * reads apiBase from the DB — we revalidate here so a tampered DB row can't
- * coerce the server into requesting an arbitrary URL, and so CodeQL can
- * see the barrier.
+ * reads apiBase from the DB — revalidate at the boundary so a tampered DB
+ * row can't coerce the server into requesting an arbitrary URL.
+ *
+ * Returns a freshly-constructed URL object whose hostname has been
+ * whitelist-checked against plaud.ai. Inlining the URL parse + hostname
+ * check (rather than delegating to a helper) is required for CodeQL's
+ * SSRF analysis to recognize this as a sanitizer.
  */
-function assertSafeApiBase(apiBase: string): void {
-    if (!isValidPlaudApiUrl(apiBase)) {
+function safePlaudUrl(apiBase: string, path: string): URL {
+    const parsed = new URL(path, apiBase);
+    if (
+        parsed.protocol !== "https:" ||
+        (parsed.hostname !== "plaud.ai" &&
+            !parsed.hostname.endsWith(".plaud.ai"))
+    ) {
         throw new Error("Plaud API error: invalid API base");
     }
+    return parsed;
 }
 
 /**
@@ -51,17 +60,17 @@ export async function listPlaudWorkspaces(
     userToken: string,
     apiBase: string,
 ): Promise<PlaudWorkspaceListResponse> {
-    assertSafeApiBase(apiBase);
-    const res = await fetch(
-        `${apiBase}/team-app/workspaces/list?need_personal_workspace=true`,
-        {
-            method: "GET",
-            headers: {
-                Authorization: `Bearer ${userToken}`,
-                "Content-Type": "application/json",
-            },
-        },
+    const url = safePlaudUrl(
+        apiBase,
+        "/team-app/workspaces/list?need_personal_workspace=true",
     );
+    const res = await fetch(url, {
+        method: "GET",
+        headers: {
+            Authorization: `Bearer ${userToken}`,
+            "Content-Type": "application/json",
+        },
+    });
 
     if (!res.ok) {
         throw new Error(
@@ -106,18 +115,18 @@ export async function mintPlaudWorkspaceToken(
     workspaceId: string,
     apiBase: string,
 ): Promise<string> {
-    assertSafeApiBase(apiBase);
-    const res = await fetch(
-        `${apiBase}/user-app/auth/workspace/token/${encodeURIComponent(workspaceId)}`,
-        {
-            method: "POST",
-            headers: {
-                Authorization: `Bearer ${userToken}`,
-                "Content-Type": "application/json",
-            },
-            body: "{}",
-        },
+    const url = safePlaudUrl(
+        apiBase,
+        `/user-app/auth/workspace/token/${encodeURIComponent(workspaceId)}`,
     );
+    const res = await fetch(url, {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${userToken}`,
+            "Content-Type": "application/json",
+        },
+        body: "{}",
+    });
 
     if (!res.ok) {
         const status = res.status;

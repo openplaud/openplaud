@@ -123,22 +123,33 @@ export async function plaudVerifyOtp(
  * (return verbatim with HTTP 400) or our / Plaud's responsibility (surface
  * as 500 so the user retries instead of being told to fix their token).
  *
- * The shape we expect is what `PlaudClient.request` and the auth helpers
- * throw: `Plaud API error (NNN): ...` for HTTP-level failures, plus the
- * literal `Invalid API base` from our SSRF guard.
+ * Two shapes we throw:
  *
- * Only HTTP 4xx (auth/permission/bad-input) is user-actionable. 5xx
- * means Plaud is broken — surfacing those as 400 misleads users into
- * "my token is bad" troubleshooting when in reality they should retry.
- * Bare `Plaud API error` (no status) is treated as non-actionable too,
- * since we can't tell which side of the wire the failure came from.
+ *   - `Plaud API error (NNN): ...` — HTTP-level failure from
+ *     PlaudClient.request or the workspace helpers. Status carries the
+ *     verdict: 4xx is the user (bad token / forbidden / etc.), 5xx is
+ *     Plaud (or our infra) — don't tell users to "fix their token" when
+ *     Plaud is the broken party.
+ *
+ *   - `Plaud API error: ...` (no parenthesised status) — business-level
+ *     failure where Plaud returned HTTP 200 with a `status: -N` body, or
+ *     a workspace helper rejected on its own. These are user-actionable
+ *     by definition ("invalid verification code", "failed to send code",
+ *     "no workspaces returned", ...). Pre-narrowing this would silently
+ *     break the OTP error UX.
+ *
+ *   - The literal `Invalid API base` from our SSRF guard.
  */
 export function isUserActionablePlaudError(message: string): boolean {
     if (message === "Invalid API base") return true;
+    if (!message.startsWith("Plaud API error")) return false;
     const m = /^Plaud API error \((\d{3})\):/.exec(message);
-    if (!m) return false;
-    const status = Number.parseInt(m[1], 10);
-    return status >= 400 && status < 500;
+    if (m) {
+        const status = Number.parseInt(m[1], 10);
+        return status >= 400 && status < 500;
+    }
+    // Bare `Plaud API error: ...` — business-level failure, user-actionable.
+    return true;
 }
 
 // ── JWT helpers (UX-only; not security boundaries) ────────────────────────

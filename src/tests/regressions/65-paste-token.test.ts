@@ -187,10 +187,25 @@ describe("isUserActionablePlaudError", () => {
         ).toBe(false);
     });
 
-    it("returns false for bare 'Plaud API error' (no status — ambiguous)", () => {
+    it("returns true for bare 'Plaud API error' (Plaud business-level failures)", () => {
+        // Plaud's OTP + workspace helpers throw without an HTTP status
+        // because Plaud returns 200 with `status: -N` for these. They're
+        // user-actionable by definition — narrowing here silently broke
+        // the OTP error UX ("invalid verification code" → 500 instead of
+        // 400).
         expect(isUserActionablePlaudError("Plaud API error: invalid OTP")).toBe(
-            false,
+            true,
         );
+        expect(
+            isUserActionablePlaudError(
+                "Plaud API error: failed to send verification code",
+            ),
+        ).toBe(true);
+        expect(
+            isUserActionablePlaudError(
+                "Plaud API error: no workspaces returned",
+            ),
+        ).toBe(true);
     });
 
     it("returns true for our own 'Invalid API base' SSRF rejection", () => {

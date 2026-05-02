@@ -7,19 +7,34 @@
  * better-auth's `emailAndPassword.disableSignUp` option -- the /register
  * page guard and the /login register-link hide are UX layered on top.
  *
- * This test verifies the env-schema contract and the wiring into the
- * better-auth config object. NEXT_PHASE is set so importing env.ts skips
- * the runtime validation (DATABASE_URL etc) we don't need here.
+ * This test verifies the env-schema contract for `DISABLE_REGISTRATION`.
+ * The wiring into `src/lib/auth.ts` (`emailAndPassword.disableSignUp`) is
+ * a single field reference and is not asserted here -- importing `auth.ts`
+ * in tests would pull in the Drizzle adapter and require a live DB.
+ *
+ * NEXT_PHASE is set so importing env.ts skips the runtime validation
+ * (DATABASE_URL etc) we don't need here, and is restored in afterAll so
+ * other tests sharing the worker aren't affected.
  */
 
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 type EnvSchema = typeof import("@/lib/env")["envSchema"];
 let envSchema: EnvSchema;
+let originalNextPhase: string | undefined;
 
 beforeAll(async () => {
+    originalNextPhase = process.env.NEXT_PHASE;
     process.env.NEXT_PHASE = "phase-production-build";
     ({ envSchema } = await import("@/lib/env"));
+});
+
+afterAll(() => {
+    if (originalNextPhase === undefined) {
+        delete process.env.NEXT_PHASE;
+    } else {
+        process.env.NEXT_PHASE = originalNextPhase;
+    }
 });
 
 describe("issue #59: DISABLE_REGISTRATION env contract", () => {

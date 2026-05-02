@@ -13,17 +13,28 @@
  * does too.
  *
  * NEXT_PHASE is set so importing env.ts does not run the runtime validation
- * (DATABASE_URL etc) -- we only need the schema here.
+ * (DATABASE_URL etc) -- we only need the schema here. Restored in afterAll
+ * so other tests sharing the worker aren't affected.
  */
 
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 type EnvSchema = typeof import("@/lib/env")["envSchema"];
 let envSchema: EnvSchema;
+let originalNextPhase: string | undefined;
 
 beforeAll(async () => {
+    originalNextPhase = process.env.NEXT_PHASE;
     process.env.NEXT_PHASE = "phase-production-build";
     ({ envSchema } = await import("@/lib/env"));
+});
+
+afterAll(() => {
+    if (originalNextPhase === undefined) {
+        delete process.env.NEXT_PHASE;
+    } else {
+        process.env.NEXT_PHASE = originalNextPhase;
+    }
 });
 
 describe("issue #70: IS_HOSTED env contract", () => {

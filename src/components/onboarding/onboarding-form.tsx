@@ -107,7 +107,7 @@ export function OnboardingForm() {
                             instance. No data leaves your server.
                         </p>
                         <p>
-                            This is open source software \u2014 every line is
+                            This is open source software — every line is
                             available for inspection:{" "}
                             <a
                                 href={GITHUB_REPO}
@@ -115,7 +115,7 @@ export function OnboardingForm() {
                                 rel="noopener noreferrer"
                                 className="underline decoration-dotted underline-offset-2 hover:text-muted-foreground/90 transition-colors"
                             >
-                                GitHub&nbsp;\u2192
+                                GitHub&nbsp;→
                             </a>
                         </p>
                     </Panel>

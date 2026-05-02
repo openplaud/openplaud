@@ -4,16 +4,16 @@
  * Two-mode Plaud connect form, shared between the onboarding dialog and the
  * standalone /onboarding page.
  *
- * Mode "email" \u2014 the existing OTP flow (email \u2192 6-digit code).
+ * Mode "email" — the existing OTP flow (email → 6-digit code).
  *
- * Mode "token" \u2014 paste an access token grabbed from a logged-in
+ * Mode "token" — paste an access token grabbed from a logged-in
  * web.plaud.ai session. This exists for users whose Plaud account was
  * created via Google or Apple sign-in (issue #65): the OTP flow signs them
  * into a *different*, empty shadow account on Plaud's side, so the only
  * reliable connection method is reusing the token from a real web session.
  *
- * Both modes terminate in the same place \u2014 a connection row in
- * plaud_connections \u2014 so the parent only needs to know "did the user
+ * Both modes terminate in the same place — a connection row in
+ * plaud_connections — so the parent only needs to know "did the user
  * connect?" via the `onConnected` callback.
  */
 
@@ -256,7 +256,7 @@ function ConnectorPane({
                 className="w-full"
             >
                 {isLoading
-                    ? "Waiting for plaud.ai sign-in\u2026"
+                    ? "Waiting for plaud.ai sign-in…"
                     : "Continue with Plaud"}
             </Button>
             <p className="text-xs text-muted-foreground/80 leading-relaxed">
@@ -330,7 +330,7 @@ function EmailCodePane({
             setApiBase(data.apiBase);
             setLastSentAt(Date.now());
             setStep("code");
-            toast.success("Verification code sent \u2014 check your email");
+            toast.success("Verification code sent — check your email");
         } catch (err) {
             toast.error(
                 err instanceof Error ? err.message : "Failed to send code",
@@ -398,7 +398,7 @@ function EmailCodePane({
                     className="w-full"
                 >
                     {isLoading
-                        ? "Sending code via plaud.ai\u2026"
+                        ? "Sending code via plaud.ai…"
                         : "Send Verification Code"}
                 </Button>
 
@@ -420,7 +420,7 @@ function EmailCodePane({
                         rel="noopener noreferrer"
                         className="underline decoration-dotted underline-offset-2 hover:text-muted-foreground transition-colors"
                     >
-                        #65&nbsp;\u2192
+                        #65&nbsp;→
                     </a>
                 </p>
             </div>
@@ -446,9 +446,7 @@ function EmailCodePane({
                 />
                 <p className="text-xs text-muted-foreground">
                     Code sent to <span className="font-mono">{email}</span>
-                    {apiBase && (
-                        <span> \u00b7 Region: {regionLabel(apiBase)}</span>
-                    )}
+                    {apiBase && <span> · Region: {regionLabel(apiBase)}</span>}
                 </p>
             </div>
 
@@ -457,9 +455,7 @@ function EmailCodePane({
                 disabled={isLoading || !code.trim()}
                 className="w-full"
             >
-                {isLoading
-                    ? "Verifying with plaud.ai\u2026"
-                    : "Connect Account"}
+                {isLoading ? "Verifying with plaud.ai…" : "Connect Account"}
             </Button>
 
             <div className="flex items-center justify-between text-xs text-muted-foreground/70">
@@ -471,7 +467,7 @@ function EmailCodePane({
                     }}
                     className="underline decoration-dotted underline-offset-2 hover:text-muted-foreground transition-colors"
                 >
-                    \u2190 Different email
+                    ← Different email
                 </button>
                 <button
                     type="button"
@@ -555,7 +551,7 @@ function PasteTokenPane({
                     rel="noopener noreferrer"
                     className="underline decoration-dotted underline-offset-2 hover:text-foreground transition-colors"
                 >
-                    Why? \u00b7 #65&nbsp;\u2192
+                    Why? · #65&nbsp;→
                 </a>
             </p>
 
@@ -599,7 +595,7 @@ function PasteTokenPane({
                 <Label htmlFor="plaud-access-token">Access token</Label>
                 <textarea
                     id="plaud-access-token"
-                    placeholder="eyJhbGciOi\u2026"
+                    placeholder="eyJhbGciOi…"
                     value={token}
                     onChange={(e) => setToken(e.target.value)}
                     disabled={isLoading}
@@ -616,9 +612,7 @@ function PasteTokenPane({
                 disabled={isLoading || !token.trim()}
                 className="w-full"
             >
-                {isLoading
-                    ? "Validating with plaud.ai\u2026"
-                    : "Connect with token"}
+                {isLoading ? "Validating with plaud.ai…" : "Connect with token"}
             </Button>
 
             <details className="group">
@@ -639,7 +633,7 @@ function PasteTokenPane({
                         in another tab and sign in (Google, Apple, or email).
                     </li>
                     <li>
-                        Open browser devtools (F12 / Cmd+Option+I) \u2192{" "}
+                        Open browser devtools (F12 / Cmd+Option+I) →{" "}
                         <span className="font-medium">Network</span> tab.
                     </li>
                     <li>
@@ -650,8 +644,7 @@ function PasteTokenPane({
                         etc.
                     </li>
                     <li>
-                        Under <span className="font-medium">Headers</span>{" "}
-                        \u2192{" "}
+                        Under <span className="font-medium">Headers</span> →{" "}
                         <span className="font-medium">Request Headers</span>,
                         find <span className="font-mono">Authorization</span>.
                         Copy the value <em>after</em>{" "}
@@ -659,8 +652,8 @@ function PasteTokenPane({
                         above.
                     </li>
                     <li>
-                        Pick the matching region from the dropdown \u2014 e.g.
-                        if the host was{" "}
+                        Pick the matching region from the dropdown — e.g. if the
+                        host was{" "}
                         <span className="font-mono">api-euc1.plaud.ai</span>,
                         choose EU.
                     </li>

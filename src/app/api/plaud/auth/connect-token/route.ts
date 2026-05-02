@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import {
     decodeAccessTokenExpiry,
     fetchPlaudUserMeEmail,
+    isUserActionablePlaudError,
 } from "@/lib/plaud/auth";
 import { DEFAULT_PLAUD_API_BASE } from "@/lib/plaud/client";
 import { persistPlaudConnection } from "@/lib/plaud/persist-connection";
@@ -19,7 +20,7 @@ import { isValidPlaudApiUrl } from "@/lib/plaud/servers";
  * shadow account and your real recordings never appear.
  *
  * The user pastes the bearer token they grab from a logged-in `web.plaud.ai`
- * session (devtools \u2192 Network \u2192 Authorization header on any /api*.plaud.ai
+ * session (devtools → Network → Authorization header on any /api*.plaud.ai
  * request, minus the "Bearer " prefix). We decode `exp` for a UX hint, run
  * the same workspace + /device/list validation as the OTP path, and store.
  *
@@ -71,7 +72,7 @@ export async function POST(request: Request) {
         }
 
         // UX-only `exp` check. We don't trust the decoded payload for any
-        // security decision \u2014 Plaud is the verifier on /device/list below.
+        // security decision — Plaud is the verifier on /device/list below.
         // If `exp` is in the past we still bail, since /device/list will
         // 401 and the resulting message is less useful than this one.
         const exp = decodeAccessTokenExpiry(accessToken);
@@ -100,14 +101,17 @@ export async function POST(request: Request) {
             );
         }
 
-        // Best-effort email enrichment. Failure is non-fatal \u2014
+        // Best-effort email enrichment. Failure is non-fatal —
         // plaud_connections.plaud_email is nullable.
         const plaudEmail = await fetchPlaudUserMeEmail(accessToken, apiBaseRaw);
 
         const source =
             typeof body.source === "string" ? body.source : "unknown";
+        // Deliberately omit `plaudEmail` from the log line — it's PII and
+        // not needed for diagnosing connect failures (source + apiBase
+        // already disambiguate the path).
         console.log(
-            `[plaud/connect-token] persisting connection (source=${source}, apiBase=${apiBaseRaw}, email=${plaudEmail ?? "unknown"})`,
+            `[plaud/connect-token] persisting connection (source=${source}, apiBase=${apiBaseRaw})`,
         );
 
         const { devices } = await persistPlaudConnection({
@@ -125,8 +129,7 @@ export async function POST(request: Request) {
         console.error("Error connecting Plaud token:", error);
         if (
             error instanceof Error &&
-            (error.message.startsWith("Plaud API error") ||
-                error.message === "Invalid API base")
+            isUserActionablePlaudError(error.message)
         ) {
             return NextResponse.json({ error: error.message }, { status: 400 });
         }

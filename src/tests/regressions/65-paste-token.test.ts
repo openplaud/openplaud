@@ -30,13 +30,22 @@ vi.mock("@/lib/env", () => ({
     },
 }));
 
-vi.mock("@/db", () => ({
-    db: {
-        select: vi.fn(),
-        insert: vi.fn(),
-        update: vi.fn(),
-    },
-}));
+vi.mock("@/db", () => {
+    const select = vi.fn();
+    const insert = vi.fn();
+    const update = vi.fn();
+    const execute = vi.fn().mockResolvedValue(undefined);
+    // persist-connection wraps the upsert in db.transaction(async tx => ...)
+    // and calls tx.execute (advisory lock), tx.select, tx.insert, tx.update.
+    // The mock proxies the tx object back to the same vi.fn()s so existing
+    // expectations on db.insert/db.update keep working.
+    const transaction = vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
+        cb({ select, insert, update, execute }),
+    );
+    return {
+        db: { select, insert, update, transaction },
+    };
+});
 
 vi.mock("@/lib/auth", () => ({
     auth: {
@@ -49,7 +58,10 @@ vi.mock("@/lib/auth", () => ({
 import { POST } from "@/app/api/plaud/auth/connect-token/route";
 import { db } from "@/db";
 import { auth } from "@/lib/auth";
-import { decodeAccessTokenExpiry } from "@/lib/plaud/auth";
+import {
+    decodeAccessTokenExpiry,
+    isUserActionablePlaudError,
+} from "@/lib/plaud/auth";
 
 const originalFetch = global.fetch;
 let mockFetch: Mock;
@@ -136,6 +148,63 @@ describe("decodeAccessTokenExpiry", () => {
 });
 
 // ── /api/plaud/auth/connect-token validation surface ────────────────────────
+
+// ── isUserActionablePlaudError (post-review fix for cubic P1) ──────────────────
+//
+// The previous matcher returned true for any "Plaud API error" prefix,
+// which surfaced 5xx-after-retries as a 400 "fix your token" message and
+// misled users when Plaud was the broken party. Lock in the narrower
+// 4xx-only contract so we don't regress.
+describe("isUserActionablePlaudError", () => {
+    it("returns true for 4xx Plaud HTTP errors (auth/permission/bad input)", () => {
+        expect(
+            isUserActionablePlaudError("Plaud API error (400): bad request"),
+        ).toBe(true);
+        expect(
+            isUserActionablePlaudError("Plaud API error (401): bad token"),
+        ).toBe(true);
+        expect(
+            isUserActionablePlaudError(
+                "Plaud API error (403): forbidden workspace",
+            ),
+        ).toBe(true);
+        expect(
+            isUserActionablePlaudError("Plaud API error (404): not found"),
+        ).toBe(true);
+    });
+
+    it("returns false for 5xx Plaud HTTP errors (Plaud or our infra is broken)", () => {
+        expect(
+            isUserActionablePlaudError("Plaud API error (500): server error"),
+        ).toBe(false);
+        expect(
+            isUserActionablePlaudError("Plaud API error (502): bad gateway"),
+        ).toBe(false);
+        expect(
+            isUserActionablePlaudError(
+                "Plaud API error (503): service unavailable",
+            ),
+        ).toBe(false);
+    });
+
+    it("returns false for bare 'Plaud API error' (no status — ambiguous)", () => {
+        expect(isUserActionablePlaudError("Plaud API error: invalid OTP")).toBe(
+            false,
+        );
+    });
+
+    it("returns true for our own 'Invalid API base' SSRF rejection", () => {
+        expect(isUserActionablePlaudError("Invalid API base")).toBe(true);
+    });
+
+    it("returns false for unrelated error messages", () => {
+        expect(isUserActionablePlaudError("ECONNRESET")).toBe(false);
+        expect(isUserActionablePlaudError("database connection failed")).toBe(
+            false,
+        );
+        expect(isUserActionablePlaudError("")).toBe(false);
+    });
+});
 
 describe("POST /api/plaud/auth/connect-token (validation)", () => {
     it("401s without a session", async () => {

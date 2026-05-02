@@ -116,6 +116,31 @@ export async function plaudVerifyOtp(
     return { accessToken };
 }
 
+// ── Error classification ─────────────────────────────────────────────────
+
+/**
+ * Decide whether a Plaud-related error message is the user's responsibility
+ * (return verbatim with HTTP 400) or our / Plaud's responsibility (surface
+ * as 500 so the user retries instead of being told to fix their token).
+ *
+ * The shape we expect is what `PlaudClient.request` and the auth helpers
+ * throw: `Plaud API error (NNN): ...` for HTTP-level failures, plus the
+ * literal `Invalid API base` from our SSRF guard.
+ *
+ * Only HTTP 4xx (auth/permission/bad-input) is user-actionable. 5xx
+ * means Plaud is broken — surfacing those as 400 misleads users into
+ * "my token is bad" troubleshooting when in reality they should retry.
+ * Bare `Plaud API error` (no status) is treated as non-actionable too,
+ * since we can't tell which side of the wire the failure came from.
+ */
+export function isUserActionablePlaudError(message: string): boolean {
+    if (message === "Invalid API base") return true;
+    const m = /^Plaud API error \((\d{3})\):/.exec(message);
+    if (!m) return false;
+    const status = Number.parseInt(m[1], 10);
+    return status >= 400 && status < 500;
+}
+
 // ── JWT helpers (UX-only; not security boundaries) ────────────────────────
 
 /**

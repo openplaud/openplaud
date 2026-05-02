@@ -21,7 +21,7 @@
  * mapped to 400 by callers; everything else is a 500.
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { plaudConnections, plaudDevices } from "@/db/schema";
 import { encrypt } from "@/lib/encryption";
@@ -74,6 +74,12 @@ export async function persistPlaudConnection({
     // recording-scoped endpoint, otherwise the connection is useless and
     // we'd silently store a dead token. /device/list also gives us the
     // device rows we need to upsert below in a single round-trip.
+    //
+    // Re-throw the underlying error verbatim. Wrapping it (e.g. into
+    // "token validation failed") flattens the auth-vs-server distinction:
+    // a Plaud 5xx after our retry budget would surface as 400 "fix your
+    // token" advice. Callers use isUserActionablePlaudError() to map 4xx
+    // to 400 and everything else to 500.
     const client = new PlaudClient(accessToken, apiBase, resolvedWorkspaceId);
     let deviceList: PlaudDeviceListResponse;
     try {
@@ -83,82 +89,97 @@ export async function persistPlaudConnection({
             "[plaud/persist] device list validation failed:",
             err instanceof Error ? err.message : err,
         );
-        throw new Error(
-            "Plaud API error: token validation failed (Plaud rejected the token on /device/list)",
-        );
+        throw err;
     }
 
-    // 3. Encrypt + upsert connection. Always re-scope by userId on the
-    // UPDATE/SELECT so we never touch another user's row (defense-in-depth
-    // alongside the userId-scoped lookup).
+    // 3. + 4. Atomic upsert of the connection plus device reconciliation.
+    //
+    // plaud_connections has no unique constraint on user_id (intentionally
+    // additive on existing deployments — see the schema). Without one, a
+    // concurrent second "Connect" click could observe the same
+    // "no existing row" snapshot we did and insert a duplicate row, which
+    // sync paths then nondeterministically pick between. A per-user
+    // transaction-scoped advisory lock serialises connect attempts for
+    // this user without changing the schema; the lock is released
+    // automatically when the transaction commits or aborts.
     const encryptedAccessToken = encrypt(accessToken);
 
-    const [existingConnection] = await db
-        .select()
-        .from(plaudConnections)
-        .where(eq(plaudConnections.userId, userId))
-        .limit(1);
+    await db.transaction(async (tx) => {
+        await tx.execute(
+            sql`SELECT pg_advisory_xact_lock(hashtextextended(${`plaud_connect:${userId}`}, 0))`,
+        );
 
-    if (existingConnection) {
-        await db
-            .update(plaudConnections)
-            .set({
+        const [existingConnection] = await tx
+            .select()
+            .from(plaudConnections)
+            .where(eq(plaudConnections.userId, userId))
+            .limit(1);
+
+        if (existingConnection) {
+            // Always re-scope by userId on UPDATE/DELETE of user-owned
+            // rows (defense-in-depth alongside the userId-scoped lookup).
+            await tx
+                .update(plaudConnections)
+                .set({
+                    bearerToken: encryptedAccessToken,
+                    apiBase,
+                    plaudEmail,
+                    workspaceId: resolvedWorkspaceId,
+                    updatedAt: new Date(),
+                })
+                .where(
+                    and(
+                        eq(plaudConnections.id, existingConnection.id),
+                        eq(plaudConnections.userId, userId),
+                    ),
+                );
+        } else {
+            await tx.insert(plaudConnections).values({
+                userId,
                 bearerToken: encryptedAccessToken,
                 apiBase,
                 plaudEmail,
                 workspaceId: resolvedWorkspaceId,
-                updatedAt: new Date(),
-            })
-            .where(
-                and(
-                    eq(plaudConnections.id, existingConnection.id),
-                    eq(plaudConnections.userId, userId),
-                ),
-            );
-    } else {
-        await db.insert(plaudConnections).values({
-            userId,
-            bearerToken: encryptedAccessToken,
-            apiBase,
-            plaudEmail,
-            workspaceId: resolvedWorkspaceId,
-        });
-    }
+            });
+        }
 
-    // 4. Reconcile devices. Schema has a unique constraint on
-    // (userId, serialNumber) so we look up by that pair.
-    for (const device of deviceList.data_devices) {
-        const [existingDevice] = await db
-            .select()
-            .from(plaudDevices)
-            .where(
-                and(
-                    eq(plaudDevices.userId, userId),
-                    eq(plaudDevices.serialNumber, device.sn),
-                ),
-            )
-            .limit(1);
+        // Reconcile devices. Schema enforces a unique (userId, serialNumber)
+        // pair so the per-device lookup is collision-safe; we still keep
+        // the work inside the transaction so an aborted connect doesn't
+        // leave a half-written device list against the previous token.
+        for (const device of deviceList.data_devices) {
+            const [existingDevice] = await tx
+                .select()
+                .from(plaudDevices)
+                .where(
+                    and(
+                        eq(plaudDevices.userId, userId),
+                        eq(plaudDevices.serialNumber, device.sn),
+                    ),
+                )
+                .limit(1);
 
-        if (existingDevice) {
-            await db
-                .update(plaudDevices)
-                .set({
+            if (existingDevice) {
+                await tx
+                    .update(plaudDevices)
+                    .set({
+                        name: device.name,
+                        model: device.model,
+                        versionNumber: device.version_number,
+                        updatedAt: new Date(),
+                    })
+                    .where(eq(plaudDevices.id, existingDevice.id));
+            } else {
+                await tx.insert(plaudDevices).values({
+                    userId,
+                    serialNumber: device.sn,
                     name: device.name,
                     model: device.model,
                     versionNumber: device.version_number,
-                    updatedAt: new Date(),
-                })
-                .where(eq(plaudDevices.id, existingDevice.id));
-        } else {
-            await db.insert(plaudDevices).values({
-                userId,
-                serialNumber: device.sn,
-                name: device.name,
-                model: device.model,
-                versionNumber: device.version_number,
-            });
+                });
+            }
         }
-    }
+    });
 
     return {
         devices: deviceList.data_devices,

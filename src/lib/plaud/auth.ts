@@ -115,3 +115,81 @@ export async function plaudVerifyOtp(
 
     return { accessToken };
 }
+
+// ── JWT helpers (UX-only; not security boundaries) ────────────────────────
+
+/**
+ * Decode a Plaud access token's `exp` claim without verifying the signature.
+ *
+ * Plaud's user tokens are JWTs with a ~300-day lifetime. We only decode here
+ * to give the paste-token UI a friendly hint ("this token expires in 3 days")
+ * — actual validation always happens by hitting Plaud's /device/list. Never
+ * trust the decoded payload for any security decision.
+ *
+ * Returns `null` on any malformed input rather than throwing — callers treat
+ * a null result as "unknown expiry, let Plaud decide".
+ */
+export function decodeAccessTokenExpiry(token: string): Date | null {
+    if (typeof token !== "string") return null;
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    try {
+        // base64url → base64 → utf-8 JSON
+        const b64 =
+            parts[1].replace(/-/g, "+").replace(/_/g, "/") +
+            "=".repeat((4 - (parts[1].length % 4)) % 4);
+        const json =
+            typeof atob === "function"
+                ? atob(b64)
+                : Buffer.from(b64, "base64").toString("utf8");
+        const payload = JSON.parse(json) as { exp?: unknown };
+        if (typeof payload.exp !== "number" || !Number.isFinite(payload.exp)) {
+            return null;
+        }
+        return new Date(payload.exp * 1000);
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Best-effort fetch of /user/me to derive the linked Plaud account email.
+ *
+ * Used only by the paste-token connect flow, which doesn't otherwise know
+ * the user's Plaud email. Returns `null` on any failure — the email is a
+ * UX nicety (it shows up in settings as "Connected as foo@bar.com"), not
+ * a correctness requirement, and plaud_connections.plaud_email is nullable.
+ *
+ * Same SSRF posture as the rest of this module: caller must have already
+ * passed `apiBase` through `isValidPlaudApiUrl`.
+ */
+export async function fetchPlaudUserMeEmail(
+    accessToken: string,
+    apiBase: string,
+): Promise<string | null> {
+    try {
+        const res = await fetch(`${apiBase}/user/me`, {
+            method: "GET",
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                "Content-Type": "application/json",
+            },
+        });
+        if (!res.ok) return null;
+        const body = (await res.json()) as {
+            status?: number;
+            data?: { email?: unknown };
+            email?: unknown;
+        };
+        // Tolerate both root-level and data-nested shapes (Plaud's response
+        // shape varies across endpoints/regions).
+        const raw =
+            (typeof body.email === "string" && body.email) ||
+            (typeof body.data?.email === "string" && body.data.email) ||
+            null;
+        if (!raw) return null;
+        return raw.trim().toLowerCase() || null;
+    } catch {
+        return null;
+    }
+}

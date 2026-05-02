@@ -172,10 +172,23 @@ export async function PUT(request: Request) {
 
         for (const field of SETTINGS_FIELDS) {
             let value = body[field];
-            // Validate aiOutputLanguage against the allowed set; reject
-            // anything else (including arbitrary strings from non-UI clients).
-            if (field === "aiOutputLanguage" && value !== undefined) {
-                value = normalizeAiOutputLanguage(value);
+            // Validate aiOutputLanguage against the allowed set. Explicit
+            // `null` is allowed (clears the preference → "auto"); any other
+            // non-allowlisted value is a client bug and should fail loudly
+            // rather than be silently coerced.
+            if (
+                field === "aiOutputLanguage" &&
+                value !== undefined &&
+                value !== null
+            ) {
+                const normalized = normalizeAiOutputLanguage(value);
+                if (normalized === null) {
+                    return NextResponse.json(
+                        { error: "Invalid aiOutputLanguage value" },
+                        { status: 400 },
+                    );
+                }
+                value = normalized;
             }
             if (value !== undefined) {
                 updateData[field] = value;

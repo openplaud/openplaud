@@ -135,57 +135,74 @@ export async function POST(
         const { text: transcriptionText, detectedLanguage } =
             parseTranscriptionResponse(transcription, responseFormat);
 
-        // Re-check tombstone status: the user may have deleted the
-        // recording while the (long-running) provider call was in flight.
-        // Without this guard we'd write a fresh transcription row for a row
-        // the DELETE handler has already cleaned up, leaving an orphan that
-        // exposes transcript text the user asked to remove. See PR #72.
-        const [stillActive] = await db
-            .select({ deletedAt: recordings.deletedAt })
-            .from(recordings)
-            .where(
-                and(
-                    eq(recordings.id, id),
-                    eq(recordings.userId, session.user.id),
-                ),
-            )
-            .limit(1);
+        // Atomic tombstone re-check + transcription upsert.
+        //
+        // The user may have deleted the recording while the (long-running)
+        // provider call was in flight. To prevent a delete that lands
+        // *between* our re-check and our upsert from being silently undone,
+        // we run both inside a single transaction that takes a row-level
+        // write lock (`FOR UPDATE`) on the recording. The DELETE handler's
+        // transaction acquires the same lock via its `UPDATE recordings`
+        // tombstone write, so the two transactions serialize: either we
+        // see `deletedAt` set and abort, or our upsert commits before
+        // DELETE runs and DELETE then cleans up our row inside its own tx.
+        // See PR #72.
+        const RECORDING_TOMBSTONED = Symbol("recording-tombstoned");
+        try {
+            await db.transaction(async (tx) => {
+                const [stillActive] = await tx
+                    .select({ deletedAt: recordings.deletedAt })
+                    .from(recordings)
+                    .where(
+                        and(
+                            eq(recordings.id, id),
+                            eq(recordings.userId, session.user.id),
+                        ),
+                    )
+                    .for("update")
+                    .limit(1);
 
-        if (!stillActive || stillActive.deletedAt) {
-            return NextResponse.json(
-                { error: "Recording was deleted" },
-                { status: 410 },
-            );
-        }
+                if (!stillActive || stillActive.deletedAt) {
+                    throw RECORDING_TOMBSTONED;
+                }
 
-        // Save transcription
-        const [existingTranscription] = await db
-            .select()
-            .from(transcriptions)
-            .where(eq(transcriptions.recordingId, id))
-            .limit(1);
+                const [existingTranscription] = await tx
+                    .select()
+                    .from(transcriptions)
+                    .where(eq(transcriptions.recordingId, id))
+                    .limit(1);
 
-        if (existingTranscription) {
-            await db
-                .update(transcriptions)
-                .set({
-                    text: transcriptionText,
-                    detectedLanguage,
-                    transcriptionType: "server",
-                    provider: credentials.provider,
-                    model,
-                })
-                .where(eq(transcriptions.id, existingTranscription.id));
-        } else {
-            await db.insert(transcriptions).values({
-                recordingId: id,
-                userId: session.user.id,
-                text: transcriptionText,
-                detectedLanguage,
-                transcriptionType: "server",
-                provider: credentials.provider,
-                model,
+                if (existingTranscription) {
+                    await tx
+                        .update(transcriptions)
+                        .set({
+                            text: transcriptionText,
+                            detectedLanguage,
+                            transcriptionType: "server",
+                            provider: credentials.provider,
+                            model,
+                        })
+                        .where(eq(transcriptions.id, existingTranscription.id));
+                } else {
+                    await tx.insert(transcriptions).values({
+                        recordingId: id,
+                        userId: session.user.id,
+                        text: transcriptionText,
+                        detectedLanguage,
+                        transcriptionType: "server",
+                        provider: credentials.provider,
+                        model,
+                    });
+                }
             });
+        } catch (txError) {
+            if (txError === RECORDING_TOMBSTONED) {
+                return NextResponse.json(
+                    { error: "Recording was deleted" },
+                    { status: 410 },
+                );
+            }
+            throw txError;
         }
 
         return NextResponse.json({

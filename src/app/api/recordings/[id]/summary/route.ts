@@ -221,62 +221,79 @@ export async function POST(
             summary = rawContent;
         }
 
-        // Re-check tombstone status: the user may have deleted the
-        // recording while the (long-running) provider call was in flight.
-        // Without this guard we'd write a summary row for a recording the
-        // DELETE handler has already cleaned up, leaving an orphan that
-        // exposes content the user asked to remove. See PR #72.
-        const [stillActive] = await db
-            .select({ deletedAt: recordings.deletedAt })
-            .from(recordings)
-            .where(
-                and(
-                    eq(recordings.id, id),
-                    eq(recordings.userId, session.user.id),
-                ),
-            )
-            .limit(1);
+        // Atomic tombstone re-check + upsert.
+        //
+        // The user may have deleted the recording while the (long-running)
+        // provider call was in flight. To prevent a delete that lands
+        // *between* our re-check and our upsert from being silently undone,
+        // we run both inside a single transaction that takes a row-level
+        // write lock (`FOR UPDATE`) on the recording. The DELETE handler's
+        // transaction acquires the same lock via its `UPDATE recordings`
+        // tombstone write, so the two transactions serialize: either we
+        // see `deletedAt` set and abort, or our upsert commits before
+        // DELETE runs and DELETE then cleans up our row inside its own tx.
+        // See PR #72.
+        const RECORDING_TOMBSTONED = Symbol("recording-tombstoned");
+        try {
+            await db.transaction(async (tx) => {
+                const [stillActive] = await tx
+                    .select({ deletedAt: recordings.deletedAt })
+                    .from(recordings)
+                    .where(
+                        and(
+                            eq(recordings.id, id),
+                            eq(recordings.userId, session.user.id),
+                        ),
+                    )
+                    .for("update")
+                    .limit(1);
 
-        if (!stillActive || stillActive.deletedAt) {
-            return NextResponse.json(
-                { error: "Recording was deleted" },
-                { status: 410 },
-            );
-        }
+                if (!stillActive || stillActive.deletedAt) {
+                    throw RECORDING_TOMBSTONED;
+                }
 
-        // Upsert into aiEnhancements
-        const [existing] = await db
-            .select()
-            .from(aiEnhancements)
-            .where(
-                and(
-                    eq(aiEnhancements.recordingId, id),
-                    eq(aiEnhancements.userId, session.user.id),
-                ),
-            )
-            .limit(1);
+                const [existing] = await tx
+                    .select()
+                    .from(aiEnhancements)
+                    .where(
+                        and(
+                            eq(aiEnhancements.recordingId, id),
+                            eq(aiEnhancements.userId, session.user.id),
+                        ),
+                    )
+                    .limit(1);
 
-        if (existing) {
-            await db
-                .update(aiEnhancements)
-                .set({
-                    summary,
-                    keyPoints,
-                    actionItems,
-                    provider: credentials.provider,
-                    model,
-                })
-                .where(eq(aiEnhancements.id, existing.id));
-        } else {
-            await db.insert(aiEnhancements).values({
-                recordingId: id,
-                userId: session.user.id,
-                summary,
-                keyPoints,
-                actionItems,
-                provider: credentials.provider,
-                model,
+                if (existing) {
+                    await tx
+                        .update(aiEnhancements)
+                        .set({
+                            summary,
+                            keyPoints,
+                            actionItems,
+                            provider: credentials.provider,
+                            model,
+                        })
+                        .where(eq(aiEnhancements.id, existing.id));
+                } else {
+                    await tx.insert(aiEnhancements).values({
+                        recordingId: id,
+                        userId: session.user.id,
+                        summary,
+                        keyPoints,
+                        actionItems,
+                        provider: credentials.provider,
+                        model,
+                    });
+                }
             });
+        } catch (txError) {
+            if (txError === RECORDING_TOMBSTONED) {
+                return NextResponse.json(
+                    { error: "Recording was deleted" },
+                    { status: 410 },
+                );
+            }
+            throw txError;
         }
 
         return NextResponse.json({

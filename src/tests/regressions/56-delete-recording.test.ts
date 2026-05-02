@@ -286,23 +286,83 @@ describe("DELETE /api/recordings/[id]", () => {
         );
     });
 
+    /**
+     * Capture the expression handed to `.where(...)` so individual tests
+     * can assert that the userId scope filter is actually present. Returns
+     * a `getWhereExpr()` accessor that reads the most-recent call argument.
+     */
     const stubRecordingLookup = (rows: unknown[]) => {
+        const whereSpy = vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue(rows),
+        });
         (db.select as Mock).mockReturnValueOnce({
             from: vi.fn().mockReturnValue({
-                where: vi.fn().mockReturnValue({
-                    limit: vi.fn().mockResolvedValue(rows),
-                }),
+                where: whereSpy,
             }),
         });
+        return {
+            getWhereExpr: () => whereSpy.mock.calls.at(-1)?.[0],
+        };
     };
 
-    it("returns 404 when the recording is not owned by the caller", async () => {
-        stubRecordingLookup([]); // userId scope filter excluded the row
+    /**
+     * Walk a Drizzle SQL/expression tree looking for a reference to the
+     * given column object. Drizzle composes `and(eq(a, b), ...)` into
+     * nested objects holding `queryChunks`, `left`, `right`, etc.; we
+     * recurse over the common shapes. Returns true iff `col` appears
+     * anywhere in the tree.
+     */
+    const exprReferencesColumn = (
+        expr: unknown,
+        col: unknown,
+        seen = new Set<unknown>(),
+    ): boolean => {
+        if (expr == null || typeof expr !== "object") return false;
+        if (expr === col) return true;
+        if (seen.has(expr)) return false;
+        seen.add(expr);
+        for (const key of [
+            "queryChunks",
+            "sql",
+            "left",
+            "right",
+            "value",
+            "args",
+            "chunks",
+            "expr",
+        ]) {
+            const v = (expr as Record<string, unknown>)[key];
+            if (Array.isArray(v)) {
+                if (v.some((x) => exprReferencesColumn(x, col, seen)))
+                    return true;
+            } else if (exprReferencesColumn(v, col, seen)) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    it("scopes the recording lookup by userId (and returns 404 when no row matches)", async () => {
+        const lookup = stubRecordingLookup([]);
 
         const res = await deleteRecording(makeRequest(), { params });
         expect(res.status).toBe(404);
         expect(createStorage).not.toHaveBeenCalled();
         expect(db.transaction).not.toHaveBeenCalled();
+
+        // Critical: confirm the WHERE clause references `recordings.userId`.
+        // Without this assertion the test would still pass if the handler
+        // dropped the userId scope filter, since the mock returns [] for
+        // any query.
+        const whereExpr = lookup.getWhereExpr();
+        expect(whereExpr).toBeDefined();
+        expect(exprReferencesColumn(whereExpr, recordingsTable.userId)).toBe(
+            true,
+        );
+        expect(exprReferencesColumn(whereExpr, recordingsTable.id)).toBe(true);
+        expect(exprReferencesColumn(whereExpr, recordingsTable.deletedAt)).toBe(
+            true,
+        );
     });
 
     it("deletes storage, then child rows + tombstone in one tx", async () => {

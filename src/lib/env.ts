@@ -1,6 +1,15 @@
 import { z } from "zod";
 
-const envSchema = z.object({
+export const envSchema = z.object({
+    // Deployment mode. `true` means this instance is the OpenPlaud-operated
+    // hosted product (marketing landing visible at `/`). Default `false`:
+    // self-host instances skip the marketing surface and bounce logged-out
+    // visitors at `/` straight to `/login`.
+    IS_HOSTED: z
+        .string()
+        .optional()
+        .transform((val) => val === "true"),
+
     // Server-required values are optional at schema level so that `next build`
     // (phase-production-build) doesn't depend on server-only secrets.
     DATABASE_URL: z.string().optional(),
@@ -61,6 +70,7 @@ function validateEnv(): Env {
 
     try {
         const parsed = envSchema.parse({
+            IS_HOSTED: process.env.IS_HOSTED,
             DATABASE_URL: process.env.DATABASE_URL,
             BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
             APP_URL: process.env.APP_URL,

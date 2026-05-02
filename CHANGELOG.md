@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- `IS_HOSTED` env var to gate the marketing landing page. Default `false`: self-host instances now redirect logged-out visitors at `/` to `/login` instead of rendering the OpenPlaud marketing page. Set to `true` only on the OpenPlaud-operated hosted instance. ([#70](https://github.com/openplaud/openplaud/issues/70))
+
 ## [0.2.0] - 2026-04-28
 
 ### Changed

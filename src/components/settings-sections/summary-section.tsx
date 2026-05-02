@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { useSettings } from "@/hooks/use-settings";
 import {
+    AI_OUTPUT_LANGUAGES,
     SUMMARY_PRESETS,
     type SummaryPromptConfiguration,
 } from "@/lib/ai/summary-presets";
@@ -21,6 +22,7 @@ export function SummarySection() {
     const { isLoadingSettings, isSavingSettings, setIsLoadingSettings } =
         useSettings();
     const [selectedPrompt, setSelectedPrompt] = useState("general");
+    const [outputLanguage, setOutputLanguage] = useState<string>("auto");
 
     useEffect(() => {
         const fetchSettings = async () => {
@@ -32,6 +34,11 @@ export function SummarySection() {
                         data.summaryPrompt as SummaryPromptConfiguration | null;
                     if (config?.selectedPrompt) {
                         setSelectedPrompt(config.selectedPrompt);
+                    }
+                    if (typeof data.aiOutputLanguage === "string") {
+                        setOutputLanguage(data.aiOutputLanguage);
+                    } else {
+                        setOutputLanguage("auto");
                     }
                 }
             } catch (error) {
@@ -64,6 +71,29 @@ export function SummarySection() {
             }
         } catch {
             setSelectedPrompt(previous);
+            toast.error("Failed to save settings. Changes reverted.");
+        }
+    };
+
+    const handleLanguageChange = async (value: string) => {
+        const previous = outputLanguage;
+        setOutputLanguage(value);
+
+        try {
+            // Persist `null` for `auto` so the column reflects "no preference".
+            const response = await fetch("/api/settings/user", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    aiOutputLanguage: value === "auto" ? null : value,
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error("Failed to save settings");
+            }
+        } catch {
+            setOutputLanguage(previous);
             toast.error("Failed to save settings. Changes reverted.");
         }
     };
@@ -115,6 +145,38 @@ export function SummarySection() {
                     <p className="text-xs text-muted-foreground">
                         The default prompt preset used when generating
                         summaries. You can override this per-recording.
+                    </p>
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="ai-output-language">
+                        AI output language
+                    </Label>
+                    <Select
+                        value={outputLanguage}
+                        onValueChange={handleLanguageChange}
+                        disabled={isSavingSettings}
+                    >
+                        <SelectTrigger
+                            id="ai-output-language"
+                            className="w-full"
+                        >
+                            <SelectValue>
+                                {AI_OUTPUT_LANGUAGES.find(
+                                    (l) => l.code === outputLanguage,
+                                )?.label ?? "Auto (match transcript)"}
+                            </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                            {AI_OUTPUT_LANGUAGES.map((lang) => (
+                                <SelectItem key={lang.code} value={lang.code}>
+                                    {lang.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                        Applies to AI-generated summaries and titles. Auto lets
+                        the model match the transcript's language.
                     </p>
                 </div>
             </div>

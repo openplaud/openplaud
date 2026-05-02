@@ -342,6 +342,9 @@ export const userSettings = pgTable("user_settings", {
     titleGenerationPrompt: jsonb("title_generation_prompt"), // { preset: string, customPrompt?: string }
     // Summary prompt configuration
     summaryPrompt: jsonb("summary_prompt"), // { selectedPrompt: string, customPrompts: CustomPrompt[] }
+    // AI output language (applies to summaries and AI-generated titles).
+    // null or "auto" => match transcript language (default behavior).
+    aiOutputLanguage: text("ai_output_language"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

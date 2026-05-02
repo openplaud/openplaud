@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- AI output language selector — choose the language for AI-generated summaries and titles, independent of the transcript's language ([#57](https://github.com/openplaud/openplaud/issues/57)).
+
 ## [0.2.0] - 2026-04-28
 
 ### Changed

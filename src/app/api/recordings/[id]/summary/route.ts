@@ -10,6 +10,7 @@ import {
     userSettings,
 } from "@/db/schema";
 import {
+    getAiOutputLanguageDirective,
     getDefaultSummaryPromptConfig,
     getSummaryPromptById,
     type SummaryPromptConfiguration,
@@ -174,18 +175,33 @@ export async function POST(
                 ? `${transcription.text.substring(0, maxLength)}...`
                 : transcription.text;
 
+        // Apply AI output language directive (if configured) via the system
+        // message rather than the user prompt. This separates concerns: the
+        // user prompt carries the JSON-shape contract (English keys), the
+        // system message carries the output-language preference. Smaller
+        // models tend to honor this split more reliably than a combined
+        // prompt where language and JSON-shape rules compete.
+        const languageDirective = getAiOutputLanguageDirective(
+            userSettingsRow?.aiOutputLanguage ?? null,
+        );
+
         const prompt = promptTemplate.replace(
             "{transcription}",
             truncatedTranscription,
         );
+
+        const baseSystem =
+            "You are a helpful assistant that summarizes audio transcriptions. Always respond with valid JSON only, no markdown formatting or code fences.";
+        const systemContent = languageDirective
+            ? `${baseSystem} ${languageDirective}`
+            : baseSystem;
 
         const response = await openai.chat.completions.create({
             model,
             messages: [
                 {
                     role: "system",
-                    content:
-                        "You are a helpful assistant that summarizes audio transcriptions. Always respond with valid JSON only, no markdown formatting or code fences.",
+                    content: systemContent,
                 },
                 {
                     role: "user",

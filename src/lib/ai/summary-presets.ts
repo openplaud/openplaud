@@ -151,6 +151,76 @@ export function getAllSummaryPrompts(
 }
 
 /**
+ * Supported AI output languages for summaries and AI-generated titles.
+ * `auto` means "match the transcript language" — this preserves the
+ * historical (pre-#57) behavior where the model decides.
+ */
+export interface AiOutputLanguageOption {
+    code: string;
+    label: string;
+}
+
+export const AI_OUTPUT_LANGUAGES: readonly AiOutputLanguageOption[] = [
+    { code: "auto", label: "Auto (match transcript)" },
+    { code: "en", label: "English" },
+    { code: "es", label: "Spanish" },
+    { code: "fr", label: "French" },
+    { code: "de", label: "German" },
+    { code: "it", label: "Italian" },
+    { code: "pt", label: "Portuguese" },
+    { code: "nl", label: "Dutch" },
+    { code: "pl", label: "Polish" },
+    { code: "ru", label: "Russian" },
+    { code: "tr", label: "Turkish" },
+    { code: "uk", label: "Ukrainian" },
+    { code: "cs", label: "Czech" },
+    { code: "sv", label: "Swedish" },
+    { code: "da", label: "Danish" },
+    { code: "no", label: "Norwegian" },
+    { code: "fi", label: "Finnish" },
+    { code: "el", label: "Greek" },
+    { code: "ro", label: "Romanian" },
+    { code: "hu", label: "Hungarian" },
+    { code: "ja", label: "Japanese" },
+    { code: "zh", label: "Chinese (Simplified)" },
+    { code: "ko", label: "Korean" },
+    { code: "ar", label: "Arabic" },
+    { code: "he", label: "Hebrew" },
+    { code: "hi", label: "Hindi" },
+    { code: "id", label: "Indonesian" },
+    { code: "vi", label: "Vietnamese" },
+    { code: "th", label: "Thai" },
+] as const;
+
+const LANGUAGE_CODES = new Set(AI_OUTPUT_LANGUAGES.map((l) => l.code));
+
+/**
+ * Validate a language code against the allowed set.
+ * Returns the code if valid, otherwise null.
+ */
+export function normalizeAiOutputLanguage(value: unknown): string | null {
+    if (typeof value !== "string") return null;
+    return LANGUAGE_CODES.has(value) ? value : null;
+}
+
+/**
+ * Build a directive string instructing the model to write output in a
+ * specific language. Returns null for `auto`, missing, or unknown codes
+ * — callers should skip injection in those cases (preserves prior behavior).
+ *
+ * Note: callers parsing JSON responses must keep their JSON keys in English;
+ * this directive only governs the *values*.
+ */
+export function getAiOutputLanguageDirective(
+    code: string | null | undefined,
+): string | null {
+    if (!code || code === "auto") return null;
+    const match = AI_OUTPUT_LANGUAGES.find((l) => l.code === code);
+    if (!match) return null;
+    return `IMPORTANT: Write all natural-language output in ${match.label}, regardless of the transcription's language. Keep any JSON keys in English exactly as specified.`;
+}
+
+/**
  * Get summary prompt by ID (preset or custom)
  */
 export function getSummaryPromptById(

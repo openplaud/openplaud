@@ -11,7 +11,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { signIn } from "@/lib/auth-client";
 
-export function LoginForm() {
+interface LoginFormProps {
+    /**
+     * Whether the "Don't have an account? Register" footer link should be
+     * shown. Default `true`. Set to `false` when `DISABLE_REGISTRATION=true`
+     * so we don't dangle a link to a disabled-state page. The server-side
+     * security boundary lives in `src/lib/auth.ts` (`disableSignUp`); this
+     * is UX only.
+     */
+    registrationEnabled?: boolean;
+}
+
+export function LoginForm({ registrationEnabled = true }: LoginFormProps) {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [isLoading, setIsLoading] = useState(false);
@@ -99,17 +110,19 @@ export function LoginForm() {
                 </MetalButton>
             </form>
 
-            <div className="text-center text-sm">
-                <span className="text-muted-foreground">
-                    Don't have an account?{" "}
-                </span>
-                <Link
-                    href="/register"
-                    className="text-accent-cyan hover:underline"
-                >
-                    Register
-                </Link>
-            </div>
+            {registrationEnabled && (
+                <div className="text-center text-sm">
+                    <span className="text-muted-foreground">
+                        Don't have an account?{" "}
+                    </span>
+                    <Link
+                        href="/register"
+                        className="text-accent-cyan hover:underline"
+                    >
+                        Register
+                    </Link>
+                </div>
+            )}
         </Panel>
     );
 }

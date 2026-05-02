@@ -1,6 +1,6 @@
 {
-  "id": "a58d32c4-11bb-4479-9145-de40733b8cab",
-  "prevId": "0b235063-c327-4604-bf89-709c6ec01a5e",
+  "id": "bcbcb599-73da-4b57-b83d-5dbbb5836262",
+  "prevId": "a58d32c4-11bb-4479-9145-de40733b8cab",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1204,6 +1204,12 @@
         "summary_prompt": {
           "name": "summary_prompt",
           "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ai_output_language": {
+          "name": "ai_output_language",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },

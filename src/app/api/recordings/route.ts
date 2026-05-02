@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { recordings } from "@/db/schema";
@@ -20,7 +20,12 @@ export async function GET(request: Request) {
         const userRecordings = await db
             .select()
             .from(recordings)
-            .where(eq(recordings.userId, session.user.id))
+            .where(
+                and(
+                    eq(recordings.userId, session.user.id),
+                    isNull(recordings.deletedAt),
+                ),
+            )
             .orderBy(desc(recordings.startTime));
 
         return NextResponse.json({ recordings: userRecordings });

@@ -13,6 +13,11 @@ export const auth = betterAuth({
     emailAndPassword: {
         enabled: true,
         requireEmailVerification: false,
+        // Operator-controlled signup lockdown. When DISABLE_REGISTRATION=true,
+        // better-auth's sign-up endpoint returns an error regardless of UI
+        // state -- this is the actual security boundary. /register and /login
+        // surface the same flag separately for UX. See issue #59.
+        disableSignUp: env.DISABLE_REGISTRATION,
     },
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.APP_URL,

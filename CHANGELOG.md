@@ -4,6 +4,7 @@
 
 ### Added
 - `IS_HOSTED` env var to gate the marketing landing page. Default `false`: self-host instances now redirect logged-out visitors at `/` to `/login` instead of rendering the OpenPlaud marketing page. Set to `true` only on the OpenPlaud-operated hosted instance. ([#70](https://github.com/openplaud/openplaud/issues/70))
+- `DISABLE_REGISTRATION` env var for self-host operators to lock down sign-ups. When `true`, better-auth's sign-up endpoint is disabled server-side, `/register` shows a disabled-state panel, and `/login` hides the register link. Default `false` (registration open). ([#59](https://github.com/openplaud/openplaud/issues/59))
 
 ## [0.2.0] - 2026-04-28
 

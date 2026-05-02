@@ -134,6 +134,24 @@ Your verification code is forwarded directly to Plaud's servers and **never stor
 
 > 🔓 **Open Source**: Every line that handles your credentials is available for inspection — [send-code route](src/app/api/plaud/auth/send-code/route.ts) · [verify route](src/app/api/plaud/auth/verify/route.ts) · [encryption](src/lib/encryption.ts)
 
+#### Signed up to Plaud with Google or Apple?
+
+The email-code flow above signs you into a Plaud account keyed off the *email-password* identity. If you originally created your Plaud account by tapping **Continue with Google** or **Continue with Apple**, that's a different identity on Plaud's side — even when both share the same email address. The email-code flow will look like it succeeded but sync will return zero recordings ([#65](https://github.com/openplaud/openplaud/issues/65)).
+
+Real Sign in with Google / Apple inside OpenPlaud is structurally blocked by Google's authorized-origins policy on Plaud's OAuth client. Two workarounds:
+
+**Easy path — OpenPlaud Connector browser extension.** Install [openplaud/connector](https://github.com/openplaud/connector) (AGPL-3.0) and the connect screen surfaces a **Sign in with Plaud** button. You sign in to web.plaud.ai the way you normally do; the extension forwards the resulting access token back to OpenPlaud. No copy-pasting, no devtools.
+
+**Manual fallback — paste the token yourself.** If you can't or won't install the extension:
+
+1. Open [web.plaud.ai](https://web.plaud.ai) in another tab and sign in with Google or Apple as you normally would.
+2. Open browser devtools (F12 / Cmd+Option+I) → **Network** tab. Refresh the page.
+3. Click any request to a host starting with `api.plaud.ai`, `api-euc1.plaud.ai`, or `api-apse1.plaud.ai`.
+4. Under **Headers → Request Headers**, find `Authorization`. Copy everything after `Bearer ` (the long `eyJ…` string).
+5. In OpenPlaud, switch to the **Paste token** tab, pick the matching region (e.g. EU if the request host was `api-euc1.plaud.ai`), and paste the token.
+
+In both cases the token is encrypted at rest with AES-256-GCM.
+
 ### 💾 Storage Options
 
 #### 📁 Local Filesystem (Default)

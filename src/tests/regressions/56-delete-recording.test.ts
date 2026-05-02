@@ -11,6 +11,11 @@
  * These tests cover:
  *   1. The sync worker skips tombstoned rows (no download, no DB write).
  *   2. The sync worker still updates a non-tombstoned row when versions differ.
+ *   3. DELETE /api/recordings/[id] enforces userId scope (404 for other users).
+ *   4. DELETE deletes the storage object, child rows, and tombstones the
+ *      recording row — in that order — inside a single DB transaction.
+ *   5. DELETE refuses to tombstone when the storage provider fails for any
+ *      reason other than "already gone", so retries don't leak orphan blobs.
  */
 
 import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
@@ -28,6 +33,16 @@ vi.mock("@/db", () => ({
         select: vi.fn(),
         insert: vi.fn(),
         update: vi.fn(),
+        delete: vi.fn(),
+        transaction: vi.fn(),
+    },
+}));
+
+vi.mock("@/lib/auth", () => ({
+    auth: {
+        api: {
+            getSession: vi.fn(),
+        },
     },
 }));
 
@@ -193,5 +208,172 @@ describe("Issue #56 — delete recording tombstone", () => {
         expect(result.newRecordings).toBe(0);
         expect(storageMock.uploadFile).toHaveBeenCalledTimes(1);
         expect(db.update).toHaveBeenCalled();
+    });
+});
+
+// -----------------------------------------------------------------------
+// DELETE /api/recordings/[id]
+// -----------------------------------------------------------------------
+
+import { DELETE as deleteRecording } from "@/app/api/recordings/[id]/route";
+import {
+    aiEnhancements,
+    recordings as recordingsTable,
+    transcriptions as transcriptionsTable,
+} from "@/db/schema";
+import { auth } from "@/lib/auth";
+import { createUserStorageProvider as createStorage } from "@/lib/storage/factory";
+
+describe("DELETE /api/recordings/[id]", () => {
+    const userId = "user-123";
+    const recordingId = "rec-1";
+    const storagePath = "user-123/Recording-1.mp3";
+
+    const params = Promise.resolve({ id: recordingId });
+    const makeRequest = () =>
+        new Request(`http://localhost/api/recordings/${recordingId}`, {
+            method: "DELETE",
+        });
+
+    let txCalls: Array<{ table: string; op: "delete" | "update" }>;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        txCalls = [];
+
+        (auth.api.getSession as unknown as Mock).mockResolvedValue({
+            user: { id: userId },
+        });
+
+        // db.transaction: invoke callback with a tx object whose .delete /
+        // .update calls are recorded by table-reference identity so we can
+        // assert both the operation order and the target table.
+        const tableName = (t: unknown): string =>
+            t === transcriptionsTable
+                ? "transcriptions"
+                : t === aiEnhancements
+                  ? "ai_enhancements"
+                  : t === recordingsTable
+                    ? "recordings"
+                    : "unknown";
+
+        (db.transaction as Mock).mockImplementation(
+            async (cb: (tx: unknown) => Promise<void>) => {
+                const tx = {
+                    delete: vi.fn((table: unknown) => ({
+                        where: vi.fn().mockImplementation(() => {
+                            txCalls.push({
+                                table: tableName(table),
+                                op: "delete",
+                            });
+                            return Promise.resolve(undefined);
+                        }),
+                    })),
+                    update: vi.fn((table: unknown) => ({
+                        set: vi.fn().mockReturnValue({
+                            where: vi.fn().mockImplementation(() => {
+                                txCalls.push({
+                                    table: tableName(table),
+                                    op: "update",
+                                });
+                                return Promise.resolve(undefined);
+                            }),
+                        }),
+                    })),
+                };
+                await cb(tx);
+            },
+        );
+    });
+
+    const stubRecordingLookup = (rows: unknown[]) => {
+        (db.select as Mock).mockReturnValueOnce({
+            from: vi.fn().mockReturnValue({
+                where: vi.fn().mockReturnValue({
+                    limit: vi.fn().mockResolvedValue(rows),
+                }),
+            }),
+        });
+    };
+
+    it("returns 404 when the recording is not owned by the caller", async () => {
+        stubRecordingLookup([]); // userId scope filter excluded the row
+
+        const res = await deleteRecording(makeRequest(), { params });
+        expect(res.status).toBe(404);
+        expect(createStorage).not.toHaveBeenCalled();
+        expect(db.transaction).not.toHaveBeenCalled();
+    });
+
+    it("deletes storage, then child rows + tombstone in one tx", async () => {
+        const deleteFile = vi.fn().mockResolvedValue(undefined);
+        (createStorage as Mock).mockResolvedValue({
+            uploadFile: vi.fn(),
+            downloadFile: vi.fn(),
+            deleteFile,
+        });
+        stubRecordingLookup([
+            { id: recordingId, userId, storagePath, deletedAt: null },
+        ]);
+
+        const res = await deleteRecording(makeRequest(), { params });
+        expect(res.status).toBe(200);
+        expect(deleteFile).toHaveBeenCalledWith(storagePath);
+        // Storage delete must happen before the DB transaction opens.
+        expect(deleteFile.mock.invocationCallOrder[0]).toBeLessThan(
+            (db.transaction as Mock).mock.invocationCallOrder[0],
+        );
+        // All three writes ran in the same transaction…
+        expect(txCalls).toHaveLength(3);
+        // …in this order: transcriptions → ai_enhancements → recordings.
+        expect(txCalls.map((c) => `${c.op}:${c.table}`)).toEqual([
+            "delete:transcriptions",
+            "delete:ai_enhancements",
+            "update:recordings",
+        ]);
+    });
+
+    it("refuses to tombstone when storage delete fails for a non-not-found reason", async () => {
+        const deleteFile = vi
+            .fn()
+            .mockRejectedValue(new Error("S3 internal error 503"));
+        (createStorage as Mock).mockResolvedValue({
+            uploadFile: vi.fn(),
+            downloadFile: vi.fn(),
+            deleteFile,
+        });
+        stubRecordingLookup([
+            { id: recordingId, userId, storagePath, deletedAt: null },
+        ]);
+
+        const res = await deleteRecording(makeRequest(), { params });
+        expect(res.status).toBe(500);
+        // No tombstone, no orphan: retry is safe.
+        expect(db.transaction).not.toHaveBeenCalled();
+    });
+
+    it("still tombstones when storage reports the object is already gone", async () => {
+        const deleteFile = vi
+            .fn()
+            .mockRejectedValue(
+                new Error("Failed to delete file from local storage: ENOENT"),
+            );
+        (createStorage as Mock).mockResolvedValue({
+            uploadFile: vi.fn(),
+            downloadFile: vi.fn(),
+            deleteFile,
+        });
+        stubRecordingLookup([
+            { id: recordingId, userId, storagePath, deletedAt: null },
+        ]);
+
+        const res = await deleteRecording(makeRequest(), { params });
+        expect(res.status).toBe(200);
+        expect(db.transaction).toHaveBeenCalledTimes(1);
+        expect(txCalls.map((c) => `${c.op}:${c.table}`)).toEqual([
+            "delete:transcriptions",
+            "delete:ai_enhancements",
+            "update:recordings",
+        ]);
     });
 });

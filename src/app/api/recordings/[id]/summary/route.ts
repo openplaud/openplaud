@@ -221,6 +221,29 @@ export async function POST(
             summary = rawContent;
         }
 
+        // Re-check tombstone status: the user may have deleted the
+        // recording while the (long-running) provider call was in flight.
+        // Without this guard we'd write a summary row for a recording the
+        // DELETE handler has already cleaned up, leaving an orphan that
+        // exposes content the user asked to remove. See PR #72.
+        const [stillActive] = await db
+            .select({ deletedAt: recordings.deletedAt })
+            .from(recordings)
+            .where(
+                and(
+                    eq(recordings.id, id),
+                    eq(recordings.userId, session.user.id),
+                ),
+            )
+            .limit(1);
+
+        if (!stillActive || stillActive.deletedAt) {
+            return NextResponse.json(
+                { error: "Recording was deleted" },
+                { status: 410 },
+            );
+        }
+
         // Upsert into aiEnhancements
         const [existing] = await db
             .select()

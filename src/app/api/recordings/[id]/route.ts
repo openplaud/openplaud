@@ -63,15 +63,37 @@ export async function GET(
 }
 
 /**
+ * Storage providers throw on any deleteFile error including "object not
+ * present". Detect the not-found case so retries after a half-failed delete
+ * still tombstone cleanly. We match on common substrings rather than typed
+ * error classes so this works across the local-fs adapter (ENOENT) and the
+ * S3 adapter (NoSuchKey / NotFound / 404).
+ */
+function isStorageNotFoundError(error: unknown): boolean {
+    const message =
+        error instanceof Error ? error.message : String(error ?? "");
+    return /ENOENT|NoSuchKey|NotFound|\b404\b/i.test(message);
+}
+
+/**
  * Soft-delete a recording.
  *
- * - Hard-deletes the audio file from storage.
- * - Hard-deletes any transcription and AI-enhancement rows.
- * - Sets `recordings.deletedAt = now()` so sync does not resurrect the
- *   recording from Plaud on the next pull (sync is keyed on plaudFileId).
+ * Order of operations is important:
  *
- * This does NOT delete the recording on Plaud's servers. Plaud remains the
- * upstream source of truth; OpenPlaud just stops mirroring this file.
+ * 1. Hard-delete the audio file from storage. If the storage provider fails
+ *    for any reason other than "already gone", abort with 500 — we do NOT
+ *    tombstone, so the user can retry instead of being left with an orphan
+ *    blob that storage-usage stats can't see.
+ * 2. Run all DB writes (transcription rows, AI-enhancement rows, tombstone
+ *    update on `recordings.deletedAt`) inside a single transaction. Either
+ *    they all commit or none do, so a partial failure can't leave the user
+ *    with a half-deleted recording (e.g. transcript gone but row still
+ *    visible).
+ *
+ * The tombstone (instead of a hard delete) exists because sync is keyed on
+ * `recordings.plaudFileId`. Without it, the next pull from Plaud would
+ * resurrect the recording. This endpoint does NOT delete the file on
+ * Plaud's servers — Plaud remains the upstream source of truth.
  */
 export async function DELETE(
     request: Request,
@@ -90,6 +112,7 @@ export async function DELETE(
         }
 
         const { id } = await params;
+        const userId = session.user.id;
 
         const [recording] = await db
             .select()
@@ -97,7 +120,7 @@ export async function DELETE(
             .where(
                 and(
                     eq(recordings.id, id),
-                    eq(recordings.userId, session.user.id),
+                    eq(recordings.userId, userId),
                     isNull(recordings.deletedAt),
                 ),
             )
@@ -110,49 +133,58 @@ export async function DELETE(
             );
         }
 
-        // Best-effort storage delete. If the file is already gone (e.g. user
-        // deleted it out-of-band, or storage provider returns 404), continue
-        // with the DB tombstone so the row state is consistent.
+        // 1. Storage delete first. Treat "already gone" as success; surface
+        //    every other error so the user can retry.
         try {
-            const storage = await createUserStorageProvider(session.user.id);
+            const storage = await createUserStorageProvider(userId);
             await storage.deleteFile(recording.storagePath);
         } catch (storageError) {
-            console.error(
-                `Failed to delete storage file for recording ${id}:`,
-                storageError,
-            );
+            if (!isStorageNotFoundError(storageError)) {
+                console.error(
+                    `Failed to delete storage file for recording ${id}:`,
+                    storageError,
+                );
+                return NextResponse.json(
+                    {
+                        error: "Failed to delete recording audio. Please retry.",
+                    },
+                    { status: 500 },
+                );
+            }
+            // Object already absent — continue with tombstone.
         }
 
-        // Remove derived rows. These contain user content (transcript text,
-        // AI summary) that the user is asking to remove.
-        await db
-            .delete(transcriptions)
-            .where(
-                and(
-                    eq(transcriptions.recordingId, id),
-                    eq(transcriptions.userId, session.user.id),
-                ),
-            );
+        // 2. Atomic DB writes: child rows + tombstone in one transaction.
+        await db.transaction(async (tx) => {
+            await tx
+                .delete(transcriptions)
+                .where(
+                    and(
+                        eq(transcriptions.recordingId, id),
+                        eq(transcriptions.userId, userId),
+                    ),
+                );
 
-        await db
-            .delete(aiEnhancements)
-            .where(
-                and(
-                    eq(aiEnhancements.recordingId, id),
-                    eq(aiEnhancements.userId, session.user.id),
-                ),
-            );
+            await tx
+                .delete(aiEnhancements)
+                .where(
+                    and(
+                        eq(aiEnhancements.recordingId, id),
+                        eq(aiEnhancements.userId, userId),
+                    ),
+                );
 
-        // Soft-delete the recording row (tombstone for sync).
-        await db
-            .update(recordings)
-            .set({ deletedAt: new Date(), updatedAt: new Date() })
-            .where(
-                and(
-                    eq(recordings.id, id),
-                    eq(recordings.userId, session.user.id),
-                ),
-            );
+            await tx
+                .update(recordings)
+                .set({ deletedAt: new Date(), updatedAt: new Date() })
+                .where(
+                    and(
+                        eq(recordings.id, id),
+                        eq(recordings.userId, userId),
+                        isNull(recordings.deletedAt),
+                    ),
+                );
+        });
 
         return NextResponse.json({ success: true });
     } catch (error) {

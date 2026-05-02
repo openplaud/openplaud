@@ -9,7 +9,7 @@ import {
     Sparkles,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
     Dialog,
@@ -18,10 +18,9 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/onboarding-dialog-base";
+import { PlaudConnectTabs } from "@/components/plaud-connect-tabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 
 type OnboardingStep = "welcome" | "plaud" | "ai-provider" | "complete";
 
@@ -38,22 +37,8 @@ export function OnboardingDialog({
 }: OnboardingDialogProps) {
     const router = useRouter();
     const [step, setStep] = useState<OnboardingStep>("welcome");
-    const [plaudEmail, setPlaudEmail] = useState("");
-    const [otpCode, setOtpCode] = useState("");
-    const [otpToken, setOtpToken] = useState("");
-    const [plaudApiBase, setPlaudApiBase] = useState("");
-    const [plaudStep, setPlaudStep] = useState<"email" | "code">("email");
-    const [isLoading, setIsLoading] = useState(false);
-    const [lastSentAt, setLastSentAt] = useState(0);
     const [hasPlaudConnection, setHasPlaudConnection] = useState(false);
     const [hasAiProvider, setHasAiProvider] = useState(false);
-
-    const regionLabel = useCallback((base: string) => {
-        if (base.includes("euc1")) return "EU (Frankfurt)";
-        if (base.includes("apse1")) return "Asia Pacific (Singapore)";
-        if (base.includes("api.plaud.ai")) return "Global";
-        return base;
-    }, []);
 
     useEffect(() => {
         if (open && step === "plaud") {
@@ -84,91 +69,10 @@ export function OnboardingDialog({
     useEffect(() => {
         if (!open) {
             setStep("welcome");
-            setPlaudEmail("");
-            setOtpCode("");
-            setOtpToken("");
-            setPlaudApiBase("");
-            setPlaudStep("email");
-            setIsLoading(false);
-            setLastSentAt(0);
             setHasPlaudConnection(false);
             setHasAiProvider(false);
         }
     }, [open]);
-
-    const handleSendCode = async () => {
-        const trimmed = plaudEmail.trim();
-        if (!trimmed) {
-            toast.error("Please enter your Plaud email");
-            return;
-        }
-
-        const now = Date.now();
-        const COOLDOWN_MS = 30_000;
-        if (now - lastSentAt < COOLDOWN_MS) {
-            const secsLeft = Math.ceil(
-                (COOLDOWN_MS - (now - lastSentAt)) / 1000,
-            );
-            toast.error(`Please wait ${secsLeft}s before resending`);
-            return;
-        }
-
-        setIsLoading(true);
-        try {
-            const res = await fetch("/api/plaud/auth/send-code", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email: trimmed }),
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Failed to send code");
-
-            setOtpToken(data.otpToken);
-            setPlaudApiBase(data.apiBase);
-            setLastSentAt(Date.now());
-            setPlaudStep("code");
-            toast.success("Verification code sent — check your email");
-        } catch (error) {
-            toast.error(
-                error instanceof Error ? error.message : "Failed to send code",
-            );
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const handleVerifyCode = async () => {
-        const trimmed = otpCode.trim();
-        if (!trimmed) {
-            toast.error("Please enter the verification code");
-            return;
-        }
-
-        setIsLoading(true);
-        try {
-            const res = await fetch("/api/plaud/auth/verify", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    code: trimmed,
-                    otpToken,
-                    apiBase: plaudApiBase,
-                    email: plaudEmail,
-                }),
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Verification failed");
-
-            toast.success("Plaud account connected");
-            setHasPlaudConnection(true);
-        } catch (error) {
-            toast.error(
-                error instanceof Error ? error.message : "Verification failed",
-            );
-        } finally {
-            setIsLoading(false);
-        }
-    };
 
     const handleSkipPlaud = () => {
         setStep("ai-provider");
@@ -350,14 +254,9 @@ export function OnboardingDialog({
                                             <Button
                                                 variant="outline"
                                                 size="sm"
-                                                onClick={() => {
-                                                    setHasPlaudConnection(
-                                                        false,
-                                                    );
-                                                    setPlaudStep("email");
-                                                    setOtpCode("");
-                                                    setOtpToken("");
-                                                }}
+                                                onClick={() =>
+                                                    setHasPlaudConnection(false)
+                                                }
                                             >
                                                 Reconnect
                                             </Button>
@@ -366,146 +265,13 @@ export function OnboardingDialog({
                                 </Card>
                             ) : (
                                 <Card className="gap-0 py-4">
-                                    <CardContent className="pt-6 space-y-4">
-                                        {plaudStep === "email" ? (
-                                            <>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="plaud-email">
-                                                        Plaud Email
-                                                    </Label>
-                                                    <Input
-                                                        id="plaud-email"
-                                                        type="email"
-                                                        placeholder="you@example.com"
-                                                        value={plaudEmail}
-                                                        onChange={(e) =>
-                                                            setPlaudEmail(
-                                                                e.target.value,
-                                                            )
-                                                        }
-                                                        onKeyDown={(e) =>
-                                                            e.key === "Enter" &&
-                                                            handleSendCode()
-                                                        }
-                                                        disabled={isLoading}
-                                                        autoFocus
-                                                    />
-                                                    <p className="text-xs text-muted-foreground">
-                                                        The email you use to
-                                                        sign in at plaud.ai.
-                                                        We'll send a
-                                                        verification code via
-                                                        Plaud's servers.
-                                                    </p>
-                                                </div>
-
-                                                <Button
-                                                    onClick={handleSendCode}
-                                                    disabled={
-                                                        isLoading ||
-                                                        !plaudEmail.trim()
-                                                    }
-                                                    className="w-full"
-                                                >
-                                                    {isLoading
-                                                        ? "Sending code via plaud.ai…"
-                                                        : "Send Verification Code"}
-                                                </Button>
-
-                                                <p className="text-[11px] text-muted-foreground/60 text-center leading-relaxed">
-                                                    Your email is forwarded
-                                                    directly to Plaud — never
-                                                    stored by OpenPlaud.{" "}
-                                                    <a
-                                                        href="https://github.com/openplaud/openplaud/blob/main/src/app/api/plaud/auth/send-code/route.ts"
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="underline decoration-dotted underline-offset-2"
-                                                    >
-                                                        View source&nbsp;→
-                                                    </a>
-                                                </p>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="otp-code">
-                                                        Verification Code
-                                                    </Label>
-                                                    <Input
-                                                        id="otp-code"
-                                                        type="text"
-                                                        inputMode="numeric"
-                                                        placeholder="000000"
-                                                        value={otpCode}
-                                                        onChange={(e) =>
-                                                            setOtpCode(
-                                                                e.target.value,
-                                                            )
-                                                        }
-                                                        onKeyDown={(e) =>
-                                                            e.key === "Enter" &&
-                                                            handleVerifyCode()
-                                                        }
-                                                        disabled={isLoading}
-                                                        className="font-mono text-lg tracking-[0.3em] text-center"
-                                                        autoFocus
-                                                        autoComplete="one-time-code"
-                                                    />
-                                                    <p className="text-xs text-muted-foreground">
-                                                        Code sent to{" "}
-                                                        <span className="font-mono">
-                                                            {plaudEmail}
-                                                        </span>
-                                                        {plaudApiBase && (
-                                                            <span>
-                                                                {" "}
-                                                                · Region:{" "}
-                                                                {regionLabel(
-                                                                    plaudApiBase,
-                                                                )}
-                                                            </span>
-                                                        )}
-                                                    </p>
-                                                </div>
-
-                                                <Button
-                                                    onClick={handleVerifyCode}
-                                                    disabled={
-                                                        isLoading ||
-                                                        !otpCode.trim()
-                                                    }
-                                                    className="w-full"
-                                                >
-                                                    {isLoading
-                                                        ? "Verifying with plaud.ai…"
-                                                        : "Connect Account"}
-                                                </Button>
-
-                                                <div className="flex items-center justify-between text-xs text-muted-foreground/60">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setPlaudStep(
-                                                                "email",
-                                                            );
-                                                            setOtpCode("");
-                                                        }}
-                                                        className="underline decoration-dotted underline-offset-2 hover:text-muted-foreground transition-colors"
-                                                    >
-                                                        ← Different email
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleSendCode}
-                                                        disabled={isLoading}
-                                                        className="underline decoration-dotted underline-offset-2 hover:text-muted-foreground transition-colors disabled:opacity-50"
-                                                    >
-                                                        Resend code
-                                                    </button>
-                                                </div>
-                                            </>
-                                        )}
+                                    <CardContent className="pt-6">
+                                        <PlaudConnectTabs
+                                            variant="dialog"
+                                            onConnected={() =>
+                                                setHasPlaudConnection(true)
+                                            }
+                                        />
                                     </CardContent>
                                 </Card>
                             )}

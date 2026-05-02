@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { RecordingWorkstation } from "@/components/recordings/recording-workstation";
 import { db } from "@/db";
@@ -21,7 +21,11 @@ export default async function RecordingDetailPage({
         .select()
         .from(recordings)
         .where(
-            and(eq(recordings.id, id), eq(recordings.userId, session.user.id)),
+            and(
+                eq(recordings.id, id),
+                eq(recordings.userId, session.user.id),
+                isNull(recordings.deletedAt),
+            ),
         )
         .limit(1);
 

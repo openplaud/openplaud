@@ -1,0 +1,1 @@
+ALTER TABLE "user_settings" ADD COLUMN "ai_output_language" text;

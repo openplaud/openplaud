@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { userSettings } from "@/db/schema";
+import { normalizeAiOutputLanguage } from "@/lib/ai/summary-presets";
 import { auth } from "@/lib/auth";
 
 // Default settings values
@@ -35,6 +36,7 @@ const DEFAULT_SETTINGS = {
     onboardingCompleted: false,
     autoGenerateTitle: true,
     syncTitleToPlaud: false,
+    aiOutputLanguage: null,
 } as const;
 
 // Settings field names (excluding userId, id, createdAt, updatedAt)
@@ -68,6 +70,7 @@ const SETTINGS_FIELDS = [
     "onboardingCompleted",
     "autoGenerateTitle",
     "syncTitleToPlaud",
+    "aiOutputLanguage",
 ] as const;
 
 // Extract settings from database row to response format
@@ -168,7 +171,25 @@ export async function PUT(request: Request) {
         };
 
         for (const field of SETTINGS_FIELDS) {
-            const value = body[field];
+            let value = body[field];
+            // Validate aiOutputLanguage against the allowed set. Explicit
+            // `null` is allowed (clears the preference → "auto"); any other
+            // non-allowlisted value is a client bug and should fail loudly
+            // rather than be silently coerced.
+            if (
+                field === "aiOutputLanguage" &&
+                value !== undefined &&
+                value !== null
+            ) {
+                const normalized = normalizeAiOutputLanguage(value);
+                if (normalized === null) {
+                    return NextResponse.json(
+                        { error: "Invalid aiOutputLanguage value" },
+                        { status: 400 },
+                    );
+                }
+                value = normalized;
+            }
             if (value !== undefined) {
                 updateData[field] = value;
                 insertData[field] = value;

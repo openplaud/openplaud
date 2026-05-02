@@ -1,6 +1,26 @@
 import { z } from "zod";
 
-const envSchema = z.object({
+export const envSchema = z.object({
+    // Deployment mode. `true` means this instance is the OpenPlaud-operated
+    // hosted product (marketing landing visible at `/`). Default `false`:
+    // self-host instances skip the marketing surface and bounce logged-out
+    // visitors at `/` straight to `/login`.
+    IS_HOSTED: z
+        .string()
+        .optional()
+        .transform((val) => val === "true"),
+
+    // Disable email/password sign-up. When `true`, the better-auth
+    // sign-up endpoint is disabled server-side (security boundary), the
+    // /register page renders a disabled-state panel, and the /login page
+    // hides its register link. Operator-controlled, defaults to `false`
+    // (registration open). Self-host only -- the OpenPlaud-operated hosted
+    // instance leaves this unset.
+    DISABLE_REGISTRATION: z
+        .string()
+        .optional()
+        .transform((val) => val === "true"),
+
     // Server-required values are optional at schema level so that `next build`
     // (phase-production-build) doesn't depend on server-only secrets.
     DATABASE_URL: z.string().optional(),
@@ -61,6 +81,8 @@ function validateEnv(): Env {
 
     try {
         const parsed = envSchema.parse({
+            IS_HOSTED: process.env.IS_HOSTED,
+            DISABLE_REGISTRATION: process.env.DISABLE_REGISTRATION,
             DATABASE_URL: process.env.DATABASE_URL,
             BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
             APP_URL: process.env.APP_URL,

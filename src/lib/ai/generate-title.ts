@@ -8,6 +8,7 @@ import {
     getPromptById,
     type PromptConfiguration,
 } from "./prompt-presets";
+import { getAiOutputLanguageDirective } from "./summary-presets";
 
 export async function generateTitleFromTranscription(
     userId: string,
@@ -109,18 +110,30 @@ export async function generateTitleFromTranscription(
                 ? `${transcriptionText.substring(0, maxTranscriptionLength)}...`
                 : transcriptionText;
 
+        // Apply AI output language directive (if configured) via the system
+        // message rather than the user prompt, so it doesn't compete with
+        // the title-format rules in the user prompt.
+        const languageDirective = getAiOutputLanguageDirective(
+            userSettingsRow?.aiOutputLanguage ?? null,
+        );
+
         const prompt = promptTemplate.replace(
             "{transcription}",
             truncatedTranscription,
         );
+
+        const baseSystem =
+            "You are a helpful assistant that generates concise, descriptive titles for audio recordings based on transcriptions. Always follow the rules strictly.";
+        const systemContent = languageDirective
+            ? `${baseSystem} ${languageDirective}`
+            : baseSystem;
 
         const response = await openai.chat.completions.create({
             model,
             messages: [
                 {
                     role: "system",
-                    content:
-                        "You are a helpful assistant that generates concise, descriptive titles for audio recordings based on transcriptions. Always follow the rules strictly.",
+                    content: systemContent,
                 },
                 {
                     role: "user",

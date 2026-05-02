@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { OpenAI } from "openai";
 import { db } from "@/db";
@@ -10,6 +10,7 @@ import {
     userSettings,
 } from "@/db/schema";
 import {
+    getAiOutputLanguageDirective,
     getDefaultSummaryPromptConfig,
     getSummaryPromptById,
     type SummaryPromptConfiguration,
@@ -46,6 +47,7 @@ export async function POST(
                 and(
                     eq(recordings.id, id),
                     eq(recordings.userId, session.user.id),
+                    isNull(recordings.deletedAt),
                 ),
             )
             .limit(1);
@@ -174,18 +176,33 @@ export async function POST(
                 ? `${transcription.text.substring(0, maxLength)}...`
                 : transcription.text;
 
+        // Apply AI output language directive (if configured) via the system
+        // message rather than the user prompt. This separates concerns: the
+        // user prompt carries the JSON-shape contract (English keys), the
+        // system message carries the output-language preference. Smaller
+        // models tend to honor this split more reliably than a combined
+        // prompt where language and JSON-shape rules compete.
+        const languageDirective = getAiOutputLanguageDirective(
+            userSettingsRow?.aiOutputLanguage ?? null,
+        );
+
         const prompt = promptTemplate.replace(
             "{transcription}",
             truncatedTranscription,
         );
+
+        const baseSystem =
+            "You are a helpful assistant that summarizes audio transcriptions. Always respond with valid JSON only, no markdown formatting or code fences.";
+        const systemContent = languageDirective
+            ? `${baseSystem} ${languageDirective}`
+            : baseSystem;
 
         const response = await openai.chat.completions.create({
             model,
             messages: [
                 {
                     role: "system",
-                    content:
-                        "You are a helpful assistant that summarizes audio transcriptions. Always respond with valid JSON only, no markdown formatting or code fences.",
+                    content: systemContent,
                 },
                 {
                     role: "user",
@@ -220,39 +237,79 @@ export async function POST(
             summary = rawContent;
         }
 
-        // Upsert into aiEnhancements
-        const [existing] = await db
-            .select()
-            .from(aiEnhancements)
-            .where(
-                and(
-                    eq(aiEnhancements.recordingId, id),
-                    eq(aiEnhancements.userId, session.user.id),
-                ),
-            )
-            .limit(1);
+        // Atomic tombstone re-check + upsert.
+        //
+        // The user may have deleted the recording while the (long-running)
+        // provider call was in flight. To prevent a delete that lands
+        // *between* our re-check and our upsert from being silently undone,
+        // we run both inside a single transaction that takes a row-level
+        // write lock (`FOR UPDATE`) on the recording. The DELETE handler's
+        // transaction acquires the same lock via its `UPDATE recordings`
+        // tombstone write, so the two transactions serialize: either we
+        // see `deletedAt` set and abort, or our upsert commits before
+        // DELETE runs and DELETE then cleans up our row inside its own tx.
+        // See PR #72.
+        const RECORDING_TOMBSTONED = Symbol("recording-tombstoned");
+        try {
+            await db.transaction(async (tx) => {
+                const [stillActive] = await tx
+                    .select({ deletedAt: recordings.deletedAt })
+                    .from(recordings)
+                    .where(
+                        and(
+                            eq(recordings.id, id),
+                            eq(recordings.userId, session.user.id),
+                        ),
+                    )
+                    .for("update")
+                    .limit(1);
 
-        if (existing) {
-            await db
-                .update(aiEnhancements)
-                .set({
-                    summary,
-                    keyPoints,
-                    actionItems,
-                    provider: credentials.provider,
-                    model,
-                })
-                .where(eq(aiEnhancements.id, existing.id));
-        } else {
-            await db.insert(aiEnhancements).values({
-                recordingId: id,
-                userId: session.user.id,
-                summary,
-                keyPoints,
-                actionItems,
-                provider: credentials.provider,
-                model,
+                if (!stillActive || stillActive.deletedAt) {
+                    throw RECORDING_TOMBSTONED;
+                }
+
+                const [existing] = await tx
+                    .select()
+                    .from(aiEnhancements)
+                    .where(
+                        and(
+                            eq(aiEnhancements.recordingId, id),
+                            eq(aiEnhancements.userId, session.user.id),
+                        ),
+                    )
+                    .limit(1);
+
+                if (existing) {
+                    await tx
+                        .update(aiEnhancements)
+                        .set({
+                            summary,
+                            keyPoints,
+                            actionItems,
+                            provider: credentials.provider,
+                            model,
+                        })
+                        .where(eq(aiEnhancements.id, existing.id));
+                } else {
+                    await tx.insert(aiEnhancements).values({
+                        recordingId: id,
+                        userId: session.user.id,
+                        summary,
+                        keyPoints,
+                        actionItems,
+                        provider: credentials.provider,
+                        model,
+                    });
+                }
             });
+        } catch (txError) {
+            if (txError === RECORDING_TOMBSTONED) {
+                return NextResponse.json(
+                    { error: "Recording was deleted" },
+                    { status: 410 },
+                );
+            }
+            throw txError;
         }
 
         return NextResponse.json({

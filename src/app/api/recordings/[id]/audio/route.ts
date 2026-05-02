@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { recordings } from "@/db/schema";
@@ -30,6 +30,7 @@ export async function GET(
                 and(
                     eq(recordings.id, id),
                     eq(recordings.userId, session.user.id),
+                    isNull(recordings.deletedAt),
                 ),
             )
             .limit(1);

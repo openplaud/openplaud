@@ -5,6 +5,7 @@
 ### Added
 - New connect screen with three methods: **Sign in with Plaud** (browser-extension bridge — the easy path), **Email code** (existing OTP flow), and **Paste token** (advanced fallback). Targets accounts created via Google or Apple sign-in on Plaud, where the OTP flow silently signs users into a separate empty shadow account and sync returns zero recordings ([#65](https://github.com/openplaud/openplaud/issues/65)).
 - Companion browser extension [openplaud/connector](https://github.com/openplaud/connector) (AGPL-3.0) detected by the connect screen via `window.__openplaudConnector`. Lets users sign in to Plaud the way they normally do — Google, Apple, or email/password — with no copy-pasting. The extension hands the resulting access token back to OpenPlaud via the new `/api/plaud/auth/connect-token` endpoint, which encrypts it (AES-256-GCM) and persists alongside any existing OTP-flow connections.
+- AI output language selector — choose the language for AI-generated summaries and titles, independent of the transcript's language ([#57](https://github.com/openplaud/openplaud/issues/57)).
 
 ## [0.2.0] - 2026-04-28
 

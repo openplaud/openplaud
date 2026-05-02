@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { recordings, transcriptions } from "@/db/schema";
@@ -22,7 +22,12 @@ export async function POST(request: Request) {
         const userRecordings = await db
             .select()
             .from(recordings)
-            .where(eq(recordings.userId, session.user.id));
+            .where(
+                and(
+                    eq(recordings.userId, session.user.id),
+                    isNull(recordings.deletedAt),
+                ),
+            );
 
         // Get all transcriptions
         const recordingIds = userRecordings.map((r) => r.id);

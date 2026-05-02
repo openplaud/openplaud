@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Loader2, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
@@ -8,6 +8,14 @@ import { RecordingPlayer } from "@/components/dashboard/recording-player";
 import { TranscriptionPanel } from "@/components/dashboard/transcription-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 import type { Recording } from "@/types/recording";
 
 interface Transcription {
@@ -27,6 +35,8 @@ export function RecordingWorkstation({
 }: RecordingWorkstationProps) {
     const router = useRouter();
     const [isTranscribing, setIsTranscribing] = useState(false);
+    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     const handleTranscribe = useCallback(async () => {
         setIsTranscribing(true);
@@ -52,6 +62,29 @@ export function RecordingWorkstation({
         }
     }, [recording.id, router]);
 
+    const handleDelete = useCallback(async () => {
+        setIsDeleting(true);
+        try {
+            const response = await fetch(`/api/recordings/${recording.id}`, {
+                method: "DELETE",
+            });
+
+            if (response.ok) {
+                toast.success("Recording deleted");
+                setDeleteDialogOpen(false);
+                router.push("/dashboard");
+                router.refresh();
+            } else {
+                const error = await response.json().catch(() => ({}));
+                toast.error(error.error || "Failed to delete recording");
+                setIsDeleting(false);
+            }
+        } catch {
+            toast.error("Failed to delete recording");
+            setIsDeleting(false);
+        }
+    }, [recording.id, router]);
+
     return (
         <div className="bg-background">
             <div className="container mx-auto px-4 py-6 max-w-4xl">
@@ -72,6 +105,15 @@ export function RecordingWorkstation({
                             {new Date(recording.startTime).toLocaleString()}
                         </p>
                     </div>
+                    <Button
+                        onClick={() => setDeleteDialogOpen(true)}
+                        variant="outline"
+                        size="icon"
+                        aria-label="Delete recording"
+                        title="Delete recording"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                    </Button>
                 </div>
 
                 {/* Content */}
@@ -138,6 +180,48 @@ export function RecordingWorkstation({
                     </Card>
                 </div>
             </div>
+
+            <Dialog
+                open={deleteDialogOpen}
+                onOpenChange={(open) => {
+                    if (!isDeleting) setDeleteDialogOpen(open);
+                }}
+            >
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Delete this recording?</DialogTitle>
+                        <DialogDescription>
+                            This permanently removes the audio file,
+                            transcription, and AI summary from OpenPlaud. The
+                            recording on your Plaud account is not affected, but
+                            it will not be re-synced to OpenPlaud.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => setDeleteDialogOpen(false)}
+                            disabled={isDeleting}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            onClick={handleDelete}
+                            disabled={isDeleting}
+                        >
+                            {isDeleting ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Deleting…
+                                </>
+                            ) : (
+                                "Delete recording"
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

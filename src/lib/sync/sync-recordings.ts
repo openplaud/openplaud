@@ -101,6 +101,13 @@ async function processRecording(
             return { status: "skipped" };
         }
 
+        // Tombstone: user soft-deleted this recording in OpenPlaud's UI.
+        // Do not re-download or update — sync is keyed on plaudFileId, and
+        // the row is retained specifically to suppress resurrection. See #56.
+        if (existingRecording?.deletedAt) {
+            return { status: "skipped" };
+        }
+
         // Download the audio file
         const audioBuffer = await plaudClient.downloadRecording(
             plaudRecording.id,

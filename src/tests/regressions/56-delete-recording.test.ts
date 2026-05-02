@@ -1,0 +1,197 @@
+/**
+ * Regression test for issue #56:
+ *   "Request for a delete recording option in the UI"
+ *
+ * Sync is keyed on `recordings.plaudFileId` (Plaud's file id). Hard-deleting
+ * a row would cause the next sync to treat the recording as new and
+ * re-download it. To make UI delete persistent across syncs, the row is
+ * retained as a tombstone via `recordings.deletedAt`, the audio file is
+ * removed from storage, and the transcription / AI rows are deleted.
+ *
+ * These tests cover:
+ *   1. The sync worker skips tombstoned rows (no download, no DB write).
+ *   2. The sync worker still updates a non-tombstoned row when versions differ.
+ */
+
+import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
+
+vi.mock("@/lib/env", () => ({
+    env: {
+        DEFAULT_STORAGE_TYPE: "local",
+        ENCRYPTION_KEY:
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    },
+}));
+
+vi.mock("@/db", () => ({
+    db: {
+        select: vi.fn(),
+        insert: vi.fn(),
+        update: vi.fn(),
+    },
+}));
+
+vi.mock("@/lib/plaud/client-factory", () => ({
+    createPlaudClient: vi.fn(),
+}));
+
+vi.mock("@/lib/storage/factory", () => ({
+    createUserStorageProvider: vi.fn().mockResolvedValue({
+        uploadFile: vi.fn().mockResolvedValue(undefined),
+        downloadFile: vi.fn().mockResolvedValue(Buffer.from("audio-data")),
+        deleteFile: vi.fn().mockResolvedValue(undefined),
+    }),
+}));
+
+vi.mock("@/lib/notifications/bark", () => ({
+    sendNewRecordingBarkNotification: vi.fn().mockResolvedValue(true),
+}));
+
+vi.mock("@/lib/notifications/email", () => ({
+    sendNewRecordingEmail: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/lib/transcription/transcribe-recording", () => ({
+    transcribeRecording: vi.fn().mockResolvedValue({ success: true }),
+}));
+
+import { db } from "@/db";
+import { createPlaudClient } from "@/lib/plaud/client-factory";
+import { createUserStorageProvider } from "@/lib/storage/factory";
+import { syncRecordingsForUser } from "@/lib/sync/sync-recordings";
+
+describe("Issue #56 — delete recording tombstone", () => {
+    const mockUserId = "user-123";
+
+    const mockPlaudRecording = {
+        id: "plaud-1",
+        filename: "Recording 1.mp3",
+        duration: 60000,
+        start_time: "2024-01-01T10:00:00Z",
+        end_time: "2024-01-01T10:01:00Z",
+        filesize: 1024000,
+        file_md5: "abc123",
+        serial_number: "SN123",
+        // Bumped version forces sync to re-evaluate the existing row.
+        version_ms: 9999,
+        timezone: 0,
+        zonemins: 0,
+        scene: 0,
+        is_trash: false,
+    };
+
+    const mockConnection = {
+        id: "conn-1",
+        userId: mockUserId,
+        bearerToken: "encrypted-token",
+    };
+
+    const buildSelectChain = (results: unknown[][]) => {
+        const chain = (db.select as Mock).mockReset();
+        for (const result of results) {
+            chain.mockReturnValueOnce({
+                from: vi.fn().mockReturnValue({
+                    where: vi.fn().mockReturnValue({
+                        limit: vi.fn().mockResolvedValue(result),
+                    }),
+                }),
+            });
+        }
+    };
+
+    let storageMock: {
+        uploadFile: Mock;
+        downloadFile: Mock;
+        deleteFile: Mock;
+    };
+    let plaudClientMock: {
+        getRecordings: Mock;
+        downloadRecording: Mock;
+    };
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        storageMock = (await (createUserStorageProvider as Mock)(
+            mockUserId,
+        )) as typeof storageMock;
+        storageMock.uploadFile.mockClear();
+        storageMock.downloadFile.mockClear();
+        storageMock.deleteFile.mockClear();
+
+        plaudClientMock = {
+            getRecordings: vi.fn().mockResolvedValue({
+                data_file_list: [mockPlaudRecording],
+            }),
+            downloadRecording: vi.fn().mockResolvedValue(Buffer.from("audio")),
+        };
+        (createPlaudClient as Mock).mockResolvedValue(plaudClientMock);
+
+        (db.update as Mock).mockReturnValue({
+            set: vi.fn().mockReturnValue({
+                where: vi.fn().mockResolvedValue(undefined),
+            }),
+        });
+        (db.insert as Mock).mockReturnValue({
+            values: vi.fn().mockReturnValue({
+                returning: vi.fn().mockResolvedValue([{ id: "new-rec" }]),
+            }),
+        });
+    });
+
+    it("skips tombstoned recordings without re-downloading", async () => {
+        const tombstoned = {
+            id: "local-rec-1",
+            plaudFileId: "plaud-1",
+            // Older version than the incoming Plaud record — without the
+            // tombstone check, sync would treat this as an update.
+            plaudVersion: "1000",
+            deletedAt: new Date("2024-02-01T00:00:00Z"),
+        };
+
+        buildSelectChain([
+            [mockConnection], // load Plaud connection
+            [{ id: "settings-1" }], // user settings
+            [{ email: "test@example.com" }], // user email lookup
+            [tombstoned], // existingRecording lookup in processRecording
+        ]);
+
+        const result = await syncRecordingsForUser(mockUserId);
+
+        expect(result.newRecordings).toBe(0);
+        expect(result.updatedRecordings).toBe(0);
+        expect(result.errors).toEqual([]);
+        // No audio download, no upload, no recording row insert for the
+        // tombstoned row. (db.update is still invoked once at the end of
+        // sync to bump plaudConnections.lastSync — we only care that the
+        // recordings table is untouched, which is reflected by the
+        // updatedRecordings counter staying at 0.)
+        expect(storageMock.uploadFile).not.toHaveBeenCalled();
+        expect(plaudClientMock.downloadRecording).not.toHaveBeenCalled();
+        expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it("still updates a non-tombstoned recording when versions differ", async () => {
+        const existing = {
+            id: "local-rec-1",
+            plaudFileId: "plaud-1",
+            plaudVersion: "1000",
+            deletedAt: null,
+        };
+
+        buildSelectChain([
+            [mockConnection],
+            [{ id: "settings-1" }],
+            [{ email: "test@example.com" }],
+            [existing],
+            // uniqueStorageKey lookup — empty so the candidate name is unique.
+            [],
+        ]);
+
+        const result = await syncRecordingsForUser(mockUserId);
+
+        expect(result.updatedRecordings).toBe(1);
+        expect(result.newRecordings).toBe(0);
+        expect(storageMock.uploadFile).toHaveBeenCalledTimes(1);
+        expect(db.update).toHaveBeenCalled();
+    });
+});

@@ -151,6 +151,12 @@ export const recordings = pgTable(
         zonemins: integer("zonemins"),
         scene: integer("scene"),
         isTrash: boolean("is_trash").notNull().default(false),
+        // Soft-delete tombstone. Set when the user deletes a recording from
+        // OpenPlaud's UI. Sync skips tombstoned rows so re-syncing from Plaud
+        // does not resurrect deleted recordings. The audio file is hard-deleted
+        // from storage at delete time; this row is retained only as a marker
+        // keyed by plaudFileId. See issue #56.
+        deletedAt: timestamp("deleted_at"),
         createdAt: timestamp("created_at").notNull().defaultNow(),
         updatedAt: timestamp("updated_at").notNull().defaultNow(),
     },

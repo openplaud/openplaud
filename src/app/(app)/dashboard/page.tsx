@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { Workstation } from "@/components/dashboard/workstation";
 import { db } from "@/db";
 import { recordings, transcriptions } from "@/db/schema";
@@ -18,7 +18,12 @@ export default async function DashboardPage() {
             deviceSn: recordings.deviceSn,
         })
         .from(recordings)
-        .where(eq(recordings.userId, session.user.id))
+        .where(
+            and(
+                eq(recordings.userId, session.user.id),
+                isNull(recordings.deletedAt),
+            ),
+        )
         .orderBy(desc(recordings.startTime));
 
     const userTranscriptions = await db

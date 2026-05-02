@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { recordings, storageConfig } from "@/db/schema";
@@ -31,7 +31,12 @@ export async function GET(request: Request) {
         const userRecordings = await db
             .select({ filesize: recordings.filesize })
             .from(recordings)
-            .where(eq(recordings.userId, session.user.id));
+            .where(
+                and(
+                    eq(recordings.userId, session.user.id),
+                    isNull(recordings.deletedAt),
+                ),
+            );
 
         const totalSize = userRecordings.reduce(
             (sum, r) => sum + r.filesize,

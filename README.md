@@ -1,3 +1,7 @@
+<!-- FORK NOTICE BEGIN -->
+> **Personal fork by [@doskarj](https://github.com/doskarj/openplaud).** Custom changes vs upstream and the upstream-sync workflow are documented in **[FORK.md](FORK.md)**. Original project: [openplaud/openplaud](https://github.com/openplaud/openplaud).
+<!-- FORK NOTICE END -->
+
 <div align="center">
 
 # 🎙️ OpenPlaud

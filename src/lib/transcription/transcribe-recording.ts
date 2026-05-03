@@ -105,12 +105,14 @@ export async function transcribeRecording(
         const model = credentials.defaultModel || "whisper-1";
 
         const responseFormat = getResponseFormat(model);
+        const isDiarize = model.includes("diarize");
 
         const transcription = await openai.audio.transcriptions.create({
             file: audioFile,
             model,
             response_format: responseFormat,
             ...(defaultLanguage ? { language: defaultLanguage } : {}),
+            ...(isDiarize ? { chunking_strategy: "auto" as const } : {}),
         });
 
         const { text: transcriptionText, detectedLanguage } =

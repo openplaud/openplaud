@@ -1,6 +1,6 @@
 import { ForgotPasswordForm } from "@/components/auth/forgot-password-form";
 import { redirectIfAuthenticated } from "@/lib/auth-server";
-import { isSmtpConfigured } from "@/lib/notifications/email";
+import { isSmtpConfigured } from "@/lib/smtp";
 
 export default async function ForgotPasswordPage() {
     // Redirect to dashboard if already authenticated

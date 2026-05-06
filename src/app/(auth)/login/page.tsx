@@ -1,7 +1,7 @@
 import { LoginForm } from "@/components/auth/login-form";
 import { redirectIfAuthenticated } from "@/lib/auth-server";
 import { env } from "@/lib/env";
-import { isSmtpConfigured } from "@/lib/notifications/email";
+import { isSmtpConfigured } from "@/lib/smtp";
 
 export default async function LoginPage() {
     // Redirect to dashboard if already authenticated

@@ -2,6 +2,7 @@ import { render } from "@react-email/render";
 import nodemailer from "nodemailer";
 import React from "react";
 import { env } from "@/lib/env";
+import { isSmtpConfigured } from "@/lib/smtp";
 import { NewRecordingEmail } from "./email-templates/new-recording-email";
 import { PasswordResetEmail } from "./email-templates/password-reset-email";
 import { TestEmail } from "./email-templates/test-email";
@@ -14,16 +15,6 @@ interface EmailOptions {
 }
 
 let transporter: nodemailer.Transporter | null = null;
-
-/**
- * Whether SMTP credentials are configured on this instance. Used by
- * server-rendered auth pages to decide whether to surface email-dependent
- * features like password reset. This only checks env presence -- it does not
- * verify that the SMTP server actually accepts connections.
- */
-export function isSmtpConfigured(): boolean {
-    return Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASSWORD);
-}
 
 function getTransporter(): nodemailer.Transporter | null {
     // Return null if SMTP is not configured

@@ -184,7 +184,7 @@ OpenPlaud ships in **two production modes from the same codebase**:
 1. **Self-host** (`IS_HOSTED` unset/false) — AGPL, `docker compose up`, single-tenant in practice, owned by the user.
 2. **Hosted** (`IS_HOSTED=true`) — multi-tenant SaaS we operate. Live, paying users, profit-bearing.
 
-Both surfaces are user contracts. The **deploy surface** — DB schema, env vars, `docker-compose.yml` structure, install flow — is a contract for self-host. The **hosted surface** — `/api/v1/*`, webhook payloads, token format, API behavior under load — is a contract for hosted customers. Internal code is not a contract for either.
+Both surfaces are user contracts. The **deploy surface** — DB schema, env vars, `docker-compose.yml` structure, install flow — is a contract for self-host. The **hosted surface** — the external API at `/api/v1/*` (introduced by issue #79 / PR #80; not yet on `main`), webhook payloads, token format, and API behavior under load — will be a contract for hosted customers once those surfaces land. Internal code is not a contract for either.
 
 - **Schema changes are additive by default.** Dropping columns or tables requires a user-impact assessment and a migration plan. See the **Database Migrations** block below.
 - **Env var renames need deprecation.** Keep the old name working for at least one release cycle, log a deprecation warning, document both in `CHANGELOG.md`.
@@ -209,7 +209,7 @@ OpenPlaud is AGPL-3.0, targets anyone who owns a Plaud device (Note, Note Pro, N
 - **Self-host (Free, forever)** — AGPL source, `docker compose up`. Shipped. Default for Slice 2. `IS_HOSTED` unset or false.
 - **Hosted (we operate it)** — same codebase, `IS_HOSTED=true`. **Live, multi-tenant, profit-bearing.** Multiple Next.js processes behind a load balancer, shared Postgres, real users paying real money. This is not aspirational. Treat it as production.
 
-`IS_HOSTED` is the single switch that controls hosted-only behavior: landing/marketing pages, signup gating, plan-aware UI, stricter defaults (see below). Code that needs to branch on mode reads `env.IS_HOSTED`; never sniff `process.env` directly. Default behavior must always be the self-host path — `IS_HOSTED=true` is opt-in to the stricter/marketing-enabled mode.
+`IS_HOSTED` is the deployment-mode switch. Today it gates the marketing landing page (`src/app/page.tsx` redirects to `/login` when unset) and is the default for hosted-strict safety knobs (see Hosted mode invariants below). It is **not** the signup switch — sign-up is gated by `DISABLE_REGISTRATION` (wired into `src/lib/auth.ts` via `disableSignUp`). Other hosted-only concerns (plan-aware UI, billing, etc.) are not implemented yet; when added, prefer dedicated env knobs that default off `IS_HOSTED` rather than overloading `IS_HOSTED` itself. Code that needs to branch on mode reads `env.IS_HOSTED`; never sniff `process.env` directly. Default behavior must always be the self-host path — `IS_HOSTED=true` is opt-in to the stricter/marketing-enabled mode.
 
 ### Core invariants
 
@@ -226,7 +226,7 @@ When designing or reviewing any feature, assume hosted is real and check both mo
 - **Multi-process safe.** No in-memory locks as the only correctness mechanism. Background workers must claim work at the DB level (`SELECT … FOR UPDATE SKIP LOCKED`) or be moved to a dedicated process. In-memory `running` flags are advisory only.
 - **Multi-tenant safe.** Every query touches `userId` (see the User-Scoped Queries CRITICAL block). One user's data, quota, retries, or failures must not affect another user's experience.
 - **Egress is hostile territory.** Outbound HTTP from hosted infra (webhooks, AI proxying, etc.) must default to public destinations only and DNS-pin to resolved IPs. Self-host needs the opposite default (homelab `http://n8n:5678/...` over the docker bridge must work). Branch the default on `IS_HOSTED`, not on hardcoded policy.
-- **Secrets at rest.** Hosted DB exfil is a multi-user incident. Hash high-entropy secrets (API tokens) with HMAC keyed off a server secret, not plain hash. Encrypt the rest via `src/lib/encryption.ts`.
+- **Secrets at rest.** Hosted DB exfil is a multi-user incident. Hash high-entropy secrets (API tokens) with HMAC keyed off `BETTER_AUTH_SECRET` (or a dedicated `API_TOKEN_HASH_SECRET` if introduced for rotation independence) — not plain SHA-256. Never reuse `ENCRYPTION_KEY` for HMAC; that key is reserved for AES-GCM at-rest encryption via `src/lib/encryption.ts`. Encrypt non-hashable secrets (Plaud bearer tokens, AI keys, SMTP creds, S3 creds) via `src/lib/encryption.ts`.
 - **Per-user fairness.** Background queues (webhook delivery, transcription, sync) must not let one slow/abusive user starve others. Per-user concurrency caps or fair-share claim queries.
 - **Rate limiting on `/api/v1/*`.** Per-token + per-IP. Required before hosted exposes a new write endpoint or a new external surface.
 - **No claims of compliance we don't own.** Hosted does not make us HIPAA/SOC2 compliant. Don't ship copy that says it does.

@@ -29,10 +29,11 @@ export function ResetPasswordForm({ token, error }: ResetPasswordFormProps) {
     const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
 
-    // No token in URL -- either the user navigated here directly or
-    // better-auth bounced them back without one. Show an explanatory state
-    // rather than a non-functional form.
-    if (!token) {
+    // No token in URL, or better-auth signaled an error on the callback --
+    // either the user navigated here directly, the token expired, or the
+    // link was tampered with (e.g. crafted URL with both `token` and `error`).
+    // Show an explanatory state rather than a form that's guaranteed to fail.
+    if (!token || error) {
         return (
             <Panel className="w-full max-w-md space-y-6">
                 <div className="flex items-center gap-3">

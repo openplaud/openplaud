@@ -16,7 +16,11 @@ export const GET = apiHandler(async (request: Request) => {
     }
 
     const { searchParams } = new URL(request.url);
-    const format = searchParams.get("format") || "json";
+    // Read the raw query param (may be null) so the user-settings
+    // fallback below actually has a chance to apply. Defaulting `format`
+    // to "json" up here would mask `settings.defaultExportFormat`
+    // entirely.
+    const formatParam = searchParams.get("format");
 
     // Get user settings for default format
     const [settings] = await db
@@ -25,7 +29,7 @@ export const GET = apiHandler(async (request: Request) => {
         .where(eq(userSettings.userId, session.user.id))
         .limit(1);
 
-    const exportFormat = format || settings?.defaultExportFormat || "json";
+    const exportFormat = formatParam || settings?.defaultExportFormat || "json";
 
     // Get all recordings for user
     const userRecordings = await db

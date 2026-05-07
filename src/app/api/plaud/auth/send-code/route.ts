@@ -25,9 +25,17 @@ export const POST = apiHandler(async (request: Request) => {
         throw new AppError(ErrorCode.AUTH_SESSION_MISSING, "Unauthorized", 401);
     }
 
-    const { email } = await request.json();
+    // Tolerate malformed / null bodies: bad JSON from a client is a 400
+    // input error, not a 500 server error. Without the catch,
+    // request.json() throws SyntaxError and apiHandler maps it to
+    // INTERNAL_ERROR.
+    const body = (await request.json().catch(() => null)) as {
+        email?: unknown;
+    } | null;
+    const email = body?.email;
+    const trimmedEmail = typeof email === "string" ? email.trim() : "";
 
-    if (!email || typeof email !== "string") {
+    if (!trimmedEmail) {
         throw new AppError(
             ErrorCode.MISSING_REQUIRED_FIELD,
             "Email is required",
@@ -36,7 +44,7 @@ export const POST = apiHandler(async (request: Request) => {
         );
     }
 
-    const { token, apiBase } = await plaudSendCode(email.trim());
+    const { token, apiBase } = await plaudSendCode(trimmedEmail);
 
     return NextResponse.json({
         success: true,

@@ -39,11 +39,19 @@ export const GET = apiHandler<IdContext>(async (request, context) => {
         );
     }
 
-    // Get transcription if exists
+    // Get transcription if exists. Defense-in-depth: scope by userId
+    // even though the parent recording lookup already filtered. If a row
+    // ever ends up with mismatched (recordingId, userId) due to a bug or
+    // a partially-failed delete, this prevents cross-tenant reads.
     const [transcription] = await db
         .select()
         .from(transcriptions)
-        .where(eq(transcriptions.recordingId, id))
+        .where(
+            and(
+                eq(transcriptions.recordingId, id),
+                eq(transcriptions.userId, session.user.id),
+            ),
+        )
         .limit(1);
 
     return NextResponse.json({

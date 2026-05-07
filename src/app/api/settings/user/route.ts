@@ -5,6 +5,7 @@ import { userSettings } from "@/db/schema";
 import { normalizeAiOutputLanguage } from "@/lib/ai/summary-presets";
 import { auth } from "@/lib/auth";
 import { decryptJsonField, encryptJsonField } from "@/lib/encryption/fields";
+import { AppError, apiHandler, ErrorCode } from "@/lib/errors";
 
 // Default settings values
 const DEFAULT_SETTINGS = {
@@ -87,183 +88,155 @@ function extractSettings(settings: typeof userSettings.$inferSelect) {
 }
 
 // GET - Fetch user settings
-export async function GET(request: Request) {
-    try {
-        const session = await auth.api.getSession({
-            headers: request.headers,
-        });
+export const GET = apiHandler(async (request: Request) => {
+    const session = await auth.api.getSession({
+        headers: request.headers,
+    });
 
-        if (!session?.user) {
-            return NextResponse.json(
-                { error: "Unauthorized" },
-                { status: 401 },
-            );
-        }
+    if (!session?.user) {
+        throw new AppError(ErrorCode.AUTH_SESSION_MISSING, "Unauthorized", 401);
+    }
 
-        const [settings] = await db
-            .select()
-            .from(userSettings)
-            .where(eq(userSettings.userId, session.user.id))
-            .limit(1);
+    const [settings] = await db
+        .select()
+        .from(userSettings)
+        .where(eq(userSettings.userId, session.user.id))
+        .limit(1);
 
-        // Get user email for default notification email
-        const userEmail = session.user.email || "";
+    // Get user email for default notification email
+    const userEmail = session.user.email || "";
 
-        // Return default settings if none exist
-        if (!settings) {
-            return NextResponse.json({
-                ...DEFAULT_SETTINGS,
-                titleGenerationPrompt: null,
-                barkPushUrl: null,
-                barkPushUrlSet: false,
-                userEmail, // Include user email in response
-            });
-        }
-
-        const settingsData = extractSettings(settings);
-        // Include titleGenerationPrompt if it exists. The column is
-        // jsonb-envelope encrypted; legacy plaintext rows pass through.
-        if (settings.titleGenerationPrompt) {
-            settingsData.titleGenerationPrompt = decryptJsonField(
-                settings.titleGenerationPrompt,
-            );
-        }
-        // Include summaryPrompt if it exists (same envelope handling).
-        if (settings.summaryPrompt) {
-            settingsData.summaryPrompt = decryptJsonField(
-                settings.summaryPrompt,
-            );
-        }
+    // Return default settings if none exist
+    if (!settings) {
         return NextResponse.json({
-            ...settingsData,
-            userEmail, // Include user email in response
+            ...DEFAULT_SETTINGS,
+            titleGenerationPrompt: null,
+            barkPushUrl: null,
+            barkPushUrlSet: false,
+            userEmail,
         });
-    } catch (error) {
-        console.error("Error fetching user settings:", error);
-        return NextResponse.json(
-            { error: "Failed to fetch settings" },
-            { status: 500 },
+    }
+
+    const settingsData = extractSettings(settings);
+    // jsonb-envelope encrypted at rest; legacy plaintext rows pass through.
+    if (settings.titleGenerationPrompt) {
+        settingsData.titleGenerationPrompt = decryptJsonField(
+            settings.titleGenerationPrompt,
         );
     }
-}
+    if (settings.summaryPrompt) {
+        settingsData.summaryPrompt = decryptJsonField(settings.summaryPrompt);
+    }
+    return NextResponse.json({
+        ...settingsData,
+        userEmail,
+    });
+});
 
 // PUT - Update user settings
-export async function PUT(request: Request) {
-    try {
-        const session = await auth.api.getSession({
-            headers: request.headers,
-        });
+export const PUT = apiHandler(async (request: Request) => {
+    const session = await auth.api.getSession({
+        headers: request.headers,
+    });
 
-        if (!session?.user) {
-            return NextResponse.json(
-                { error: "Unauthorized" },
-                { status: 401 },
-            );
-        }
-
-        const body = await request.json();
-
-        // Check if settings exist
-        const [existing] = await db
-            .select()
-            .from(userSettings)
-            .where(eq(userSettings.userId, session.user.id))
-            .limit(1);
-
-        // Build update/insert data from body, only including defined fields
-        const updateData: Record<string, unknown> = { updatedAt: new Date() };
-        const insertData: Record<string, unknown> = {
-            userId: session.user.id,
-        };
-
-        for (const field of SETTINGS_FIELDS) {
-            let value = body[field];
-            // Validate aiOutputLanguage against the allowed set. Explicit
-            // `null` is allowed (clears the preference → "auto"); any other
-            // non-allowlisted value is a client bug and should fail loudly
-            // rather than be silently coerced.
-            if (
-                field === "aiOutputLanguage" &&
-                value !== undefined &&
-                value !== null
-            ) {
-                const normalized = normalizeAiOutputLanguage(value);
-                if (normalized === null) {
-                    return NextResponse.json(
-                        { error: "Invalid aiOutputLanguage value" },
-                        { status: 400 },
-                    );
-                }
-                value = normalized;
-            }
-            if (value !== undefined) {
-                updateData[field] = value;
-                insertData[field] = value;
-            } else if (!existing) {
-                // Use default value for new settings
-                insertData[field] = DEFAULT_SETTINGS[field];
-            }
-        }
-
-        // Handle titleGenerationPrompt separately (jsonb field). Custom
-        // prompts can carry user-specific context; encrypt at rest.
-        if (body.titleGenerationPrompt !== undefined) {
-            const encrypted =
-                body.titleGenerationPrompt === null
-                    ? null
-                    : encryptJsonField(body.titleGenerationPrompt);
-            updateData.titleGenerationPrompt = encrypted;
-            insertData.titleGenerationPrompt = encrypted;
-        } else if (!existing) {
-            insertData.titleGenerationPrompt = null;
-        }
-
-        // Handle summaryPrompt separately (jsonb field) — same envelope.
-        if (body.summaryPrompt !== undefined) {
-            const encrypted =
-                body.summaryPrompt === null
-                    ? null
-                    : encryptJsonField(body.summaryPrompt);
-            updateData.summaryPrompt = encrypted;
-            insertData.summaryPrompt = encrypted;
-        } else if (!existing) {
-            insertData.summaryPrompt = null;
-        }
-
-        // Handle barkPushUrl separately
-        if (body.barkPushUrl !== undefined) {
-            if (body.barkPushUrl === null || body.barkPushUrl === "") {
-                // Clear the URL if null or empty string
-                updateData.barkPushUrl = null;
-                insertData.barkPushUrl = null;
-            } else {
-                // Store the URL as-is (no encryption needed)
-                updateData.barkPushUrl = body.barkPushUrl;
-                insertData.barkPushUrl = body.barkPushUrl;
-            }
-        } else if (!existing) {
-            insertData.barkPushUrl = null;
-        }
-
-        if (existing) {
-            // Update existing settings
-            await db
-                .update(userSettings)
-                .set(updateData)
-                .where(eq(userSettings.userId, session.user.id));
-        } else {
-            // Create new settings
-            await db
-                .insert(userSettings)
-                .values(insertData as typeof userSettings.$inferInsert);
-        }
-
-        return NextResponse.json({ success: true });
-    } catch (error) {
-        console.error("Error updating user settings:", error);
-        return NextResponse.json(
-            { error: "Failed to update settings" },
-            { status: 500 },
-        );
+    if (!session?.user) {
+        throw new AppError(ErrorCode.AUTH_SESSION_MISSING, "Unauthorized", 401);
     }
-}
+
+    const body = await request.json();
+
+    // Check if settings exist
+    const [existing] = await db
+        .select()
+        .from(userSettings)
+        .where(eq(userSettings.userId, session.user.id))
+        .limit(1);
+
+    // Build update/insert data from body, only including defined fields
+    const updateData: Record<string, unknown> = { updatedAt: new Date() };
+    const insertData: Record<string, unknown> = {
+        userId: session.user.id,
+    };
+
+    for (const field of SETTINGS_FIELDS) {
+        let value = body[field];
+        // Validate aiOutputLanguage against the allowed set. Explicit
+        // `null` is allowed (clears the preference → "auto"); any other
+        // non-allowlisted value is a client bug and should fail loudly
+        // rather than be silently coerced.
+        if (
+            field === "aiOutputLanguage" &&
+            value !== undefined &&
+            value !== null
+        ) {
+            const normalized = normalizeAiOutputLanguage(value);
+            if (normalized === null) {
+                throw new AppError(
+                    ErrorCode.INVALID_INPUT,
+                    "Invalid aiOutputLanguage value",
+                    400,
+                    { field: "aiOutputLanguage" },
+                );
+            }
+            value = normalized;
+        }
+        if (value !== undefined) {
+            updateData[field] = value;
+            insertData[field] = value;
+        } else if (!existing) {
+            // Use default value for new settings
+            insertData[field] = DEFAULT_SETTINGS[field];
+        }
+    }
+
+    // Handle titleGenerationPrompt separately (jsonb field). Custom
+    // prompts can carry user-specific context; encrypt at rest.
+    if (body.titleGenerationPrompt !== undefined) {
+        const encrypted =
+            body.titleGenerationPrompt === null
+                ? null
+                : encryptJsonField(body.titleGenerationPrompt);
+        updateData.titleGenerationPrompt = encrypted;
+        insertData.titleGenerationPrompt = encrypted;
+    } else if (!existing) {
+        insertData.titleGenerationPrompt = null;
+    }
+
+    // Handle summaryPrompt separately (jsonb field) — same envelope.
+    if (body.summaryPrompt !== undefined) {
+        const encrypted =
+            body.summaryPrompt === null
+                ? null
+                : encryptJsonField(body.summaryPrompt);
+        updateData.summaryPrompt = encrypted;
+        insertData.summaryPrompt = encrypted;
+    } else if (!existing) {
+        insertData.summaryPrompt = null;
+    }
+
+    // Handle barkPushUrl separately
+    if (body.barkPushUrl !== undefined) {
+        if (body.barkPushUrl === null || body.barkPushUrl === "") {
+            updateData.barkPushUrl = null;
+            insertData.barkPushUrl = null;
+        } else {
+            updateData.barkPushUrl = body.barkPushUrl;
+            insertData.barkPushUrl = body.barkPushUrl;
+        }
+    } else if (!existing) {
+        insertData.barkPushUrl = null;
+    }
+
+    if (existing) {
+        await db
+            .update(userSettings)
+            .set(updateData)
+            .where(eq(userSettings.userId, session.user.id));
+    } else {
+        await db
+            .insert(userSettings)
+            .values(insertData as typeof userSettings.$inferInsert);
+    }
+
+    return NextResponse.json({ success: true });
+});

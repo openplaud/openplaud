@@ -310,8 +310,9 @@ describe("PlaudClient", () => {
                 json: () => Promise.resolve(errorResponse),
             });
 
+            // Now throws a structured AppError(PLAUD_API_ERROR, msg="Invalid request", 400)
             await expect(client.listDevices()).rejects.toThrow(
-                "Plaud API error (400): Invalid request",
+                "Invalid request",
             );
         });
 

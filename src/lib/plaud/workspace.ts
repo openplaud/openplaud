@@ -19,6 +19,7 @@
  * can skip the /team-app/workspaces/list lookup on subsequent syncs.
  */
 
+import { AppError, ErrorCode } from "@/lib/errors";
 import type {
     PlaudWorkspaceListResponse,
     PlaudWorkspaceTokenResponse,
@@ -44,7 +45,11 @@ function safePlaudUrl(apiBase: string, path: string): URL {
         (parsed.hostname !== "plaud.ai" &&
             !parsed.hostname.endsWith(".plaud.ai"))
     ) {
-        throw new Error("Plaud API error: invalid API base");
+        throw new AppError(
+            ErrorCode.PLAUD_INVALID_API_BASE,
+            "Invalid Plaud API base",
+            400,
+        );
     }
     return parsed;
 }
@@ -73,15 +78,23 @@ export async function listPlaudWorkspaces(
     });
 
     if (!res.ok) {
-        throw new Error(
-            `Plaud API error (${res.status}): failed to list workspaces`,
+        throw new AppError(
+            res.status >= 500
+                ? ErrorCode.PLAUD_UPSTREAM_ERROR
+                : ErrorCode.PLAUD_API_ERROR,
+            "Failed to list Plaud workspaces",
+            res.status >= 500 ? 502 : 400,
+            { plaudStatus: res.status },
         );
     }
 
     const body = (await res.json()) as PlaudWorkspaceListResponse;
     if (body.status !== 0 || !body.data?.workspaces) {
-        throw new Error(
-            `Plaud API error: ${body.msg || "failed to list workspaces"}`,
+        throw new AppError(
+            ErrorCode.PLAUD_API_ERROR,
+            body.msg || "Failed to list Plaud workspaces",
+            400,
+            { plaudStatus: body.status },
         );
     }
     return body;
@@ -98,7 +111,11 @@ export function pickPersonalWorkspaceId(
 ): string {
     const workspaces = response.data?.workspaces ?? [];
     if (workspaces.length === 0) {
-        throw new Error("Plaud API error: no workspaces returned");
+        throw new AppError(
+            ErrorCode.PLAUD_WORKSPACE_UNAVAILABLE,
+            "Your Plaud account has no workspaces.",
+            400,
+        );
     }
     const personal = workspaces.find((w) => w.workspace_type === "0");
     return (personal ?? workspaces[0]).workspace_id;
@@ -133,10 +150,15 @@ export async function mintPlaudWorkspaceToken(
         // 5xx is treated as transient (don't relist on a server hiccup);
         // 4xx is treated as cache-stale (workspace gone, role revoked, ...).
         const stale = status >= 400 && status < 500;
-        throw new WorkspaceTokenError(
-            `Plaud API error (${status}): failed to mint workspace token`,
-            { httpStatus: status, stale },
-        );
+        throw new WorkspaceTokenError("Failed to mint Plaud workspace token", {
+            httpStatus: status,
+            stale,
+            code:
+                status >= 500
+                    ? ErrorCode.PLAUD_UPSTREAM_ERROR
+                    : ErrorCode.PLAUD_WORKSPACE_UNAVAILABLE,
+            statusCode: status >= 500 ? 502 : 400,
+        });
     }
 
     const body = (await res.json()) as PlaudWorkspaceTokenResponse;
@@ -147,8 +169,12 @@ export async function mintPlaudWorkspaceToken(
         // re-discovers via /team-app/workspaces/list rather than falling
         // straight back to the UT and silently regressing the fix.
         throw new WorkspaceTokenError(
-            `Plaud API error: ${body.msg || "failed to mint workspace token"}`,
-            { stale: true },
+            body.msg || "Failed to mint Plaud workspace token",
+            {
+                stale: true,
+                code: ErrorCode.PLAUD_WORKSPACE_UNAVAILABLE,
+                statusCode: 400,
+            },
         );
     }
     return body.data.workspace_token;
@@ -168,14 +194,23 @@ export async function mintPlaudWorkspaceToken(
 export interface WorkspaceTokenErrorOptions {
     httpStatus?: number;
     stale?: boolean;
+    code?: ErrorCode;
+    statusCode?: number;
 }
 
-export class WorkspaceTokenError extends Error {
+export class WorkspaceTokenError extends AppError {
     public readonly httpStatus?: number;
     public readonly stale: boolean;
 
     constructor(message: string, opts: WorkspaceTokenErrorOptions = {}) {
-        super(message);
+        super(
+            opts.code ?? ErrorCode.PLAUD_WORKSPACE_UNAVAILABLE,
+            message,
+            opts.statusCode ?? 400,
+            opts.httpStatus !== undefined
+                ? { plaudStatus: opts.httpStatus }
+                : undefined,
+        );
         this.name = "WorkspaceTokenError";
         this.httpStatus = opts.httpStatus;
         this.stale = opts.stale ?? false;

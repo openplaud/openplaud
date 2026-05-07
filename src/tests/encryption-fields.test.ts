@@ -67,6 +67,21 @@ describe("encryption/fields", () => {
             expect(isEncryptedText("v1: rough draft")).toBe(false);
         });
 
+        it("rejects odd-length hex payloads as malformed (treats as plaintext)", () => {
+            // Regression for cubic-dev-ai second-pass review on #96: AES-GCM
+            // cannot produce an odd-length hex ciphertext (each byte is two
+            // hex chars). The wrapper requires `(?:[0-9a-f]{2})*` for the
+            // trailing segment, so a malformed value like `...: aaa` is not
+            // forwarded to decrypt() — we keep that path as loud as possible
+            // for genuine ciphertext.
+            const oddV1 = `v1:${"a".repeat(32)}:${"b".repeat(32)}:abc`;
+            const oddRaw = `${"a".repeat(32)}:${"b".repeat(32)}:abc`;
+            expect(isEncryptedText(oddV1)).toBe(false);
+            expect(isEncryptedText(oddRaw)).toBe(false);
+            expect(decryptText(oddV1)).toBe(oddV1);
+            expect(decryptText(oddRaw)).toBe(oddRaw);
+        });
+
         it("decrypts unversioned ciphertext written by the base encrypt() helper", () => {
             // Simulates a value already in the legacy `iv:tag:ct` shape
             // (the format used historically for Plaud tokens / AI keys).

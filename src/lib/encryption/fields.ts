@@ -37,10 +37,14 @@ const VERSION_PREFIX = "v1:";
  * matching this regex, so we use it to disambiguate legacy-plaintext rows
  * from already-encrypted rows.
  */
-// Trailing ciphertext segment uses `*` (not `+`) so an encrypted empty
-// string — a valid round-trip case for nullable text columns that hold
-// `""` — still matches.
-const RAW_CIPHERTEXT_SHAPE = /^[0-9a-f]{32}:[0-9a-f]{32}:[0-9a-f]*$/i;
+// Trailing ciphertext segment uses `(?:[0-9a-f]{2})*` so it always has an
+// even number of hex chars (each byte is two hex chars; AES-GCM cannot
+// produce an odd-length hex payload). The `*` (not `+`) admits the empty
+// case, since encrypting an empty string is a valid round-trip for
+// nullable text columns that hold `""`. Tightening odd-length to no-match
+// strengthens plaintext-vs-ciphertext discrimination at the wrapper layer
+// and avoids feeding obviously-malformed values into `decrypt()`.
+const RAW_CIPHERTEXT_SHAPE = /^[0-9a-f]{32}:[0-9a-f]{32}:(?:[0-9a-f]{2})*$/i;
 
 /**
  * Strict shape check for the v1 wrapper output: `v1:<raw ciphertext shape>`.
@@ -52,7 +56,7 @@ const RAW_CIPHERTEXT_SHAPE = /^[0-9a-f]{32}:[0-9a-f]{32}:[0-9a-f]*$/i;
  * place for the check: silently catching a decrypt error elsewhere would
  * hide real corruption / tampering, which AES-GCM is supposed to surface.
  */
-const V1_CIPHERTEXT_SHAPE = /^v1:[0-9a-f]{32}:[0-9a-f]{32}:[0-9a-f]*$/i;
+const V1_CIPHERTEXT_SHAPE = /^v1:[0-9a-f]{32}:[0-9a-f]{32}:(?:[0-9a-f]{2})*$/i;
 
 function isCiphertext(value: string): boolean {
     if (V1_CIPHERTEXT_SHAPE.test(value)) return true;

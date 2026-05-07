@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+- One-line self-host installer: `curl -fsSL https://openplaud.com/install.sh | sh`. Detects OS, verifies Docker + Compose v2, downloads `docker-compose.yml` and `env.example` from the matching GitHub release, generates `BETTER_AUTH_SECRET` / `ENCRYPTION_KEY` / `POSTGRES_PASSWORD`, starts the stack, and waits on `/api/health`. Version-pinned form available at `https://openplaud.com/vX.Y.Z/install.sh`. Source: [`scripts/install.sh`](scripts/install.sh) ([#95](https://github.com/openplaud/openplaud/issues/95)).
+
+### Changed
+- `docker-compose.yml` now reads `POSTGRES_PASSWORD` from the environment (default `postgres`, preserving existing deploys). The new installer generates a random value; existing self-host operators can rotate by setting `POSTGRES_PASSWORD` in `.env`, recreating the `db` volume, and restoring from a backup ([#95](https://github.com/openplaud/openplaud/issues/95)).
+
 ## [0.3.0] - 2026-05-07
 
 ### Added

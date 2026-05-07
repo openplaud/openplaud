@@ -171,9 +171,15 @@ export async function mintPlaudWorkspaceToken(
             code = ErrorCode.PLAUD_WORKSPACE_UNAVAILABLE;
             statusCode = 400;
         }
+        // 401 must NOT be marked stale: a stale error gets swallowed by
+        // resolveWorkspaceToken (which falls through to relist + remint),
+        // and even though the relist usually 401s too, depending on that
+        // collision is fragile. Surface the invalid-token signal directly
+        // so the route layer hits PLAUD_INVALID_TOKEN (401) without a
+        // round-trip through workspace discovery.
         throw new WorkspaceTokenError(message, {
             httpStatus: status,
-            stale,
+            stale: status === 401 ? false : stale,
             code,
             statusCode,
         });

@@ -21,7 +21,7 @@
  * both), run --dry-run, eyeball counts, then run for real.
  */
 
-import { eq } from "drizzle-orm";
+import { asc, eq, gt } from "drizzle-orm";
 import { db } from "@/db";
 import {
     aiEnhancements,
@@ -37,6 +37,12 @@ import {
 } from "@/lib/encryption/fields";
 
 const DRY_RUN = process.argv.includes("--dry-run");
+/**
+ * Page size for the cursor-based fetch. We page through the table by `id`
+ * (`> lastId ORDER BY id ASC LIMIT BATCH_SIZE`) so the script never holds
+ * more than one batch of rows in memory at a time — important on hosted
+ * Postgres where transcripts can be large and the table can be wide.
+ */
 const BATCH_SIZE = 500;
 
 interface TableStats {
@@ -64,66 +70,91 @@ function logStats(s: TableStats) {
     );
 }
 
+/**
+ * Generic id-cursor page iterator: fetch up to `BATCH_SIZE` rows with
+ * `id > lastId ORDER BY id ASC`, yield them, advance the cursor, repeat.
+ * Memory footprint is bounded by `BATCH_SIZE`, not by table size.
+ *
+ * Drizzle's `.select()` builders are not generic over their result row, so
+ * each call site passes its own typed loader closure.
+ */
+async function* iterateById<R extends { id: string }>(
+    fetchPage: (afterId: string | null) => Promise<R[]>,
+): AsyncGenerator<R, void> {
+    let cursor: string | null = null;
+    while (true) {
+        const page = await fetchPage(cursor);
+        if (page.length === 0) return;
+        for (const row of page) yield row;
+        cursor = page[page.length - 1].id;
+        if (page.length < BATCH_SIZE) return;
+    }
+}
+
 async function backfillRecordingFilenames(): Promise<TableStats> {
     const stats = newStats("recordings.filename");
-    const rows = await db
-        .select({ id: recordings.id, filename: recordings.filename })
-        .from(recordings);
+    const fetchPage = (afterId: string | null) => {
+        const base = db
+            .select({ id: recordings.id, filename: recordings.filename })
+            .from(recordings);
+        const filtered = afterId ? base.where(gt(recordings.id, afterId)) : base;
+        return filtered.orderBy(asc(recordings.id)).limit(BATCH_SIZE);
+    };
 
-    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-        const batch = rows.slice(i, i + BATCH_SIZE);
-        for (const row of batch) {
-            stats.inspected++;
-            if (row.filename === null || row.filename === undefined) {
-                stats.nullSkipped++;
-                continue;
-            }
-            if (isEncryptedText(row.filename)) {
-                stats.alreadyEncrypted++;
-                continue;
-            }
-            if (DRY_RUN) {
-                stats.encrypted++;
-                continue;
-            }
-            await db
-                .update(recordings)
-                .set({ filename: encryptText(row.filename) })
-                .where(eq(recordings.id, row.id));
-            stats.encrypted++;
+    for await (const row of iterateById(fetchPage)) {
+        stats.inspected++;
+        if (row.filename === null || row.filename === undefined) {
+            stats.nullSkipped++;
+            continue;
         }
+        if (isEncryptedText(row.filename)) {
+            stats.alreadyEncrypted++;
+            continue;
+        }
+        if (DRY_RUN) {
+            stats.encrypted++;
+            continue;
+        }
+        await db
+            .update(recordings)
+            .set({ filename: encryptText(row.filename) })
+            .where(eq(recordings.id, row.id));
+        stats.encrypted++;
     }
     return stats;
 }
 
 async function backfillTranscriptionText(): Promise<TableStats> {
     const stats = newStats("transcriptions.text");
-    const rows = await db
-        .select({ id: transcriptions.id, text: transcriptions.text })
-        .from(transcriptions);
+    const fetchPage = (afterId: string | null) => {
+        const base = db
+            .select({ id: transcriptions.id, text: transcriptions.text })
+            .from(transcriptions);
+        const filtered = afterId
+            ? base.where(gt(transcriptions.id, afterId))
+            : base;
+        return filtered.orderBy(asc(transcriptions.id)).limit(BATCH_SIZE);
+    };
 
-    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-        const batch = rows.slice(i, i + BATCH_SIZE);
-        for (const row of batch) {
-            stats.inspected++;
-            if (row.text === null || row.text === undefined) {
-                stats.nullSkipped++;
-                continue;
-            }
-            if (isEncryptedText(row.text)) {
-                stats.alreadyEncrypted++;
-                continue;
-            }
-            if (DRY_RUN) {
-                stats.encrypted++;
-                continue;
-            }
-            await db
-                .update(transcriptions)
-                .set({ text: encryptText(row.text) })
-                .where(eq(transcriptions.id, row.id));
-            stats.encrypted++;
+    for await (const row of iterateById(fetchPage)) {
+        stats.inspected++;
+        if (row.text === null || row.text === undefined) {
+            stats.nullSkipped++;
+            continue;
         }
+        if (isEncryptedText(row.text)) {
+            stats.alreadyEncrypted++;
+            continue;
+        }
+        if (DRY_RUN) {
+            stats.encrypted++;
+            continue;
+        }
+        await db
+            .update(transcriptions)
+            .set({ text: encryptText(row.text) })
+            .where(eq(transcriptions.id, row.id));
+        stats.encrypted++;
     }
     return stats;
 }
@@ -133,60 +164,63 @@ async function backfillAiEnhancements(): Promise<TableStats[]> {
     const keyPointsStats = newStats("ai_enhancements.key_points");
     const actionItemsStats = newStats("ai_enhancements.action_items");
 
-    const rows = await db
-        .select({
-            id: aiEnhancements.id,
-            summary: aiEnhancements.summary,
-            keyPoints: aiEnhancements.keyPoints,
-            actionItems: aiEnhancements.actionItems,
-        })
-        .from(aiEnhancements);
+    const fetchPage = (afterId: string | null) => {
+        const base = db
+            .select({
+                id: aiEnhancements.id,
+                summary: aiEnhancements.summary,
+                keyPoints: aiEnhancements.keyPoints,
+                actionItems: aiEnhancements.actionItems,
+            })
+            .from(aiEnhancements);
+        const filtered = afterId
+            ? base.where(gt(aiEnhancements.id, afterId))
+            : base;
+        return filtered.orderBy(asc(aiEnhancements.id)).limit(BATCH_SIZE);
+    };
 
-    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-        const batch = rows.slice(i, i + BATCH_SIZE);
-        for (const row of batch) {
-            const update: Record<string, unknown> = {};
+    for await (const row of iterateById(fetchPage)) {
+        const update: Record<string, unknown> = {};
 
-            // summary (text)
-            summaryStats.inspected++;
-            if (row.summary === null || row.summary === undefined) {
-                summaryStats.nullSkipped++;
-            } else if (isEncryptedText(row.summary)) {
-                summaryStats.alreadyEncrypted++;
-            } else {
-                summaryStats.encrypted++;
-                if (!DRY_RUN) update.summary = encryptText(row.summary);
-            }
+        // summary (text)
+        summaryStats.inspected++;
+        if (row.summary === null || row.summary === undefined) {
+            summaryStats.nullSkipped++;
+        } else if (isEncryptedText(row.summary)) {
+            summaryStats.alreadyEncrypted++;
+        } else {
+            summaryStats.encrypted++;
+            if (!DRY_RUN) update.summary = encryptText(row.summary);
+        }
 
-            // keyPoints (jsonb)
-            keyPointsStats.inspected++;
-            if (row.keyPoints === null || row.keyPoints === undefined) {
-                keyPointsStats.nullSkipped++;
-            } else if (isEncryptedJsonField(row.keyPoints)) {
-                keyPointsStats.alreadyEncrypted++;
-            } else {
-                keyPointsStats.encrypted++;
-                if (!DRY_RUN) update.keyPoints = encryptJsonField(row.keyPoints);
-            }
+        // keyPoints (jsonb)
+        keyPointsStats.inspected++;
+        if (row.keyPoints === null || row.keyPoints === undefined) {
+            keyPointsStats.nullSkipped++;
+        } else if (isEncryptedJsonField(row.keyPoints)) {
+            keyPointsStats.alreadyEncrypted++;
+        } else {
+            keyPointsStats.encrypted++;
+            if (!DRY_RUN) update.keyPoints = encryptJsonField(row.keyPoints);
+        }
 
-            // actionItems (jsonb)
-            actionItemsStats.inspected++;
-            if (row.actionItems === null || row.actionItems === undefined) {
-                actionItemsStats.nullSkipped++;
-            } else if (isEncryptedJsonField(row.actionItems)) {
-                actionItemsStats.alreadyEncrypted++;
-            } else {
-                actionItemsStats.encrypted++;
-                if (!DRY_RUN)
-                    update.actionItems = encryptJsonField(row.actionItems);
-            }
+        // actionItems (jsonb)
+        actionItemsStats.inspected++;
+        if (row.actionItems === null || row.actionItems === undefined) {
+            actionItemsStats.nullSkipped++;
+        } else if (isEncryptedJsonField(row.actionItems)) {
+            actionItemsStats.alreadyEncrypted++;
+        } else {
+            actionItemsStats.encrypted++;
+            if (!DRY_RUN)
+                update.actionItems = encryptJsonField(row.actionItems);
+        }
 
-            if (!DRY_RUN && Object.keys(update).length > 0) {
-                await db
-                    .update(aiEnhancements)
-                    .set(update)
-                    .where(eq(aiEnhancements.id, row.id));
-            }
+        if (!DRY_RUN && Object.keys(update).length > 0) {
+            await db
+                .update(aiEnhancements)
+                .set(update)
+                .where(eq(aiEnhancements.id, row.id));
         }
     }
     return [summaryStats, keyPointsStats, actionItemsStats];
@@ -196,15 +230,21 @@ async function backfillUserSettings(): Promise<TableStats[]> {
     const summaryPromptStats = newStats("user_settings.summary_prompt");
     const titlePromptStats = newStats("user_settings.title_generation_prompt");
 
-    const rows = await db
-        .select({
-            id: userSettings.id,
-            summaryPrompt: userSettings.summaryPrompt,
-            titleGenerationPrompt: userSettings.titleGenerationPrompt,
-        })
-        .from(userSettings);
+    const fetchPage = (afterId: string | null) => {
+        const base = db
+            .select({
+                id: userSettings.id,
+                summaryPrompt: userSettings.summaryPrompt,
+                titleGenerationPrompt: userSettings.titleGenerationPrompt,
+            })
+            .from(userSettings);
+        const filtered = afterId
+            ? base.where(gt(userSettings.id, afterId))
+            : base;
+        return filtered.orderBy(asc(userSettings.id)).limit(BATCH_SIZE);
+    };
 
-    for (const row of rows) {
+    for await (const row of iterateById(fetchPage)) {
         const update: Record<string, unknown> = {};
 
         summaryPromptStats.inspected++;

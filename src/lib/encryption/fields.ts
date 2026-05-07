@@ -37,10 +37,25 @@ const VERSION_PREFIX = "v1:";
  * matching this regex, so we use it to disambiguate legacy-plaintext rows
  * from already-encrypted rows.
  */
-const RAW_CIPHERTEXT_SHAPE = /^[0-9a-f]{32}:[0-9a-f]{32}:[0-9a-f]+$/i;
+// Trailing ciphertext segment uses `*` (not `+`) so an encrypted empty
+// string — a valid round-trip case for nullable text columns that hold
+// `""` — still matches.
+const RAW_CIPHERTEXT_SHAPE = /^[0-9a-f]{32}:[0-9a-f]{32}:[0-9a-f]*$/i;
+
+/**
+ * Strict shape check for the v1 wrapper output: `v1:<raw ciphertext shape>`.
+ *
+ * We require the full shape after the prefix — not just the prefix — so a
+ * legacy plaintext value that happens to begin with `v1:` (e.g. a filename
+ * the user typed as `v1: rough draft`) is not misclassified as ciphertext
+ * and forwarded into `decrypt()` where it would throw. This is the right
+ * place for the check: silently catching a decrypt error elsewhere would
+ * hide real corruption / tampering, which AES-GCM is supposed to surface.
+ */
+const V1_CIPHERTEXT_SHAPE = /^v1:[0-9a-f]{32}:[0-9a-f]{32}:[0-9a-f]*$/i;
 
 function isCiphertext(value: string): boolean {
-    if (value.startsWith(VERSION_PREFIX)) return true;
+    if (V1_CIPHERTEXT_SHAPE.test(value)) return true;
     return RAW_CIPHERTEXT_SHAPE.test(value);
 }
 
@@ -89,7 +104,7 @@ export function decryptText(
 ): string | null | undefined {
     if (value === null) return null;
     if (value === undefined) return undefined;
-    if (value.startsWith(VERSION_PREFIX)) {
+    if (V1_CIPHERTEXT_SHAPE.test(value)) {
         return decrypt(value.slice(VERSION_PREFIX.length));
     }
     if (RAW_CIPHERTEXT_SHAPE.test(value)) {
@@ -119,9 +134,13 @@ function isEnvelope(value: unknown): value is EncryptedJsonEnvelope {
     );
 }
 
-export function encryptJsonField<T>(value: T): EncryptedJsonEnvelope;
+// Overload order matters: TypeScript picks the first matching signature, so
+// the more-specific `null` / `undefined` overloads must come before the
+// generic `<T>` one (otherwise calls like `encryptJsonField(null)` resolve
+// to the generic overload and lose the precise `null` return type).
 export function encryptJsonField(value: null): null;
 export function encryptJsonField(value: undefined): undefined;
+export function encryptJsonField<T>(value: T): EncryptedJsonEnvelope;
 export function encryptJsonField<T>(
     value: T | null | undefined,
 ): EncryptedJsonEnvelope | null | undefined;
@@ -146,7 +165,7 @@ export function encryptJsonField<T>(
 export function decryptJsonField<T>(value: unknown): T | null {
     if (value === null || value === undefined) return null;
     if (isEnvelope(value)) {
-        const inner = value.c.startsWith(VERSION_PREFIX)
+        const inner = V1_CIPHERTEXT_SHAPE.test(value.c)
             ? value.c.slice(VERSION_PREFIX.length)
             : value.c;
         return JSON.parse(decrypt(inner)) as T;

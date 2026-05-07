@@ -55,6 +55,18 @@ describe("encryption/fields", () => {
             );
         });
 
+        it("treats a legacy plaintext that happens to start with 'v1:' as plaintext", () => {
+            // Regression for cubic-dev-ai PR #96: a user-typed filename like
+            // `v1: rough draft` must not be forwarded into decrypt(). The
+            // wrapper requires the full ciphertext shape after the prefix.
+            expect(decryptText("v1: rough draft")).toBe("v1: rough draft");
+            expect(decryptText("v1:abc")).toBe("v1:abc");
+            expect(decryptText("v1:notreallyhex:notreallyhex:0")).toBe(
+                "v1:notreallyhex:notreallyhex:0",
+            );
+            expect(isEncryptedText("v1: rough draft")).toBe(false);
+        });
+
         it("decrypts unversioned ciphertext written by the base encrypt() helper", () => {
             // Simulates a value already in the legacy `iv:tag:ct` shape
             // (the format used historically for Plaud tokens / AI keys).

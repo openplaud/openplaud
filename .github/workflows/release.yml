@@ -74,7 +74,9 @@ jobs:
             printf 'Full changelog: [CHANGELOG.md](https://github.com/%s/blob/%s/CHANGELOG.md)\n' "$REPO" "$TAG"
             printf 'Install: see `docker-compose.yml` and `env.example` attached below, or follow [README \xe2\x86\x92 Quick Start](https://github.com/%s#-quick-start).\n' "$REPO"
           } > /tmp/release-body.md
-          echo "body-path=/tmp/release-body.md" >> "$GITHUB_OUTPUT"
+          # Output name uses an underscore so `${{ steps.notes.outputs.body_path }}`
+          # is parsed as a property access rather than `body - path`.
+          echo "body_path=/tmp/release-body.md" >> "$GITHUB_OUTPUT"
 
       # softprops/action-gh-release renames hidden files (e.g. `.env.example`)
       # by prefixing them with `default.` on upload, which breaks predictable
@@ -88,7 +90,7 @@ jobs:
         with:
           tag_name: ${{ steps.tag.outputs.current }}
           name: ${{ steps.tag.outputs.current }}
-          body_path: ${{ steps.notes.outputs.body-path }}
+          body_path: ${{ steps.notes.outputs.body_path }}
           draft: true
           # Attach self-host install artifacts so users can
           #   curl -fLO .../releases/latest/download/docker-compose.yml

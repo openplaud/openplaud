@@ -111,14 +111,18 @@ export function StorageSection({ isHosted = false }: StorageSectionProps) {
         };
     }, []);
 
-    const flushPendingRetentionSave = () => {
+    const cancelPendingRetentionSave = () => {
         if (saveTimeoutRef.current) {
             clearTimeout(saveTimeoutRef.current);
             saveTimeoutRef.current = undefined;
         }
-        const pending = pendingRetentionRef.current;
-        if (pending === undefined) return;
         pendingRetentionRef.current = undefined;
+    };
+
+    const flushPendingRetentionSave = () => {
+        const pending = pendingRetentionRef.current;
+        cancelPendingRetentionSave();
+        if (pending === undefined) return;
         handleStorageSettingChange({ retentionDays: pending });
     };
 
@@ -227,6 +231,10 @@ export function StorageSection({ isHosted = false }: StorageSectionProps) {
                         id="auto-delete"
                         checked={autoDeleteRecordings}
                         onCheckedChange={(checked) => {
+                            // The toggle settles retentionDays itself, so any
+                            // debounced retention edit is now stale and must
+                            // not be flushed on unmount.
+                            cancelPendingRetentionSave();
                             setAutoDeleteRecordings(checked);
                             if (!checked) {
                                 setRetentionDays(null);

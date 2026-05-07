@@ -15,6 +15,14 @@ describe("formatBytes", () => {
         expect(formatBytes(Number.POSITIVE_INFINITY)).toBe("0 B");
     });
 
+    it("handles fractional byte inputs without falling off the unit table", () => {
+        // Pre-fix this would compute a negative exponent and return
+        // "NaN undefined" because units[-1] is undefined.
+        expect(formatBytes(0.1)).toBe("0 B");
+        expect(formatBytes(0.5)).toBe("1 B");
+        expect(formatBytes(0.9)).toBe("1 B");
+    });
+
     it("formats sub-KB sizes as integer bytes", () => {
         expect(formatBytes(1)).toBe("1 B");
         expect(formatBytes(512)).toBe("512 B");

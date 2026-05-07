@@ -43,7 +43,22 @@ export function StorageSection({ isHosted = false }: StorageSectionProps) {
         fetchSettings();
 
         fetch("/api/settings/storage")
-            .then((res) => res.json())
+            .then(async (res) => {
+                if (!res.ok) return null;
+                const data = await res.json();
+                if (
+                    typeof data?.totalSize === "number" &&
+                    typeof data?.totalRecordings === "number" &&
+                    typeof data?.storageType === "string"
+                ) {
+                    return data as {
+                        storageType: string;
+                        totalSize: number;
+                        totalRecordings: number;
+                    };
+                }
+                return null;
+            })
             .then((data) => setStorageUsage(data))
             .catch(() => setStorageUsage(null));
     }, [setIsLoadingSettings]);
@@ -115,7 +130,7 @@ export function StorageSection({ isHosted = false }: StorageSectionProps) {
                             Total Size
                         </div>
                         <div className="text-2xl font-semibold tabular-nums mt-1">
-                            {storageUsage
+                            {typeof storageUsage?.totalSize === "number"
                                 ? formatBytes(storageUsage.totalSize)
                                 : "—"}
                         </div>
@@ -125,7 +140,9 @@ export function StorageSection({ isHosted = false }: StorageSectionProps) {
                             Recordings
                         </div>
                         <div className="text-2xl font-semibold tabular-nums mt-1">
-                            {storageUsage?.totalRecordings ?? "—"}
+                            {typeof storageUsage?.totalRecordings === "number"
+                                ? storageUsage.totalRecordings
+                                : "—"}
                         </div>
                     </div>
                 </div>

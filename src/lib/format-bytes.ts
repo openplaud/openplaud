@@ -13,8 +13,10 @@ export function formatBytes(bytes: number): string {
     }
 
     const units = ["B", "KB", "MB", "GB", "TB", "PB"] as const;
+    // Clamp to [0, units.length - 1]: bytes < 1 would otherwise yield a
+    // negative exponent and an undefined unit.
     const exponent = Math.min(
-        Math.floor(Math.log(bytes) / Math.log(1024)),
+        Math.max(0, Math.floor(Math.log(bytes) / Math.log(1024))),
         units.length - 1,
     );
 

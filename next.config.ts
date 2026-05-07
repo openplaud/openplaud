@@ -25,14 +25,22 @@ const nextConfig: NextConfig = {
         if (!IS_HOSTED || !RYBBIT_HOST || !RYBBIT_SITE_ID) {
             return [];
         }
+        // Explicit allowlist instead of a `:path*` catch-all so the upstream
+        // Rybbit instance's full /api surface (admin/dashboard endpoints) is
+        // never inadvertently exposed under our origin. Update this list if a
+        // new tracking endpoint is added (e.g. session replay).
         return [
             {
                 source: "/api/_int/s.js",
                 destination: `${RYBBIT_HOST}/api/script.js`,
             },
             {
-                source: "/api/_int/:path*",
-                destination: `${RYBBIT_HOST}/api/:path*`,
+                source: "/api/_int/track",
+                destination: `${RYBBIT_HOST}/api/track`,
+            },
+            {
+                source: "/api/_int/identify",
+                destination: `${RYBBIT_HOST}/api/identify`,
             },
         ];
     },

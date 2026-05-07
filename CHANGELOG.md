@@ -2,10 +2,24 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-07
+
 ### Added
 - New connect screen with three methods: **Sign in with Plaud** (browser-extension bridge — the easy path), **Email code** (existing OTP flow), and **Paste token** (advanced fallback). Targets accounts created via Google or Apple sign-in on Plaud, where the OTP flow silently signs users into a separate empty shadow account and sync returns zero recordings ([#65](https://github.com/openplaud/openplaud/issues/65)).
 - Companion browser extension [openplaud/connector](https://github.com/openplaud/connector) (AGPL-3.0) detected by the connect screen via `window.__openplaudConnector`. Lets users sign in to Plaud the way they normally do — Google, Apple, or email/password — with no copy-pasting. The extension hands the resulting access token back to OpenPlaud via the new `/api/plaud/auth/connect-token` endpoint, which encrypts it (AES-256-GCM) and persists alongside any existing OTP-flow connections.
 - AI output language selector — choose the language for AI-generated summaries and titles, independent of the transcript's language ([#57](https://github.com/openplaud/openplaud/issues/57)).
+- Forgot/reset password flow with email-delivered reset links via better-auth. Login surfaces the "Forgot password?" link only when SMTP is configured; reset revokes all other sessions to limit damage from compromised credentials ([#82](https://github.com/openplaud/openplaud/issues/82)).
+- Delete recording action in the workstation UI ([#56](https://github.com/openplaud/openplaud/issues/56)).
+- `IS_HOSTED` env flag — set to `true` on the OpenPlaud-operated hosted instance to render the marketing landing page at `/`. Defaults to `false` so self-host instances no longer serve OpenPlaud's hosted-tier marketing surface ([#70](https://github.com/openplaud/openplaud/issues/70)).
+- `DISABLE_REGISTRATION` env flag — set to `true` to close a self-host instance to new sign-ups. Wired through better-auth's `disableSignUp`, the `/register` page, and the login footer link. Defaults to `false`, preserving current behavior ([#59](https://github.com/openplaud/openplaud/issues/59)).
+
+### Changed
+- Logged-out visitors at `/` now redirect to `/login` instead of seeing the marketing landing page. This is the new default for self-host. Operators who want to keep the marketing surface (or who want to host a fork's own landing page) can set `IS_HOSTED=true` ([#70](https://github.com/openplaud/openplaud/issues/70)).
+- Audio duration is now parsed in JavaScript on upload instead of shelling out to `ffprobe`. The `ffprobe` binary is no longer required in the Docker image or on the host ([#58](https://github.com/openplaud/openplaud/issues/58)).
+
+### Fixed
+- Plaud recording endpoints now mint a workspace-scoped token, fixing 403s on EU/APAC accounts where the OTP-flow access token lacks workspace permissions ([#66](https://github.com/openplaud/openplaud/issues/66)).
+- Settings now shows the instance storage type from the environment instead of a hardcoded value ([#78](https://github.com/openplaud/openplaud/pull/78) by [@sauerhosen](https://github.com/sauerhosen)).
 
 ## [0.2.0] - 2026-04-28
 
@@ -72,5 +86,7 @@
 - Environment variable validation
 - Path traversal protection
 
-[unreleased]: https://github.com/openplaud/openplaud/compare/v0.1.0...HEAD
+[unreleased]: https://github.com/openplaud/openplaud/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/openplaud/openplaud/releases/tag/v0.3.0
+[0.2.0]: https://github.com/openplaud/openplaud/releases/tag/v0.2.0
 [0.1.0]: https://github.com/openplaud/openplaud/releases/tag/v0.1.0

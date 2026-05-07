@@ -50,7 +50,11 @@ die()   { printf '%serror:%s %s\n' "$RED" "$RESET" "$1" >&2; exit 1; }
 # defaults (CI mode).
 NON_INTERACTIVE=0
 if [ ! -t 0 ]; then
-    if [ -r /dev/tty ]; then
+    # `[ -r /dev/tty ]` is not enough — GitHub Actions runners have the
+    # device node with read perms but no controlling terminal, so opening
+    # it errors. Probe with a no-op redirect first; only `exec` if the
+    # probe succeeds.
+    if (: </dev/tty) 2>/dev/null; then
         exec </dev/tty
     else
         NON_INTERACTIVE=1

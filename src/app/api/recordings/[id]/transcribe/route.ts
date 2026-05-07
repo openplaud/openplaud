@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { apiCredentials, recordings, transcriptions } from "@/db/schema";
 import { auth } from "@/lib/auth";
 import { decrypt } from "@/lib/encryption";
+import { decryptText, encryptText } from "@/lib/encryption/fields";
 import { createUserStorageProvider } from "@/lib/storage/factory";
 import {
     getResponseFormat,
@@ -114,10 +115,14 @@ export async function POST(
               ? "audio/mpeg"
               : "audio/opus";
 
+        // `recording.filename` is encrypted at rest; decrypt before passing
+        // to the transcription provider (which needs a real filename hint to
+        // sniff the audio format).
+        const decryptedFilename = decryptText(recording.filename);
         // Ensure filename has a valid extension so the API can detect the format
-        const filename = recording.filename.match(/\.\w{2,4}$/)
-            ? recording.filename
-            : `${recording.filename}.${ext}`;
+        const filename = decryptedFilename.match(/\.\w{2,4}$/)
+            ? decryptedFilename
+            : `${decryptedFilename}.${ext}`;
 
         const audioFile = new File([new Uint8Array(audioBuffer)], filename, {
             type: contentType,
@@ -172,11 +177,15 @@ export async function POST(
                     .where(eq(transcriptions.recordingId, id))
                     .limit(1);
 
+                // Encrypt the transcript before persisting; everything
+                // returned to the client below is plaintext (we already have
+                // it in scope).
+                const encryptedText = encryptText(transcriptionText);
                 if (existingTranscription) {
                     await tx
                         .update(transcriptions)
                         .set({
-                            text: transcriptionText,
+                            text: encryptedText,
                             detectedLanguage,
                             transcriptionType: "server",
                             provider: credentials.provider,
@@ -187,7 +196,7 @@ export async function POST(
                     await tx.insert(transcriptions).values({
                         recordingId: id,
                         userId: session.user.id,
-                        text: transcriptionText,
+                        text: encryptedText,
                         detectedLanguage,
                         transcriptionType: "server",
                         provider: credentials.provider,

@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { userSettings } from "@/db/schema";
 import { normalizeAiOutputLanguage } from "@/lib/ai/summary-presets";
 import { auth } from "@/lib/auth";
+import { decryptJsonField, encryptJsonField } from "@/lib/encryption/fields";
 
 // Default settings values
 const DEFAULT_SETTINGS = {
@@ -120,13 +121,18 @@ export async function GET(request: Request) {
         }
 
         const settingsData = extractSettings(settings);
-        // Include titleGenerationPrompt if it exists
+        // Include titleGenerationPrompt if it exists. The column is
+        // jsonb-envelope encrypted; legacy plaintext rows pass through.
         if (settings.titleGenerationPrompt) {
-            settingsData.titleGenerationPrompt = settings.titleGenerationPrompt;
+            settingsData.titleGenerationPrompt = decryptJsonField(
+                settings.titleGenerationPrompt,
+            );
         }
-        // Include summaryPrompt if it exists
+        // Include summaryPrompt if it exists (same envelope handling).
         if (settings.summaryPrompt) {
-            settingsData.summaryPrompt = settings.summaryPrompt;
+            settingsData.summaryPrompt = decryptJsonField(
+                settings.summaryPrompt,
+            );
         }
         return NextResponse.json({
             ...settingsData,
@@ -199,18 +205,27 @@ export async function PUT(request: Request) {
             }
         }
 
-        // Handle titleGenerationPrompt separately (jsonb field)
+        // Handle titleGenerationPrompt separately (jsonb field). Custom
+        // prompts can carry user-specific context; encrypt at rest.
         if (body.titleGenerationPrompt !== undefined) {
-            updateData.titleGenerationPrompt = body.titleGenerationPrompt;
-            insertData.titleGenerationPrompt = body.titleGenerationPrompt;
+            const encrypted =
+                body.titleGenerationPrompt === null
+                    ? null
+                    : encryptJsonField(body.titleGenerationPrompt);
+            updateData.titleGenerationPrompt = encrypted;
+            insertData.titleGenerationPrompt = encrypted;
         } else if (!existing) {
             insertData.titleGenerationPrompt = null;
         }
 
-        // Handle summaryPrompt separately (jsonb field)
+        // Handle summaryPrompt separately (jsonb field) — same envelope.
         if (body.summaryPrompt !== undefined) {
-            updateData.summaryPrompt = body.summaryPrompt;
-            insertData.summaryPrompt = body.summaryPrompt;
+            const encrypted =
+                body.summaryPrompt === null
+                    ? null
+                    : encryptJsonField(body.summaryPrompt);
+            updateData.summaryPrompt = encrypted;
+            insertData.summaryPrompt = encrypted;
         } else if (!existing) {
             insertData.summaryPrompt = null;
         }

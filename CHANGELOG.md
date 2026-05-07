@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Security
+- User content is now encrypted at rest with AES-256-GCM keyed off `ENCRYPTION_KEY`. Covers `recordings.filename`, `transcriptions.text`, `ai_enhancements.{summary, key_points, action_items}`, and `user_settings.{summary_prompt, title_generation_prompt}`. Defends against database-only compromise (stolen backups, snapshot leaks, read-replica access). Does **not** make hosted operators unable to read content — the server still decrypts at request time to run transcription and summarization. Self-host with browser/local AI for true zero-knowledge. Pre-existing rows stay plaintext until rewritten or backfilled; run `bun scripts/encrypt-backfill.ts` once after upgrading to encrypt history. Full threat model in [docs/encryption-at-rest.md](docs/encryption-at-rest.md).
+
 ## [0.3.0] - 2026-05-07
 
 ### Added

@@ -392,7 +392,7 @@ OpenPlaud supports **client-side transcription** using Transformers.js, running 
 
 ### 🔒 Security
 
-- 🔐 **AES-256-GCM encryption** for all sensitive data (API keys, tokens)
+- 🔐 **AES-256-GCM encryption** for sensitive data — API keys, Plaud bearer tokens, and user content (transcripts, summaries, action items, key points, recording titles, custom prompts). Defends against DB-only compromise (stolen backups, snapshot leaks). Not zero-knowledge: the server holds the key and decrypts at request time to run AI. Self-host with browser/local AI if you need true zero-knowledge. See [docs/encryption-at-rest.md](docs/encryption-at-rest.md).
 - 🛡️ **Better Auth** for secure session management
 - 🗄️ **PostgreSQL** for reliable data persistence
 - 🐳 **Docker isolation** for secure deployment

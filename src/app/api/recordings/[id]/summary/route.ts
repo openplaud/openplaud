@@ -17,6 +17,12 @@ import {
 } from "@/lib/ai/summary-presets";
 import { auth } from "@/lib/auth";
 import { decrypt } from "@/lib/encryption";
+import {
+    decryptJsonField,
+    decryptText,
+    encryptJsonField,
+    encryptText,
+} from "@/lib/encryption/fields";
 
 // POST - Generate summary
 export async function POST(
@@ -85,8 +91,13 @@ export async function POST(
         let promptConfig: SummaryPromptConfiguration =
             getDefaultSummaryPromptConfig();
         if (userSettingsRow?.summaryPrompt) {
+            // `summaryPrompt` is jsonb-envelope encrypted at rest. Decrypt
+            // (legacy plaintext rows pass through verbatim) before reading
+            // the user's prompt configuration.
             const config =
-                userSettingsRow.summaryPrompt as SummaryPromptConfiguration;
+                decryptJsonField<SummaryPromptConfiguration>(
+                    userSettingsRow.summaryPrompt,
+                ) ?? getDefaultSummaryPromptConfig();
             promptConfig = {
                 selectedPrompt: config.selectedPrompt || "general",
                 customPrompts: config.customPrompts || [],
@@ -169,12 +180,16 @@ export async function POST(
             }
         }
 
+        // Decrypt the transcript before sending it to the LLM. Plaintext
+        // is the LLM's input contract; ciphertext lives only in the DB.
+        const transcriptText = decryptText(transcription.text);
+
         // Truncate transcription if too long
         const maxLength = 8000;
         const truncatedTranscription =
-            transcription.text.length > maxLength
-                ? `${transcription.text.substring(0, maxLength)}...`
-                : transcription.text;
+            transcriptText.length > maxLength
+                ? `${transcriptText.substring(0, maxLength)}...`
+                : transcriptText;
 
         // Apply AI output language directive (if configured) via the system
         // message rather than the user prompt. This separates concerns: the
@@ -279,13 +294,20 @@ export async function POST(
                     )
                     .limit(1);
 
+                // Encrypt content fields at rest. `summary` is a text
+                // column; `keyPoints` / `actionItems` are jsonb columns and
+                // are stored as `{ c: <ciphertext> }` envelopes (option (a)
+                // from the rollout plan — keeps the schema unchanged).
+                const encryptedSummary = encryptText(summary);
+                const encryptedKeyPoints = encryptJsonField(keyPoints);
+                const encryptedActionItems = encryptJsonField(actionItems);
                 if (existing) {
                     await tx
                         .update(aiEnhancements)
                         .set({
-                            summary,
-                            keyPoints,
-                            actionItems,
+                            summary: encryptedSummary,
+                            keyPoints: encryptedKeyPoints,
+                            actionItems: encryptedActionItems,
                             provider: credentials.provider,
                             model,
                         })
@@ -294,9 +316,9 @@ export async function POST(
                     await tx.insert(aiEnhancements).values({
                         recordingId: id,
                         userId: session.user.id,
-                        summary,
-                        keyPoints,
-                        actionItems,
+                        summary: encryptedSummary,
+                        keyPoints: encryptedKeyPoints,
+                        actionItems: encryptedActionItems,
                         provider: credentials.provider,
                         model,
                     });
@@ -362,10 +384,12 @@ export async function GET(
             return NextResponse.json({ summary: null });
         }
 
+        // Decrypt content fields before returning to the client. Legacy
+        // plaintext rows pass through verbatim during the backfill window.
         return NextResponse.json({
-            summary: enhancement.summary,
-            keyPoints: enhancement.keyPoints,
-            actionItems: enhancement.actionItems,
+            summary: decryptText(enhancement.summary),
+            keyPoints: decryptJsonField<string[]>(enhancement.keyPoints),
+            actionItems: decryptJsonField<string[]>(enhancement.actionItems),
             provider: enhancement.provider,
             model: enhancement.model,
             createdAt: enhancement.createdAt,

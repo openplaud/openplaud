@@ -10,6 +10,7 @@ import { SyncStatus } from "@/components/sync-status";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAutoSync } from "@/hooks/use-auto-sync";
+import { useTranscriptionPolling } from "@/hooks/use-transcription-polling";
 import { signOut } from "@/lib/auth-client";
 import {
     requestNotificationPermission,
@@ -37,7 +38,6 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
     const [currentRecording, setCurrentRecording] = useState<Recording | null>(
         recordings.length > 0 ? recordings[0] : null,
     );
-    const [isTranscribing, setIsTranscribing] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const uploadInputRef = useRef<HTMLInputElement>(null);
     const [settingsOpen, setSettingsOpen] = useState(false);
@@ -64,11 +64,47 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
         browserNotifications: boolean;
     } | null>(null);
 
-    const currentTranscription = currentRecording
-        ? transcriptions.get(currentRecording.id)
-        : undefined;
+    const {
+        transcriptionText,
+        isPolling,
+        startTranscription,
+        cancelTranscription,
+    } = useTranscriptionPolling(currentRecording?.id ?? null, {
+        onCompleted: () => {
+            toast.success("Transcription complete");
+            router.refresh();
+        },
+        onFailed: (data) => {
+            toast.error(data.errorMessage || "Transcription failed");
+            router.refresh();
+        },
+    });
 
-    const isProcessing = isTranscribing || isUploading;
+    const currentTranscription = transcriptionText
+        ? { text: transcriptionText }
+        : currentRecording
+          ? transcriptions.get(currentRecording.id)
+          : undefined;
+
+    const isProcessing = isPolling || isUploading;
+
+    // biome-ignore lint/correctness/useExhaustiveDependencies: intentional mount-only effect — runs once on mount
+    useEffect(() => {
+        const lastId = localStorage.getItem("openplaud-last-recording");
+        if (lastId && recordings.length > 0) {
+            const found = recordings.find((r) => r.id === lastId);
+            if (found) setCurrentRecording(found);
+        }
+    }, []);
+
+    const selectRecording = useCallback((recording: Recording | null) => {
+        setCurrentRecording(recording);
+        if (recording) {
+            localStorage.setItem("openplaud-last-recording", recording.id);
+        } else {
+            localStorage.removeItem("openplaud-last-recording");
+        }
+    }, []);
 
     // Keep currentRecording in sync with the recordings prop (updated after router.refresh()).
     // If the previously-selected recording is no longer present (e.g. just deleted),
@@ -165,30 +201,21 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
     }, [settingsOpen]);
 
     const handleTranscribe = useCallback(async () => {
-        if (!currentRecording) return;
-
-        setIsTranscribing(true);
         try {
-            const response = await fetch(
-                `/api/recordings/${currentRecording.id}/transcribe`,
-                {
-                    method: "POST",
-                },
-            );
-
-            if (response.ok) {
-                toast.success("Transcription complete");
-                router.refresh();
-            } else {
-                const error = await response.json();
-                toast.error(error.error || "Transcription failed");
-            }
+            await startTranscription();
         } catch {
-            toast.error("Failed to transcribe recording");
-        } finally {
-            setIsTranscribing(false);
+            toast.error("Failed to start transcription");
         }
-    }, [currentRecording, router]);
+    }, [startTranscription]);
+
+    const handleCancel = useCallback(async () => {
+        try {
+            await cancelTranscription();
+            toast.success("Transcription cancelled");
+        } catch {
+            toast.error("Failed to cancel transcription");
+        }
+    }, [cancelTranscription]);
 
     const handleUpload = useCallback(
         async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -338,7 +365,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                 <RecordingList
                                     recordings={recordings}
                                     currentRecording={currentRecording}
-                                    onSelect={setCurrentRecording}
+                                    onSelect={selectRecording}
                                 />
                             </div>
 
@@ -359,7 +386,7 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                                     currentIndex <
                                                         recordings.length - 1
                                                 ) {
-                                                    setCurrentRecording(
+                                                    selectRecording(
                                                         recordings[
                                                             currentIndex + 1
                                                         ],
@@ -370,8 +397,9 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                                         <TranscriptionPanel
                                             recording={currentRecording}
                                             transcription={currentTranscription}
-                                            isTranscribing={isTranscribing}
+                                            isTranscribing={isPolling}
                                             onTranscribe={handleTranscribe}
+                                            onCancel={handleCancel}
                                         />
                                     </>
                                 ) : (

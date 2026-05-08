@@ -1,13 +1,18 @@
 import { and, eq, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { plaudConnections, recordings, userSettings, users } from "@/db/schema";
+import {
+    plaudConnections,
+    recordings,
+    transcriptions,
+    userSettings,
+    users,
+} from "@/db/schema";
 import { encryptText } from "@/lib/encryption/fields";
 import { env } from "@/lib/env";
 import { sendNewRecordingBarkNotification } from "@/lib/notifications/bark";
 import { sendNewRecordingEmail } from "@/lib/notifications/email";
 import { createPlaudClient } from "@/lib/plaud/client-factory";
 import { createUserStorageProvider } from "@/lib/storage/factory";
-import { transcribeRecording } from "@/lib/transcription/transcribe-recording";
 import type { PlaudRecording } from "@/types/plaud";
 
 /**
@@ -451,20 +456,52 @@ export async function syncRecordingsForUser(
 
 /**
  * Queue transcriptions to run in background
- * This is fire-and-forget to not block the sync response
+ * Inserts pending rows into the transcriptions table for each recording.
+ * This is fire-and-forget to not block the sync response.
  */
 async function queueTranscriptions(
     userId: string,
     recordingIds: string[],
 ): Promise<void> {
-    for (const recordingId of recordingIds) {
-        try {
-            await transcribeRecording(userId, recordingId);
-        } catch (error) {
-            console.error(
-                `Auto-transcription failed for recording ${recordingId}:`,
-                error,
-            );
+    const results = await Promise.allSettled(
+        recordingIds.map(async (recordingId) => {
+            // Check if a transcription row already exists with an active status
+            const [existing] = await db
+                .select({ status: transcriptions.status })
+                .from(transcriptions)
+                .where(eq(transcriptions.recordingId, recordingId))
+                .limit(1);
+
+            if (
+                existing &&
+                (existing.status === "pending" ||
+                    existing.status === "processing")
+            ) {
+                console.log(
+                    `Skipping transcription for recording ${recordingId}: already ${existing.status}`,
+                );
+                return;
+            }
+
+            // Insert new pending transcription row
+            await db.insert(transcriptions).values({
+                recordingId,
+                userId,
+                status: "pending",
+                text: "",
+                provider: "",
+                model: "",
+                retryCount: 0,
+            });
+
+            console.log(`Enqueued transcription for recording ${recordingId}`);
+        }),
+    );
+
+    // Log any errors without throwing
+    for (const result of results) {
+        if (result.status === "rejected") {
+            console.error("Failed to enqueue transcription:", result.reason);
         }
     }
 }

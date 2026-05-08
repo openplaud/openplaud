@@ -55,3 +55,13 @@ export function showSyncCompleteNotification(): void {
         tag: "sync-complete",
     });
 }
+
+export function showTranscriptionCompleteNotification(
+    filename: string,
+    snippet: string,
+): void {
+    showBrowserNotification("Transcription complete", {
+        body: `"${filename}" — ${snippet}`,
+        tag: "transcription-complete",
+    });
+}

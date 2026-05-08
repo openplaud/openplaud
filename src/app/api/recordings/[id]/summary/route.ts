@@ -179,7 +179,7 @@ export const POST = apiHandler<IdContext>(async (request, context) => {
 
     // Decrypt the transcript before sending it to the LLM. Plaintext is
     // the LLM's input contract; ciphertext lives only in the DB.
-    const transcriptText = decryptText(transcription.text);
+    const transcriptText = decryptText(transcription.text) || "";
 
     // Truncate transcription if too long
     const maxLength = 8000;

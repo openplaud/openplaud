@@ -34,11 +34,16 @@ export default async function RecordingDetailPage({
         notFound();
     }
 
-    // Fetch transcription if exists
+    // Fetch transcription if exists and is completed
     const [transcription] = await db
         .select()
         .from(transcriptions)
-        .where(eq(transcriptions.recordingId, id))
+        .where(
+            and(
+                eq(transcriptions.recordingId, id),
+                eq(transcriptions.status, "completed"),
+            ),
+        )
         .limit(1);
 
     // Content fields are encrypted at rest; decrypt server-side before
@@ -51,7 +56,7 @@ export default async function RecordingDetailPage({
                 startTime: recording.startTime.toISOString(),
             }}
             transcription={
-                transcription
+                transcription?.text
                     ? {
                           text: decryptText(transcription.text),
                           detectedLanguage:

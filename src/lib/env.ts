@@ -74,6 +74,19 @@ export const envSchema = z.object({
                     'SMTP_FROM must be an email address (e.g., "user@example.com") or formatted as "Name <user@example.com>"',
             },
         ),
+
+    // Transcription worker
+    // Poll interval in ms to check for pending transcription jobs
+    TRANSCRIPTION_WORKER_POLL_INTERVAL: z.coerce
+        .number()
+        .optional()
+        .default(2000),
+    // Max concurrent transcriptions per user
+    TRANSCRIPTION_MAX_CONCURRENT: z.coerce.number().optional().default(2),
+    // Time in ms before a stuck processing job is considered stale (10 min default)
+    TRANSCRIPTION_JOB_TTL_MS: z.coerce.number().optional().default(600000),
+    // Max retries before moving a failed job to permanently failed state
+    TRANSCRIPTION_MAX_RETRIES: z.coerce.number().optional().default(3),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -109,6 +122,12 @@ function validateEnv(): Env {
             SMTP_USER: process.env.SMTP_USER,
             SMTP_PASSWORD: process.env.SMTP_PASSWORD,
             SMTP_FROM: process.env.SMTP_FROM,
+            TRANSCRIPTION_WORKER_POLL_INTERVAL:
+                process.env.TRANSCRIPTION_WORKER_POLL_INTERVAL,
+            TRANSCRIPTION_MAX_CONCURRENT:
+                process.env.TRANSCRIPTION_MAX_CONCURRENT,
+            TRANSCRIPTION_JOB_TTL_MS: process.env.TRANSCRIPTION_JOB_TTL_MS,
+            TRANSCRIPTION_MAX_RETRIES: process.env.TRANSCRIPTION_MAX_RETRIES,
         });
 
         // In runtime (dev/prod servers), we require a strong encryption key.

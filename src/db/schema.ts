@@ -188,13 +188,17 @@ export const transcriptions = pgTable(
         userId: text("user_id")
             .notNull()
             .references(() => users.id, { onDelete: "cascade" }),
-        text: text("text").notNull(),
+        text: text("text").default(""),
         detectedLanguage: varchar("detected_language", { length: 10 }), // ISO 639-1 language code detected by Whisper
         transcriptionType: varchar("transcription_type", { length: 10 })
             .notNull()
             .default("server"), // 'server' or 'browser'
         provider: varchar("provider", { length: 100 }).notNull(), // e.g., 'openai', 'groq', 'browser'
         model: varchar("model", { length: 100 }).notNull(), // e.g., 'whisper-1', 'whisper-large-v3-turbo', 'whisper-base'
+        status: varchar("status", { length: 20 }).notNull().default("pending"),
+        lockedAt: timestamp("locked_at"),
+        retryCount: integer("retry_count").notNull().default(0),
+        errorMessage: text("error_message"),
         createdAt: timestamp("created_at").notNull().defaultNow(),
     },
     (table) => ({

@@ -34,7 +34,12 @@ export default async function DashboardPage() {
             language: transcriptions.detectedLanguage,
         })
         .from(transcriptions)
-        .where(eq(transcriptions.userId, session.user.id));
+        .where(
+            and(
+                eq(transcriptions.userId, session.user.id),
+                eq(transcriptions.status, "completed"),
+            ),
+        );
 
     // Content fields are encrypted at rest; decrypt server-side (this is
     // an RSC — client never sees a key) before serializing for the
@@ -46,7 +51,10 @@ export default async function DashboardPage() {
     const transcriptionMap = new Map(
         userTranscriptions.map((t) => [
             t.recordingId,
-            { text: decryptText(t.text), language: t.language || undefined },
+            {
+                text: t.text ? decryptText(t.text) : undefined,
+                language: t.language || undefined,
+            },
         ]),
     );
 

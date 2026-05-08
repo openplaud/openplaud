@@ -16,6 +16,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
+import { useTranscriptionPolling } from "@/hooks/use-transcription-polling";
 import type { Recording } from "@/types/recording";
 
 interface Transcription {
@@ -34,33 +35,41 @@ export function RecordingWorkstation({
     transcription,
 }: RecordingWorkstationProps) {
     const router = useRouter();
-    const [isTranscribing, setIsTranscribing] = useState(false);
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
 
-    const handleTranscribe = useCallback(async () => {
-        setIsTranscribing(true);
-        try {
-            const response = await fetch(
-                `/api/recordings/${recording.id}/transcribe`,
-                {
-                    method: "POST",
-                },
-            );
+    const {
+        transcriptionText: liveText,
+        isPolling,
+        startTranscription,
+        cancelTranscription,
+    } = useTranscriptionPolling(recording?.id ?? null, {
+        onCompleted: () => {
+            toast.success("Transcription complete");
+            router.refresh();
+        },
+        onFailed: (data) => {
+            toast.error(data.errorMessage || "Transcription failed");
+            router.refresh();
+        },
+    });
 
-            if (response.ok) {
-                toast.success("Transcription complete");
-                router.refresh();
-            } else {
-                const error = await response.json();
-                toast.error(error.error || "Transcription failed");
-            }
+    const handleTranscribe = useCallback(async () => {
+        try {
+            await startTranscription();
         } catch {
-            toast.error("Failed to transcribe recording");
-        } finally {
-            setIsTranscribing(false);
+            toast.error("Failed to start transcription");
         }
-    }, [recording.id, router]);
+    }, [startTranscription]);
+
+    const handleCancel = useCallback(async () => {
+        try {
+            await cancelTranscription();
+            toast.success("Transcription cancelled");
+        } catch {
+            toast.error("Failed to cancel transcription");
+        }
+    }, [cancelTranscription]);
 
     const handleDelete = useCallback(async () => {
         setIsDeleting(true);
@@ -121,9 +130,12 @@ export function RecordingWorkstation({
                     <RecordingPlayer recording={recording} />
                     <TranscriptionPanel
                         recording={recording}
-                        transcription={transcription}
-                        isTranscribing={isTranscribing}
+                        transcription={
+                            liveText ? { text: liveText } : transcription
+                        }
+                        isTranscribing={isPolling}
                         onTranscribe={handleTranscribe}
+                        onCancel={handleCancel}
                     />
 
                     {/* Metadata */}

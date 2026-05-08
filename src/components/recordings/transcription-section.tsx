@@ -21,6 +21,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { useTranscriptionPolling } from "@/hooks/use-transcription-polling";
 import { SUMMARY_PRESETS } from "@/lib/ai/summary-presets";
 
 interface SummaryData {
@@ -47,7 +48,6 @@ export function TranscriptionSection({
     const [transcription, setTranscription] = useState(initialTranscription);
     const [detectedLanguage, setDetectedLanguage] = useState(initialLanguage);
     const [transcriptionType, setTranscriptionType] = useState(initialType);
-    const [isProcessing, setIsProcessing] = useState(false);
 
     // Summary state
     const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
@@ -55,8 +55,27 @@ export function TranscriptionSection({
     const [summaryExpanded, setSummaryExpanded] = useState(true);
     const [summaryPreset, setSummaryPreset] = useState("general");
 
-    // Key to force re-fetch summary (e.g. after re-transcription)
+    // Key to force re-fetch summary (e.g. after re-transcribe)
     const [summaryFetchKey, setSummaryFetchKey] = useState(0);
+
+    const {
+        transcriptionText: liveTranscription,
+        isPolling,
+        startTranscription,
+        cancelTranscription,
+    } = useTranscriptionPolling(recordingId, {
+        onCompleted: (data) => {
+            setTranscription(data.text ?? undefined);
+            setDetectedLanguage(data.detectedLanguage || null);
+            setTranscriptionType("server");
+            setSummaryData(null);
+            setSummaryFetchKey((k) => k + 1);
+            toast.success("Transcription complete");
+        },
+        onFailed: (data) => {
+            toast.error(data.errorMessage || "Transcription failed");
+        },
+    });
 
     // Fetch existing summary on mount / after re-transcribe
     // biome-ignore lint/correctness/useExhaustiveDependencies: summaryFetchKey is an intentional re-fetch trigger
@@ -79,42 +98,19 @@ export function TranscriptionSection({
     }, [recordingId, summaryFetchKey]);
 
     const handleTranscribe = async () => {
-        setIsProcessing(true);
         try {
-            const response = await fetch(
-                `/api/recordings/${recordingId}/transcribe`,
-                {
-                    method: "POST",
-                },
-            );
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                if (
-                    response.status === 400 &&
-                    errorData.error?.includes("No transcription API")
-                ) {
-                    toast.error(
-                        "Please configure an AI provider in Settings first",
-                    );
-                } else {
-                    toast.error(errorData.error || "Transcription failed");
-                }
-                return;
-            }
-
-            const data = await response.json();
-            setTranscription(data.transcription);
-            setDetectedLanguage(data.detectedLanguage);
-            setTranscriptionType("server");
-            // Invalidate cached summary — it was based on old text
-            setSummaryData(null);
-            setSummaryFetchKey((k) => k + 1);
-            toast.success("Transcription complete");
+            await startTranscription();
         } catch {
             toast.error("Transcription failed. Please try again.");
-        } finally {
-            setIsProcessing(false);
+        }
+    };
+
+    const handleCancel = async () => {
+        try {
+            await cancelTranscription();
+            toast.success("Transcription cancelled");
+        } catch {
+            toast.error("Failed to cancel");
         }
     };
 
@@ -198,20 +194,28 @@ export function TranscriptionSection({
                             )}
                         </div>
                         <MetalButton
-                            onClick={handleTranscribe}
-                            variant="cyan"
-                            disabled={isProcessing}
+                            onClick={
+                                isPolling ? handleCancel : handleTranscribe
+                            }
+                            variant={isPolling ? "orange" : "cyan"}
                             className="w-full md:w-auto"
                         >
-                            {isProcessing
-                                ? "Processing..."
-                                : transcription
+                            {isPolling
+                                ? "Cancel"
+                                : transcription || liveTranscription
                                   ? "Re-transcribe"
                                   : "Transcribe"}
                         </MetalButton>
                     </div>
 
-                    {transcription ? (
+                    {isPolling ? (
+                        <div className="flex flex-col items-center justify-center py-12">
+                            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground mb-4" />
+                            <p className="text-muted-foreground mb-2">
+                                Transcribing…
+                            </p>
+                        </div>
+                    ) : transcription ? (
                         <div className="info-card">
                             <p className="whitespace-pre-wrap leading-relaxed">
                                 {transcription}

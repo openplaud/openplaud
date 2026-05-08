@@ -74,6 +74,57 @@ export const envSchema = z.object({
                     'SMTP_FROM must be an email address (e.g., "user@example.com") or formatted as "Name <user@example.com>"',
             },
         ),
+
+    // Admin dashboard (hosted-only). All three are inert when IS_HOSTED is
+    // unset/false -- the admin gate trips before any of these are read.
+    //
+    // ADMIN_EMAILS: comma-separated allowlist of operator email addresses.
+    // Lower-cased and trimmed at parse time. Empty => no admins (default).
+    // Source of truth for admin identity; intentionally out of the DB so a
+    // DB compromise alone does not grant admin.
+    ADMIN_EMAILS: z
+        .string()
+        .optional()
+        .transform((val) =>
+            (val ?? "")
+                .split(",")
+                .map((s) => s.trim().toLowerCase())
+                .filter(Boolean),
+        ),
+
+    // ADMIN_IP_ALLOWLIST: optional comma-separated CIDR list. When set, admin
+    // routes 404 for requests whose client IP isn't in the list. Empty/unset
+    // disables the check (relying on the auth + reauth chain instead).
+    ADMIN_IP_ALLOWLIST: z
+        .string()
+        .optional()
+        .transform((val) =>
+            (val ?? "")
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean),
+        ),
+
+    // ADMIN_REAUTH_TTL_MINUTES: how long an admin's elevated cookie is valid
+    // after password reprompt before the dashboard forces another reauth.
+    // Default 30. Mutations require the cookie to be issued within the last
+    // ADMIN_MUTATION_TTL_MINUTES (default 10) -- a tighter window than reads.
+    ADMIN_REAUTH_TTL_MINUTES: z
+        .string()
+        .optional()
+        .transform((val) => (val ? parseInt(val, 10) : 30))
+        .pipe(
+            z
+                .number()
+                .int()
+                .positive()
+                .max(24 * 60),
+        ),
+    ADMIN_MUTATION_TTL_MINUTES: z
+        .string()
+        .optional()
+        .transform((val) => (val ? parseInt(val, 10) : 10))
+        .pipe(z.number().int().positive().max(60)),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -109,6 +160,10 @@ function validateEnv(): Env {
             SMTP_USER: process.env.SMTP_USER,
             SMTP_PASSWORD: process.env.SMTP_PASSWORD,
             SMTP_FROM: process.env.SMTP_FROM,
+            ADMIN_EMAILS: process.env.ADMIN_EMAILS,
+            ADMIN_IP_ALLOWLIST: process.env.ADMIN_IP_ALLOWLIST,
+            ADMIN_REAUTH_TTL_MINUTES: process.env.ADMIN_REAUTH_TTL_MINUTES,
+            ADMIN_MUTATION_TTL_MINUTES: process.env.ADMIN_MUTATION_TTL_MINUTES,
         });
 
         // In runtime (dev/prod servers), we require a strong encryption key.

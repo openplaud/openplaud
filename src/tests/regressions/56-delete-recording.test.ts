@@ -46,6 +46,33 @@ vi.mock("@/lib/auth", () => ({
     },
 }));
 
+// Routes now go through getApiSession (auth + suspension check). The tests
+// preserve the original `auth.api.getSession` mock for sync (which still
+// uses the auth helper directly) and re-route the API-route check through
+// the same mock for consistency. Suspension is treated as never-set in
+// these regression tests; admin behavior is covered by src/tests/admin/*.
+vi.mock("@/lib/auth-server", async () => {
+    const { auth } = await import("@/lib/auth");
+    const { NextResponse } = await import("next/server");
+    return {
+        getApiSession: async (request: Request) => {
+            const session = await auth.api.getSession({
+                headers: request.headers,
+            });
+            if (!session?.user) {
+                return {
+                    session: null,
+                    response: NextResponse.json(
+                        { error: "Unauthorized" },
+                        { status: 401 },
+                    ),
+                };
+            }
+            return { session };
+        },
+    };
+});
+
 vi.mock("@/lib/plaud/client-factory", () => ({
     createPlaudClient: vi.fn(),
 }));

@@ -20,9 +20,77 @@ export const users = pgTable("users", {
     email: text("email").notNull().unique(),
     emailVerified: boolean("email_verified").notNull().default(false),
     name: text("name"),
+    // Hosted-mode operator action: when set, the user is suspended.
+    // - `/api/v1/*` and the web app return a suspension state on next request
+    //   (cooperative; existing in-flight requests are not interrupted).
+    // - The sync worker skips suspended users on its next claim.
+    // Set/cleared exclusively via the admin dashboard suspend action; the
+    // self-host code path never writes this column because the admin gate
+    // is locked behind IS_HOSTED.
+    suspendedAt: timestamp("suspended_at"),
+    suspendedReason: text("suspended_reason"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+// Admin read-access audit log (hosted-only).
+// Append-only. One row per admin page view or admin API hit. Self-host never
+// writes here because the admin gate trips at IS_HOSTED.
+export const adminAuditLog = pgTable(
+    "admin_audit_log",
+    {
+        id: text("id")
+            .primaryKey()
+            .$defaultFn(() => nanoid()),
+        adminUserId: text("admin_user_id")
+            .notNull()
+            .references(() => users.id, { onDelete: "cascade" }),
+        route: text("route").notNull(),
+        method: varchar("method", { length: 10 }).notNull(),
+        ip: text("ip"),
+        userAgent: text("user_agent"),
+        createdAt: timestamp("created_at").notNull().defaultNow(),
+    },
+    (table) => ({
+        adminCreatedIdx: index("admin_audit_log_admin_created_idx").on(
+            table.adminUserId,
+            table.createdAt,
+        ),
+        createdIdx: index("admin_audit_log_created_idx").on(table.createdAt),
+    }),
+);
+
+// Admin mutation log (hosted-only). Separate from read audit so mutations
+// are easy to query/review in isolation. before/after JSON captures the
+// minimum diff needed to understand the change without storing PII
+// content (e.g., for softDeleteRecording we store filename hashes/sizes,
+// not transcripts).
+export const adminActionLog = pgTable(
+    "admin_action_log",
+    {
+        id: text("id")
+            .primaryKey()
+            .$defaultFn(() => nanoid()),
+        adminUserId: text("admin_user_id")
+            .notNull()
+            .references(() => users.id, { onDelete: "cascade" }),
+        action: varchar("action", { length: 64 }).notNull(),
+        targetUserId: text("target_user_id"),
+        targetResourceId: text("target_resource_id"),
+        reason: text("reason").notNull(),
+        before: jsonb("before"),
+        after: jsonb("after"),
+        ip: text("ip"),
+        createdAt: timestamp("created_at").notNull().defaultNow(),
+    },
+    (table) => ({
+        createdIdx: index("admin_action_log_created_idx").on(table.createdAt),
+        targetUserIdx: index("admin_action_log_target_user_idx").on(
+            table.targetUserId,
+            table.createdAt,
+        ),
+    }),
+);
 
 export const sessions = pgTable("sessions", {
     id: text("id")

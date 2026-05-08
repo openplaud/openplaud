@@ -2,22 +2,15 @@ import { and, eq, isNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { recordings } from "@/db/schema";
-import { auth } from "@/lib/auth";
+import { getApiSession } from "@/lib/auth-server";
 import { env } from "@/lib/env";
 
 // GET - Get storage usage and info
 export async function GET(request: Request) {
     try {
-        const session = await auth.api.getSession({
-            headers: request.headers,
-        });
-
-        if (!session?.user) {
-            return NextResponse.json(
-                { error: "Unauthorized" },
-                { status: 401 },
-            );
-        }
+        const sessionResult = await getApiSession(request);
+        if (!sessionResult.session) return sessionResult.response;
+        const session = sessionResult.session;
 
         const storageType = env.DEFAULT_STORAGE_TYPE;
 

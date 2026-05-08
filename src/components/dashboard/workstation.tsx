@@ -1,6 +1,6 @@
 "use client";
 
-import { LogOut, Mic, RefreshCw, Settings, Upload } from "lucide-react";
+import { LogOut, Mic, RefreshCw, Settings, Shield, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -30,9 +30,19 @@ interface TranscriptionData {
 interface WorkstationProps {
     recordings: Recording[];
     transcriptions: Map<string, TranscriptionData>;
+    /**
+     * When true, an admin shortcut button appears in the toolbar. Set by the
+     * server-rendered page based on env.ADMIN_EMAILS membership; never
+     * trusted client-side -- the actual /admin gate runs server-side.
+     */
+    isAdmin?: boolean;
 }
 
-export function Workstation({ recordings, transcriptions }: WorkstationProps) {
+export function Workstation({
+    recordings,
+    transcriptions,
+    isAdmin = false,
+}: WorkstationProps) {
     const router = useRouter();
     const [currentRecording, setCurrentRecording] = useState<Recording | null>(
         recordings.length > 0 ? recordings[0] : null,
@@ -287,6 +297,17 @@ export function Workstation({ recordings, transcriptions }: WorkstationProps) {
                             >
                                 <Settings className="w-4 h-4" />
                             </Button>
+                            {isAdmin ? (
+                                <Button
+                                    onClick={() => router.push("/admin")}
+                                    variant="outline"
+                                    size="icon"
+                                    aria-label="Admin dashboard"
+                                    title="Admin dashboard"
+                                >
+                                    <Shield className="w-4 h-4" />
+                                </Button>
+                            ) : null}
                             <Button
                                 onClick={async () => {
                                     await signOut();

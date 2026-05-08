@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getApiSession } from "@/lib/auth-server";
 import { isUserActionablePlaudError, plaudVerifyOtp } from "@/lib/plaud/auth";
 import { persistPlaudConnection } from "@/lib/plaud/persist-connection";
 import { isValidPlaudApiUrl } from "@/lib/plaud/servers";
@@ -14,16 +14,9 @@ import { isValidPlaudApiUrl } from "@/lib/plaud/servers";
  */
 export async function POST(request: Request) {
     try {
-        const session = await auth.api.getSession({
-            headers: request.headers,
-        });
-
-        if (!session?.user) {
-            return NextResponse.json(
-                { error: "Unauthorized" },
-                { status: 401 },
-            );
-        }
+        const sessionResult = await getApiSession(request);
+        if (!sessionResult.session) return sessionResult.response;
+        const session = sessionResult.session;
 
         const { code, otpToken, apiBase, email } = await request.json();
 

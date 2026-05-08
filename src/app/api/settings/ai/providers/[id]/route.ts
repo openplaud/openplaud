@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { apiCredentials } from "@/db/schema";
 import { validateAiBaseUrl } from "@/lib/ai/validate-base-url";
-import { auth } from "@/lib/auth";
+import { getApiSession } from "@/lib/auth-server";
 import { encrypt } from "@/lib/encryption";
 import { env } from "@/lib/env";
 
@@ -13,16 +13,9 @@ export async function PUT(
     { params }: { params: Promise<{ id: string }> },
 ) {
     try {
-        const session = await auth.api.getSession({
-            headers: request.headers,
-        });
-
-        if (!session?.user) {
-            return NextResponse.json(
-                { error: "Unauthorized" },
-                { status: 401 },
-            );
-        }
+        const sessionResult = await getApiSession(request);
+        if (!sessionResult.session) return sessionResult.response;
+        const session = sessionResult.session;
 
         const { id } = await params;
         const {
@@ -136,16 +129,9 @@ export async function DELETE(
     { params }: { params: Promise<{ id: string }> },
 ) {
     try {
-        const session = await auth.api.getSession({
-            headers: request.headers,
-        });
-
-        if (!session?.user) {
-            return NextResponse.json(
-                { error: "Unauthorized" },
-                { status: 401 },
-            );
-        }
+        const sessionResult = await getApiSession(request);
+        if (!sessionResult.session) return sessionResult.response;
+        const session = sessionResult.session;
 
         const { id } = await params;
 

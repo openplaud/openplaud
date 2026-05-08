@@ -2,21 +2,14 @@ import { and, eq, isNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { recordings, transcriptions } from "@/db/schema";
-import { auth } from "@/lib/auth";
+import { getApiSession } from "@/lib/auth-server";
 
 // POST - Create a backup of all user data
 export async function POST(request: Request) {
     try {
-        const session = await auth.api.getSession({
-            headers: request.headers,
-        });
-
-        if (!session?.user) {
-            return NextResponse.json(
-                { error: "Unauthorized" },
-                { status: 401 },
-            );
-        }
+        const sessionResult = await getApiSession(request);
+        if (!sessionResult.session) return sessionResult.response;
+        const session = sessionResult.session;
 
         // Get all recordings for user
         const userRecordings = await db

@@ -1,19 +1,11 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getApiSession } from "@/lib/auth-server";
 import { sendTestEmail } from "@/lib/notifications/email";
 
 export async function POST(request: Request) {
     try {
-        const session = await auth.api.getSession({
-            headers: request.headers,
-        });
-
-        if (!session?.user) {
-            return NextResponse.json(
-                { error: "Unauthorized" },
-                { status: 401 },
-            );
-        }
+        const sessionResult = await getApiSession(request);
+        if (!sessionResult.session) return sessionResult.response;
 
         const body = await request.json();
         const { email } = body;

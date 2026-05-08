@@ -1,25 +1,13 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { AppError, createErrorResponse, ErrorCode } from "@/lib/errors";
+import { getApiSession } from "@/lib/auth-server";
+import { createErrorResponse, ErrorCode } from "@/lib/errors";
 import { syncRecordingsForUser } from "@/lib/sync/sync-recordings";
 
 export async function POST(request: Request) {
     try {
-        const session = await auth.api.getSession({
-            headers: request.headers,
-        });
-
-        if (!session?.user) {
-            const error = new AppError(
-                ErrorCode.UNAUTHORIZED,
-                "You must be logged in to sync recordings",
-                401,
-            );
-            const response = createErrorResponse(error);
-            return NextResponse.json(response.body, {
-                status: response.status,
-            });
-        }
+        const sessionResult = await getApiSession(request);
+        if (!sessionResult.session) return sessionResult.response;
+        const session = sessionResult.session;
 
         const result = await syncRecordingsForUser(session.user.id);
 

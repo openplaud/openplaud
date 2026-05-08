@@ -272,10 +272,23 @@ export async function syncRecordingsForUser(
             .limit(1);
 
         const [user] = await db
-            .select({ email: users.email })
+            .select({
+                email: users.email,
+                suspendedAt: users.suspendedAt,
+            })
             .from(users)
             .where(eq(users.id, userId))
             .limit(1);
+
+        // Suspension check (cooperative). If an admin has suspended this user
+        // we exit before doing any work. In-flight syncs are not interrupted;
+        // this only stops the next claim. Self-host never sets suspendedAt
+        // because the admin gate is locked behind IS_HOSTED, so this branch
+        // is dead code there.
+        if (user?.suspendedAt) {
+            result.errors.push("User is suspended");
+            return result;
+        }
 
         const context: SyncContext = {
             userId,

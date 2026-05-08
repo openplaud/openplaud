@@ -2,6 +2,7 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { Workstation } from "@/components/dashboard/workstation";
 import { db } from "@/db";
 import { recordings, transcriptions } from "@/db/schema";
+import { isAdminEmail } from "@/lib/admin/guard";
 import { requireAuth } from "@/lib/auth-server";
 import { serializeRecording } from "@/types/recording";
 
@@ -48,6 +49,7 @@ export default async function DashboardPage() {
         <Workstation
             recordings={recordingsData}
             transcriptions={transcriptionMap}
+            isAdmin={isAdminEmail(session.user.email)}
         />
     );
 }

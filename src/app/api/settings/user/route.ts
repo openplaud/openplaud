@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { userSettings } from "@/db/schema";
 import { normalizeAiOutputLanguage } from "@/lib/ai/summary-presets";
-import { auth } from "@/lib/auth";
+import { getApiSession } from "@/lib/auth-server";
 
 // Default settings values
 const DEFAULT_SETTINGS = {
@@ -88,16 +88,9 @@ function extractSettings(settings: typeof userSettings.$inferSelect) {
 // GET - Fetch user settings
 export async function GET(request: Request) {
     try {
-        const session = await auth.api.getSession({
-            headers: request.headers,
-        });
-
-        if (!session?.user) {
-            return NextResponse.json(
-                { error: "Unauthorized" },
-                { status: 401 },
-            );
-        }
+        const sessionResult = await getApiSession(request);
+        if (!sessionResult.session) return sessionResult.response;
+        const session = sessionResult.session;
 
         const [settings] = await db
             .select()
@@ -144,16 +137,9 @@ export async function GET(request: Request) {
 // PUT - Update user settings
 export async function PUT(request: Request) {
     try {
-        const session = await auth.api.getSession({
-            headers: request.headers,
-        });
-
-        if (!session?.user) {
-            return NextResponse.json(
-                { error: "Unauthorized" },
-                { status: 401 },
-            );
-        }
+        const sessionResult = await getApiSession(request);
+        if (!sessionResult.session) return sessionResult.response;
+        const session = sessionResult.session;
 
         const body = await request.json();
 

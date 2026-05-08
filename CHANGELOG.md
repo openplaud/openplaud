@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+- Hosted-only admin dashboard at `/admin` with cost-attribution views (per-user storage, server transcription minutes, Plaud sync freshness, signup timeseries, pricing-snapshot CDFs) and a small set of audited operator actions (suspend / unsuspend user, force-disconnect Plaud, soft-delete recording). Gated by `IS_HOSTED=true` + `ADMIN_EMAILS` allowlist + signed elevated-session cookie (password reprompt) + optional `ADMIN_IP_ALLOWLIST`. Self-host instances 404 every admin route. Reads logged to `admin_audit_log`; mutations logged to `admin_action_log` with required reason text. Admins never see transcript text, summary text, audio, or decrypted secrets.
+- `users.suspendedAt` / `users.suspendedReason` columns supporting cooperative account suspension. Suspended users are redirected to `/suspended` on next request and skipped by the sync worker on next claim. Set/cleared exclusively by the admin suspend action; unused on self-host.
+
+### Changed
+- `requireAuth()` now performs a suspension check on every authenticated server-component render. Self-host fast-path: column is always null so the check is a single PK lookup with no behavioral change.
+
 ## [0.3.0] - 2026-05-07
 
 ### Added

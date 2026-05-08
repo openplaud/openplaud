@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getApiSession } from "@/lib/auth-server";
 import { plaudSendCode } from "@/lib/plaud/auth";
 
 /**
@@ -12,16 +12,8 @@ import { plaudSendCode } from "@/lib/plaud/auth";
  */
 export async function POST(request: Request) {
     try {
-        const session = await auth.api.getSession({
-            headers: request.headers,
-        });
-
-        if (!session?.user) {
-            return NextResponse.json(
-                { error: "Unauthorized" },
-                { status: 401 },
-            );
-        }
+        const sessionResult = await getApiSession(request);
+        if (!sessionResult.session) return sessionResult.response;
 
         const { email } = await request.json();
 

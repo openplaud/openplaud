@@ -2,48 +2,49 @@ import { createHmac } from "node:crypto";
 import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { db } from "@/db";
-import { personalAccessTokens } from "@/db/schema";
+import { apiKeys, users } from "@/db/schema";
 import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
+import { AppError, ErrorCode } from "@/lib/errors";
 
 export type AuthenticatedRequest = {
     user: { id: string };
-    via: "session" | "token";
-    tokenId?: string;
+    via: "session" | "api-key";
+    apiKeyId?: string;
 };
 
-export type PersonalAccessTokenRow = typeof personalAccessTokens.$inferSelect;
+export type ApiKeyRow = typeof apiKeys.$inferSelect;
 
-const TOKEN_PREFIX = "opp_";
-const TOKEN_RANDOM_LENGTH = 24;
+const API_KEY_PREFIX = "op_";
+const API_KEY_RANDOM_LENGTH = 24;
 const DISPLAY_PREFIX_LENGTH = 12;
 
-export function createPersonalAccessToken(): string {
-    return `${TOKEN_PREFIX}${nanoid(TOKEN_RANDOM_LENGTH)}`;
+export function createApiKey(): string {
+    return `${API_KEY_PREFIX}${nanoid(API_KEY_RANDOM_LENGTH)}`;
 }
 
-export function hashPersonalAccessToken(token: string): string {
+export function hashApiKey(apiKey: string): string {
     const key = env.API_TOKEN_HASH_SECRET ?? env.BETTER_AUTH_SECRET;
     if (!key) {
-        throw new Error("API token hash secret is not configured");
+        throw new Error("API key hash secret is not configured");
     }
-    return createHmac("sha256", key).update(token).digest("hex");
+    return createHmac("sha256", key).update(apiKey).digest("hex");
 }
 
-export function getPersonalAccessTokenPrefix(token: string): string {
-    return token.slice(0, DISPLAY_PREFIX_LENGTH);
+export function getApiKeyPrefix(apiKey: string): string {
+    return apiKey.slice(0, DISPLAY_PREFIX_LENGTH);
 }
 
-export function isPersonalAccessTokenActive(
-    token: Pick<PersonalAccessTokenRow, "expiresAt" | "revokedAt">,
+export function isApiKeyActive(
+    apiKey: Pick<ApiKeyRow, "expiresAt" | "revokedAt">,
     now = new Date(),
 ): boolean {
-    if (token.revokedAt) return false;
-    if (token.expiresAt && token.expiresAt <= now) return false;
+    if (apiKey.revokedAt) return false;
+    if (apiKey.expiresAt && apiKey.expiresAt <= now) return false;
     return true;
 }
 
-export function normalizeTokenScopes(scopes: unknown): string[] {
+export function normalizeApiKeyScopes(scopes: unknown): string[] {
     if (!Array.isArray(scopes)) return ["read"];
     const normalized = scopes.filter((scope): scope is string => {
         return scope === "read";
@@ -59,52 +60,63 @@ function getBearerToken(request: Request): string | null {
     return match?.[1]?.trim() || null;
 }
 
+async function assertUserNotSuspended(userId: string): Promise<void> {
+    const [user] = await db
+        .select({ suspendedAt: users.suspendedAt })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+    if (user?.suspendedAt) {
+        throw new AppError(
+            ErrorCode.ACCOUNT_SUSPENDED,
+            "Account suspended",
+            403,
+        );
+    }
+}
+
 export async function authenticateRequest(
     request: Request,
 ): Promise<AuthenticatedRequest | null> {
     const bearerToken = getBearerToken(request);
 
-    if (bearerToken?.startsWith(TOKEN_PREFIX)) {
-        const tokenHash = hashPersonalAccessToken(bearerToken);
+    if (bearerToken?.startsWith(API_KEY_PREFIX)) {
+        const keyHash = hashApiKey(bearerToken);
         const now = new Date();
 
-        const [token] = await db
+        const [apiKey] = await db
             .select()
-            .from(personalAccessTokens)
+            .from(apiKeys)
             .where(
                 and(
-                    eq(personalAccessTokens.tokenHash, tokenHash),
-                    isNull(personalAccessTokens.revokedAt),
-                    or(
-                        isNull(personalAccessTokens.expiresAt),
-                        gt(personalAccessTokens.expiresAt, now),
-                    ),
+                    eq(apiKeys.keyHash, keyHash),
+                    isNull(apiKeys.revokedAt),
+                    or(isNull(apiKeys.expiresAt), gt(apiKeys.expiresAt, now)),
                 ),
             )
             .limit(1);
 
-        if (!token) return null;
+        if (!apiKey) return null;
+        await assertUserNotSuspended(apiKey.userId);
 
         void db
-            .update(personalAccessTokens)
+            .update(apiKeys)
             .set({ lastUsedAt: now, updatedAt: now })
             .where(
                 and(
-                    eq(personalAccessTokens.id, token.id),
-                    eq(personalAccessTokens.userId, token.userId),
+                    eq(apiKeys.id, apiKey.id),
+                    eq(apiKeys.userId, apiKey.userId),
                 ),
             )
             .catch((error) => {
-                console.error(
-                    "Failed to update API token last_used_at:",
-                    error,
-                );
+                console.error("Failed to update API key last_used_at:", error);
             });
 
         return {
-            user: { id: token.userId },
-            via: "token",
-            tokenId: token.id,
+            user: { id: apiKey.userId },
+            via: "api-key",
+            apiKeyId: apiKey.id,
         };
     }
 
@@ -113,6 +125,7 @@ export async function authenticateRequest(
     });
 
     if (!session?.user) return null;
+    await assertUserNotSuspended(session.user.id);
 
     return {
         user: { id: session.user.id },

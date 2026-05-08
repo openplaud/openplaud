@@ -72,8 +72,8 @@ import type { SettingsSection } from "@/types/settings";
 const settingsNav = [
     { name: "AI", id: "providers" as SettingsSection, icon: Bot },
     {
-        name: "API Tokens",
-        id: "api-tokens" as SettingsSection,
+        name: "API Keys",
+        id: "api-keys" as SettingsSection,
         icon: KeyRound,
     },
     { name: "Webhooks", id: "webhooks" as SettingsSection, icon: Webhook },

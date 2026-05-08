@@ -521,6 +521,9 @@ export function WebhooksSection() {
                                     <Button
                                         variant="outline"
                                         size="sm"
+                                        disabled={
+                                            delivery.status === "processing"
+                                        }
                                         onClick={() => redeliver(delivery.id)}
                                     >
                                         <RotateCcw className="w-4 h-4" />

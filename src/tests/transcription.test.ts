@@ -11,6 +11,7 @@ vi.mock("@/db", () => ({
 
 vi.mock("@/lib/encryption", () => ({
     decrypt: vi.fn().mockReturnValue("fake-api-key"),
+    encrypt: vi.fn((plaintext: string) => `encrypted:${plaintext}`),
 }));
 
 vi.mock("@/lib/storage/factory", () => ({
@@ -351,7 +352,7 @@ describe("Transcription", () => {
                 updatedAt: expect.any(Date),
             });
             expect(titleUpdateSet).toHaveBeenCalledWith({
-                filename: "Generated Title",
+                filename: "v1:encrypted:Generated Title",
                 updatedAt: expect.any(Date),
             });
             expect(emitEvent).toHaveBeenCalledWith(

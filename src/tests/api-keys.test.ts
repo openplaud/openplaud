@@ -26,79 +26,76 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 import {
-    createPersonalAccessToken,
-    getPersonalAccessTokenPrefix,
-    hashPersonalAccessToken,
-    isPersonalAccessTokenActive,
-    normalizeTokenScopes,
+    createApiKey,
+    getApiKeyPrefix,
+    hashApiKey,
+    isApiKeyActive,
+    normalizeApiKeyScopes,
 } from "@/lib/auth-request";
 
-describe("API tokens", () => {
+describe("API keys", () => {
     beforeEach(() => {
         mockEnv.BETTER_AUTH_SECRET = "better-auth-secret-with-32-chars";
         mockEnv.API_TOKEN_HASH_SECRET = undefined;
     });
 
-    it("generates opp-prefixed tokens and display prefixes", () => {
-        const token = createPersonalAccessToken();
+    it("generates op-prefixed keys and display prefixes", () => {
+        const key = createApiKey();
 
-        expect(token).toMatch(/^opp_[A-Za-z0-9_-]{24}$/);
-        expect(getPersonalAccessTokenPrefix(token)).toBe(token.slice(0, 12));
+        expect(key).toMatch(/^op_[A-Za-z0-9_-]{24}$/);
+        expect(getApiKeyPrefix(key)).toBe(key.slice(0, 12));
     });
 
-    it("hashes tokens deterministically without storing the raw token", () => {
-        const token = "opp_testtoken";
-        const hash = hashPersonalAccessToken(token);
+    it("hashes keys deterministically without storing the raw key", () => {
+        const key = "op_testkey";
+        const hash = hashApiKey(key);
 
         expect(hash).toHaveLength(64);
-        expect(hash).toBe(hashPersonalAccessToken(token));
-        expect(hash).not.toContain(token);
+        expect(hash).toBe(hashApiKey(key));
+        expect(hash).not.toContain(key);
         expect(hash).toBe(
             createHmac("sha256", mockEnv.BETTER_AUTH_SECRET)
-                .update(token)
+                .update(key)
                 .digest("hex"),
         );
     });
 
-    it("hashes the same token differently when the HMAC key changes", () => {
-        const token = "opp_testtoken";
-        const first = hashPersonalAccessToken(token);
+    it("hashes the same key differently when the HMAC key changes", () => {
+        const key = "op_testkey";
+        const first = hashApiKey(key);
 
         mockEnv.BETTER_AUTH_SECRET = "different-better-auth-secret-32-chars";
-        const second = hashPersonalAccessToken(token);
+        const second = hashApiKey(key);
 
         expect(second).not.toBe(first);
     });
 
     it("uses API_TOKEN_HASH_SECRET before BETTER_AUTH_SECRET", () => {
-        const token = "opp_testtoken";
+        const key = "op_testkey";
         mockEnv.API_TOKEN_HASH_SECRET = "api-token-hash-secret-32-characters";
 
-        const hash = hashPersonalAccessToken(token);
+        const hash = hashApiKey(key);
 
         expect(hash).toBe(
             createHmac("sha256", mockEnv.API_TOKEN_HASH_SECRET)
-                .update(token)
+                .update(key)
                 .digest("hex"),
         );
         expect(hash).not.toBe(
             createHmac("sha256", mockEnv.BETTER_AUTH_SECRET)
-                .update(token)
+                .update(key)
                 .digest("hex"),
         );
     });
 
-    it("treats revoked and expired tokens as inactive", () => {
+    it("treats revoked and expired keys as inactive", () => {
         const now = new Date("2026-05-06T12:00:00.000Z");
 
+        expect(isApiKeyActive({ revokedAt: null, expiresAt: null }, now)).toBe(
+            true,
+        );
         expect(
-            isPersonalAccessTokenActive(
-                { revokedAt: null, expiresAt: null },
-                now,
-            ),
-        ).toBe(true);
-        expect(
-            isPersonalAccessTokenActive(
+            isApiKeyActive(
                 {
                     revokedAt: new Date("2026-05-06T11:00:00.000Z"),
                     expiresAt: null,
@@ -107,7 +104,7 @@ describe("API tokens", () => {
             ),
         ).toBe(false);
         expect(
-            isPersonalAccessTokenActive(
+            isApiKeyActive(
                 {
                     revokedAt: null,
                     expiresAt: new Date("2026-05-06T11:00:00.000Z"),
@@ -118,8 +115,8 @@ describe("API tokens", () => {
     });
 
     it("normalizes scopes to read-only", () => {
-        expect(normalizeTokenScopes(["read", "write", 1])).toEqual(["read"]);
-        expect(normalizeTokenScopes([])).toEqual(["read"]);
-        expect(normalizeTokenScopes("read")).toEqual(["read"]);
+        expect(normalizeApiKeyScopes(["read", "write", 1])).toEqual(["read"]);
+        expect(normalizeApiKeyScopes([])).toEqual(["read"]);
+        expect(normalizeApiKeyScopes("read")).toEqual(["read"]);
     });
 });

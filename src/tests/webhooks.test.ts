@@ -55,6 +55,12 @@ vi.mock("@/lib/encryption", () => ({
     }),
 }));
 
+vi.mock("@/lib/encryption/fields", () => ({
+    decryptText: vi.fn((value: string | null | undefined) =>
+        typeof value === "string" ? value.replace(/^encrypted:/, "") : value,
+    ),
+}));
+
 vi.mock("@/lib/v1/serialize", () => ({
     getV1RecordingDetailForUser: vi.fn().mockResolvedValue({
         id: "rec-1",
@@ -553,6 +559,27 @@ describe("webhooks", () => {
         ).resolves.toMatchObject({
             addresses: [{ address: "93.184.216.34", family: 4 }],
         });
+    });
+
+    it("rejects expanded IPv6 loopback targets in strict mode", async () => {
+        mockEnv.IS_HOSTED = true;
+        const message = "Webhook URL must use a public hostname or IP address";
+
+        for (const url of [
+            "https://[::]/hook",
+            "https://[::1]/hook",
+            "https://[0:0:0:0:0:0:0:0]/hook",
+            "https://[0:0:0:0:0:0:0:1]/hook",
+        ]) {
+            expect(() => parseWebhookUrl(url)).toThrow(message);
+        }
+
+        (lookup as unknown as Mock).mockResolvedValue([
+            { address: "0:0:0:0:0:0:0:1", family: 6 },
+        ]);
+        await expect(
+            resolveWebhookUrl("https://example.com/hook"),
+        ).rejects.toThrow("Webhook URL must resolve to public IP addresses");
     });
 
     it("lets WEBHOOKS_REQUIRE_PUBLIC_TARGETS override IS_HOSTED", () => {

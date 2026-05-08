@@ -6,6 +6,13 @@ vi.mock("@/db", () => ({
     },
 }));
 
+vi.mock("@/lib/encryption/fields", () => ({
+    decryptText: vi.fn((value: string | null | undefined) =>
+        typeof value === "string" ? value.replace(/^encrypted:/, "") : value,
+    ),
+    decryptJsonField: vi.fn((value: unknown) => value ?? null),
+}));
+
 import {
     decodeRecordingCursor,
     encodeRecordingCursor,
@@ -20,7 +27,7 @@ const recording = {
     userId: "user-1",
     deviceSn: "SN-1",
     plaudFileId: "plaud-1",
-    filename: "Planning Call",
+    filename: "encrypted:Planning Call",
     duration: 120000,
     startTime: new Date("2026-05-06T11:00:00.000Z"),
     endTime: new Date("2026-05-06T11:02:00.000Z"),
@@ -54,7 +61,7 @@ const transcription = {
     id: "tr-1",
     recordingId: "rec-1",
     userId: "user-1",
-    text: "Hello world",
+    text: "encrypted:Hello world",
     detectedLanguage: "en",
     transcriptionType: "server",
     provider: "openai",
@@ -66,7 +73,7 @@ const enhancement = {
     id: "sum-1",
     recordingId: "rec-1",
     userId: "user-1",
-    summary: "A short summary",
+    summary: "encrypted:A short summary",
     actionItems: ["Follow up"],
     keyPoints: ["Planning"],
     provider: "openai",
@@ -119,7 +126,20 @@ describe("v1 recordings", () => {
         );
 
         expect(detail.transcript?.text).toBe("Hello world");
+        expect(detail.summary?.text).toBe("A short summary");
         expect(detail.summary?.action_items).toEqual(["Follow up"]);
         expect(detail.summary?.key_points).toEqual(["Planning"]);
+    });
+
+    it("keeps legacy plaintext rows readable through the same serializers", () => {
+        const detail = serializeRecordingDetail(
+            { ...recording, filename: "Legacy Recording" },
+            null,
+            { ...transcription, text: "Legacy transcript" },
+            null,
+        );
+
+        expect(detail.title).toBe("Legacy Recording");
+        expect(detail.transcript?.text).toBe("Legacy transcript");
     });
 });

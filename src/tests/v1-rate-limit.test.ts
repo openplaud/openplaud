@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
 const mockEnv = vi.hoisted(() => ({
     BETTER_AUTH_SECRET: "better-auth-secret-with-32-chars",
@@ -16,7 +16,12 @@ vi.mock("@/db", () => ({
     },
 }));
 
-import { getClientIp } from "@/lib/v1/rate-limit";
+import { db } from "@/db";
+import { ErrorCode } from "@/lib/errors";
+import {
+    enforceV1AuthenticatedRateLimit,
+    getClientIp,
+} from "@/lib/v1/rate-limit";
 
 describe("v1 rate limiting", () => {
     beforeEach(() => {
@@ -66,5 +71,47 @@ describe("v1 rate limiting", () => {
                 }),
             ),
         ).toBe("198.51.100.1");
+    });
+
+    it("returns the unified error envelope and headers when auth buckets are exhausted", async () => {
+        const resetAt = new Date(Date.now() + 30_000);
+        (db.insert as unknown as Mock).mockReturnValue({
+            values: vi.fn().mockReturnValue({
+                onConflictDoUpdate: vi.fn().mockReturnValue({
+                    returning: vi.fn().mockResolvedValue([
+                        {
+                            count: 601,
+                            resetAt,
+                        },
+                    ]),
+                }),
+            }),
+        });
+
+        const response = await enforceV1AuthenticatedRateLimit({
+            user: { id: "user-1" },
+            via: "api-key",
+            apiKeyId: "api-key-1",
+        });
+
+        expect(response).not.toBeNull();
+        if (!response) return;
+        expect(response.status).toBe(429);
+        expect(response.headers.get("Retry-After")).toBeTruthy();
+        expect(response.headers.get("X-RateLimit-Limit")).toBe("600");
+        expect(response.headers.get("X-RateLimit-Remaining")).toBe("0");
+        expect(response.headers.get("X-RateLimit-Reset")).toBe(
+            Math.ceil(resetAt.getTime() / 1000).toString(),
+        );
+        await expect(response.json()).resolves.toEqual({
+            error: "Rate limit exceeded",
+            code: ErrorCode.RATE_LIMITED,
+            details: {
+                retryAfter: expect.any(Number) as number,
+                limit: 600,
+                remaining: 0,
+                resetAt: Math.ceil(resetAt.getTime() / 1000),
+            },
+        });
     });
 });

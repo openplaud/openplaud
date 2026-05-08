@@ -12,17 +12,17 @@ http://localhost:3000/api
 
 Browser endpoints require a valid session cookie set by Better Auth.
 
-Automation endpoints under `/api/v1/` also accept personal access tokens:
+Automation endpoints under `/api/v1/` also accept API keys:
 
 ```http
-Authorization: Bearer opp_...
+Authorization: Bearer op_...
 ```
 
-Tokens are created from Settings -> API Tokens. The raw token is shown once,
+Keys are created from Settings -> API Keys. The raw key is shown once,
 stored as an HMAC-SHA256 hash, and can be revoked at any time. Hashing uses
 `API_TOKEN_HASH_SECRET` when set, otherwise `BETTER_AUTH_SECRET`; the dedicated
 secret is optional and lets operators rotate auth/session secrets independently
-from API token hashes. `API_TOKEN_HASH_SECRET` must be at least as strong as
+from API key hashes. `API_TOKEN_HASH_SECRET` must be at least as strong as
 `BETTER_AUTH_SECRET`.
 
 ## Endpoints
@@ -242,15 +242,14 @@ Transcribe a recording.
 
 ### Settings
 
-#### GET `/settings/tokens`
+#### GET `/settings/api-keys`
 
-List personal access tokens for the signed-in user. Requires a session cookie;
-tokens cannot manage tokens.
+List API keys for the signed-in user. Requires a session cookie; API keys cannot
+manage API keys.
 
-#### POST `/settings/tokens`
+#### POST `/settings/api-keys`
 
-Create a read-only personal access token. The raw `token` field is returned
-once.
+Create a read-only API key. The raw `key` field is returned once.
 
 **Body:**
 ```json
@@ -262,11 +261,11 @@ once.
 ```
 
 Scopes use string identifiers. v1 supports only `"read"` today; future scopes
-may be added without invalidating existing read tokens.
+may be added without invalidating existing read keys.
 
-#### DELETE `/settings/tokens/[id]`
+#### DELETE `/settings/api-keys/[id]`
 
-Revoke a personal access token.
+Revoke an API key.
 
 #### GET `/settings/user`
 
@@ -371,7 +370,7 @@ Send test email to verify SMTP configuration.
 ### Automation API v1
 
 All v1 endpoints accept either a browser session cookie or
-`Authorization: Bearer opp_...`.
+`Authorization: Bearer op_...`.
 
 #### GET `/v1/recordings`
 
@@ -494,7 +493,7 @@ Automation endpoints under `/api/v1/*` are rate limited with shared server-side
 fixed windows:
 
 - 1,200 requests per minute per client IP.
-- 600 requests per minute per authenticated identity (`opp_...` token, or user
+- 600 requests per minute per authenticated identity (`op_...` key, or user
   session for browser-authenticated calls).
 
 Rate-limited requests return `429` with `Retry-After`,
@@ -508,7 +507,7 @@ proxy that strips or overwrites client-supplied forwarding headers.
 When `RATE_LIMIT_TRUST_PROXY_HEADERS=false` or unset, OpenPlaud cannot derive a
 trusted client IP from the request. The unauthenticated IP limiter therefore
 uses one shared `"unknown"` bucket of 1,200 requests per minute for the whole
-instance. Authenticated identity limits still apply per token/session at 600
+instance. Authenticated identity limits still apply per API key/session at 600
 requests per minute.
 
 ## Webhooks

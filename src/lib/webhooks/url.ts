@@ -2,6 +2,14 @@ import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { env } from "@/lib/env";
 
+const BIG_ZERO = BigInt(0);
+const BIG_ONE = BigInt(1);
+const BIG_16 = BigInt(16);
+const IPV6_UNIQUE_LOCAL_PREFIX = BigInt(0x7e);
+const IPV6_LINK_LOCAL_PREFIX = BigInt(0x3fa);
+const IPV6_MULTICAST_PREFIX = BigInt(0xff);
+const IPV6_DOCUMENTATION_PREFIX = BigInt(0x20010db8);
+
 export type PublicWebhookAddress = {
     address: string;
     family: 4 | 6;
@@ -84,14 +92,6 @@ function isPrivateIpv4(address: string): boolean {
     );
 }
 
-function firstIpv6Hextets(address: string): [number, number] {
-    const [first = "0", second = "0"] = address.split(":");
-    return [
-        first ? Number.parseInt(first, 16) : 0,
-        second ? Number.parseInt(second, 16) : 0,
-    ];
-}
-
 function mappedIpv4FromIpv6(address: string): string | null {
     const dottedIpv4 = address.includes(".")
         ? address.slice(address.lastIndexOf(":") + 1)
@@ -129,6 +129,35 @@ function mappedIpv4FromIpv6(address: string): string | null {
     ].join(".");
 }
 
+function ipv6ToBigInt(address: string): bigint | null {
+    if (address.includes(".")) return null;
+
+    const parts = address.split("::");
+    if (parts.length > 2) return null;
+
+    const left = parts[0] ? parts[0].split(":") : [];
+    const right = parts.length === 2 && parts[1] ? parts[1].split(":") : [];
+    const zeroCount = parts.length === 2 ? 8 - left.length - right.length : 0;
+    if (zeroCount < 0) return null;
+
+    const hextets =
+        parts.length === 2
+            ? [...left, ...Array(zeroCount).fill("0"), ...right]
+            : left;
+    if (hextets.length !== 8) return null;
+
+    let result = BIG_ZERO;
+    for (const hextet of hextets) {
+        if (!/^[0-9a-f]{1,4}$/i.test(hextet)) return null;
+        const value = Number.parseInt(hextet, 16);
+        if (!Number.isInteger(value) || value < 0 || value > 0xffff) {
+            return null;
+        }
+        result = (result << BIG_16) + BigInt(value);
+    }
+    return result;
+}
+
 function isPrivateIpv6(address: string): boolean {
     const normalized = address.toLowerCase().split("%", 1)[0];
     const mappedIpv4 = mappedIpv4FromIpv6(normalized);
@@ -136,14 +165,16 @@ function isPrivateIpv6(address: string): boolean {
     if (mappedIpv4) {
         return isPrivateIpv4(mappedIpv4);
     }
-    if (normalized === "::" || normalized === "::1") return true;
+    const ip = ipv6ToBigInt(normalized);
+    if (ip === null) return true;
 
-    const [first, second] = firstIpv6Hextets(normalized);
     return (
-        (first & 0xfe00) === 0xfc00 ||
-        (first & 0xffc0) === 0xfe80 ||
-        (first & 0xff00) === 0xff00 ||
-        (first === 0x2001 && second === 0x0db8)
+        ip === BIG_ZERO ||
+        ip === BIG_ONE ||
+        ip >> BigInt(121) === IPV6_UNIQUE_LOCAL_PREFIX ||
+        ip >> BigInt(118) === IPV6_LINK_LOCAL_PREFIX ||
+        ip >> BigInt(120) === IPV6_MULTICAST_PREFIX ||
+        ip >> BigInt(96) === IPV6_DOCUMENTATION_PREFIX
     );
 }
 

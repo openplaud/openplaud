@@ -1,61 +1,65 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { webhookDeliveries, webhookEndpoints } from "@/db/schema";
-import { auth } from "@/lib/auth";
+import { requireApiSession } from "@/lib/auth-server";
+import { AppError, apiHandler, ErrorCode } from "@/lib/errors";
 import { signalWebhookWorker } from "@/lib/webhooks/worker";
 
-export async function POST(
-    request: Request,
-    { params }: { params: Promise<{ id: string; deliveryId: string }> },
-) {
-    try {
-        const session = await auth.api.getSession({
-            headers: request.headers,
+type DeliveryContext = {
+    params: Promise<{ id: string; deliveryId: string }>;
+};
+
+export const POST = apiHandler<DeliveryContext>(async (request, context) => {
+    const session = await requireApiSession(request);
+
+    const { id, deliveryId } = await (context as DeliveryContext).params;
+    const [endpoint] = await db
+        .select({
+            id: webhookEndpoints.id,
+            enabled: webhookEndpoints.enabled,
+        })
+        .from(webhookEndpoints)
+        .where(
+            and(
+                eq(webhookEndpoints.id, id),
+                eq(webhookEndpoints.userId, session.user.id),
+            ),
+        )
+        .limit(1);
+
+    if (!endpoint) {
+        throw new AppError(ErrorCode.NOT_FOUND, "Webhook not found", 404, {
+            id,
         });
+    }
+    if (!endpoint.enabled) {
+        throw new AppError(ErrorCode.CONFLICT, "Webhook is disabled", 409, {
+            id,
+        });
+    }
 
-        if (!session?.user) {
-            return NextResponse.json(
-                { error: "Unauthorized" },
-                { status: 401 },
-            );
-        }
+    const [delivery] = await db
+        .update(webhookDeliveries)
+        .set({
+            status: "pending",
+            nextAttemptAt: new Date(),
+            updatedAt: new Date(),
+        })
+        .where(
+            and(
+                eq(webhookDeliveries.id, deliveryId),
+                eq(webhookDeliveries.endpointId, endpoint.id),
+                eq(webhookDeliveries.userId, session.user.id),
+                ne(webhookDeliveries.status, "processing"),
+            ),
+        )
+        .returning({ id: webhookDeliveries.id });
 
-        const { id, deliveryId } = await params;
-        const [endpoint] = await db
-            .select({
-                id: webhookEndpoints.id,
-                enabled: webhookEndpoints.enabled,
-            })
-            .from(webhookEndpoints)
-            .where(
-                and(
-                    eq(webhookEndpoints.id, id),
-                    eq(webhookEndpoints.userId, session.user.id),
-                ),
-            )
-            .limit(1);
-
-        if (!endpoint) {
-            return NextResponse.json(
-                { error: "Webhook not found" },
-                { status: 404 },
-            );
-        }
-        if (!endpoint.enabled) {
-            return NextResponse.json(
-                { error: "Webhook is disabled" },
-                { status: 409 },
-            );
-        }
-
-        const [delivery] = await db
-            .update(webhookDeliveries)
-            .set({
-                status: "pending",
-                nextAttemptAt: new Date(),
-                updatedAt: new Date(),
-            })
+    if (!delivery) {
+        const [existingDelivery] = await db
+            .select({ status: webhookDeliveries.status })
+            .from(webhookDeliveries)
             .where(
                 and(
                     eq(webhookDeliveries.id, deliveryId),
@@ -63,23 +67,23 @@ export async function POST(
                     eq(webhookDeliveries.userId, session.user.id),
                 ),
             )
-            .returning({ id: webhookDeliveries.id });
+            .limit(1);
 
-        if (!delivery) {
-            return NextResponse.json(
-                { error: "Delivery not found" },
-                { status: 404 },
+        if (existingDelivery?.status === "processing") {
+            throw new AppError(
+                ErrorCode.CONFLICT,
+                "Delivery is already processing",
+                409,
+                { id: deliveryId },
             );
         }
 
-        signalWebhookWorker();
-
-        return NextResponse.json({ success: true });
-    } catch (error) {
-        console.error("Error redelivering webhook:", error);
-        return NextResponse.json(
-            { error: "Failed to redeliver webhook" },
-            { status: 500 },
-        );
+        throw new AppError(ErrorCode.NOT_FOUND, "Delivery not found", 404, {
+            id: deliveryId,
+        });
     }
-}
+
+    signalWebhookWorker();
+
+    return NextResponse.json({ success: true });
+});

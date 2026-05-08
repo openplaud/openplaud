@@ -23,8 +23,15 @@ vi.mock("@/lib/auth", () => ({
     },
 }));
 
+vi.mock("@/lib/auth-server", () => ({
+    requireApiSession: vi.fn().mockResolvedValue({
+        user: { id: "user-79" },
+    }),
+}));
+
 vi.mock("@/lib/encryption", () => ({
     decrypt: vi.fn().mockReturnValue("fake-api-key"),
+    encrypt: vi.fn((plaintext: string) => `encrypted:${plaintext}`),
 }));
 
 vi.mock("@/lib/storage/factory", () => ({
@@ -59,11 +66,13 @@ vi.mock("@/lib/webhooks/emit", () => ({
 import {
     DELETE as deleteSummary,
     POST as generateSummary,
+    GET as getSummary,
 } from "@/app/api/recordings/[id]/summary/route";
 import { POST as transcribeRecordingRoute } from "@/app/api/recordings/[id]/transcribe/route";
 import { db } from "@/db";
 import { aiEnhancements, recordings, transcriptions } from "@/db/schema";
 import { auth } from "@/lib/auth";
+import { ErrorCode } from "@/lib/errors";
 
 const userId = "user-79";
 const recordingId = "rec-79";
@@ -433,5 +442,19 @@ describe("Issue #79 - v1 incremental update timestamps", () => {
 
         expect(response.status).toBe(200);
         expect(tx.update).not.toHaveBeenCalled();
+    });
+
+    it("does not return summaries for deleted recordings", async () => {
+        (db.select as Mock).mockReturnValueOnce(selectRows([]));
+
+        const response = await getSummary(
+            routeRequest(`/api/recordings/${recordingId}/summary`),
+            routeParams(),
+        );
+
+        expect(response.status).toBe(404);
+        await expect(response.json()).resolves.toMatchObject({
+            code: ErrorCode.RECORDING_NOT_FOUND,
+        });
     });
 });

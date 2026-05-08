@@ -3,6 +3,7 @@ import {
     index,
     integer,
     jsonb,
+    pgEnum,
     pgTable,
     real,
     text,
@@ -435,8 +436,13 @@ export const userSettings = pgTable("user_settings", {
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const personalAccessTokens = pgTable(
-    "personal_access_tokens",
+export const apiKeySourceEnum = pgEnum("api_key_source", [
+    "manual",
+    "device-flow",
+]);
+
+export const apiKeys = pgTable(
+    "api_keys",
     {
         id: text("id")
             .primaryKey()
@@ -445,8 +451,9 @@ export const personalAccessTokens = pgTable(
             .notNull()
             .references(() => users.id, { onDelete: "cascade" }),
         name: text("name").notNull(),
-        tokenHash: text("token_hash").notNull().unique(),
-        tokenPrefix: varchar("token_prefix", { length: 16 }).notNull(),
+        keyHash: text("key_hash").notNull().unique(),
+        keyPrefix: varchar("key_prefix", { length: 16 }).notNull(),
+        source: apiKeySourceEnum("source").notNull().default("manual"),
         scopes: jsonb("scopes").$type<string[]>().notNull().default(["read"]),
         lastUsedAt: timestamp("last_used_at"),
         expiresAt: timestamp("expires_at"),
@@ -455,8 +462,8 @@ export const personalAccessTokens = pgTable(
         updatedAt: timestamp("updated_at").notNull().defaultNow(),
     },
     (table) => ({
-        userIdIdx: index("pat_user_id_idx").on(table.userId),
-        tokenHashIdx: index("pat_token_hash_idx").on(table.tokenHash),
+        userIdIdx: index("api_keys_user_id_idx").on(table.userId),
+        keyHashIdx: index("api_keys_key_hash_idx").on(table.keyHash),
     }),
 );
 

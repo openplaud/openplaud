@@ -12,11 +12,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getApiErrorMessage } from "@/lib/api-errors";
 
-type ApiToken = {
+type ApiKey = {
     id: string;
     name: string;
-    tokenPrefix: string;
+    keyPrefix: string;
+    source: "manual" | "device-flow";
     scopes: string[];
     lastUsedAt: string | null;
     expiresAt: string | null;
@@ -29,38 +31,45 @@ function formatDate(value: string | null): string {
     return new Date(value).toLocaleString();
 }
 
-export function ApiTokensSection() {
-    const [tokens, setTokens] = useState<ApiToken[]>([]);
+export function ApiKeysSection() {
+    const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isCreating, setIsCreating] = useState(false);
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [name, setName] = useState("");
     const [expiresAt, setExpiresAt] = useState("");
-    const [createdToken, setCreatedToken] = useState<string | null>(null);
+    const [createdKey, setCreatedKey] = useState<string | null>(null);
 
-    const refreshTokens = useCallback(async () => {
+    const refreshApiKeys = useCallback(async () => {
         try {
-            const response = await fetch("/api/settings/tokens");
-            if (!response.ok) throw new Error("Failed to fetch tokens");
-            const data = (await response.json()) as { tokens: ApiToken[] };
-            setTokens(data.tokens);
+            const response = await fetch("/api/settings/api-keys");
+            if (!response.ok) {
+                throw new Error(
+                    await getApiErrorMessage(
+                        response,
+                        "Failed to fetch API keys",
+                    ),
+                );
+            }
+            const data = (await response.json()) as { apiKeys: ApiKey[] };
+            setApiKeys(data.apiKeys);
         } catch {
-            toast.error("Failed to load API tokens");
+            toast.error("Failed to load API keys");
         } finally {
             setIsLoading(false);
         }
     }, []);
 
     useEffect(() => {
-        refreshTokens();
-    }, [refreshTokens]);
+        refreshApiKeys();
+    }, [refreshApiKeys]);
 
     const handleCreate = async (event: React.FormEvent) => {
         event.preventDefault();
         setIsCreating(true);
 
         try {
-            const response = await fetch("/api/settings/tokens", {
+            const response = await fetch("/api/settings/api-keys", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -72,48 +81,66 @@ export function ApiTokensSection() {
                 }),
             });
 
+            if (!response.ok) {
+                throw new Error(
+                    await getApiErrorMessage(
+                        response,
+                        "Failed to create API key",
+                    ),
+                );
+            }
             const data = (await response.json()) as {
-                token?: string;
-                accessToken?: ApiToken;
+                key?: string;
+                apiKey?: ApiKey;
                 error?: string;
             };
-            if (!response.ok || !data.token || !data.accessToken) {
-                throw new Error(data.error || "Failed to create token");
+            if (!data.key || !data.apiKey) {
+                throw new Error(data.error || "Failed to create API key");
             }
 
-            const accessToken = data.accessToken;
-            setTokens((current) => [accessToken, ...current]);
-            setCreatedToken(data.token);
+            setApiKeys((current) => [data.apiKey as ApiKey, ...current]);
+            setCreatedKey(data.key);
             setName("");
             setExpiresAt("");
         } catch (error) {
             toast.error(
                 error instanceof Error
                     ? error.message
-                    : "Failed to create token",
+                    : "Failed to create API key",
             );
         } finally {
             setIsCreating(false);
         }
     };
 
-    const handleRevoke = async (tokenId: string) => {
+    const handleRevoke = async (apiKeyId: string) => {
         try {
-            const response = await fetch(`/api/settings/tokens/${tokenId}`, {
+            const response = await fetch(`/api/settings/api-keys/${apiKeyId}`, {
                 method: "DELETE",
             });
-            if (!response.ok) throw new Error("Failed to revoke token");
-            toast.success("API token revoked");
-            await refreshTokens();
-        } catch {
-            toast.error("Failed to revoke API token");
+            if (!response.ok) {
+                throw new Error(
+                    await getApiErrorMessage(
+                        response,
+                        "Failed to revoke API key",
+                    ),
+                );
+            }
+            toast.success("API key revoked");
+            await refreshApiKeys();
+        } catch (error) {
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : "Failed to revoke API key",
+            );
         }
     };
 
-    const copyCreatedToken = async () => {
-        if (!createdToken) return;
-        await navigator.clipboard.writeText(createdToken);
-        toast.success("Token copied");
+    const copyCreatedKey = async () => {
+        if (!createdKey) return;
+        await navigator.clipboard.writeText(createdKey);
+        toast.success("API key copied");
     };
 
     return (
@@ -121,17 +148,17 @@ export function ApiTokensSection() {
             <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
                     <KeyRound className="w-5 h-5" />
-                    API Tokens
+                    API Keys
                 </h2>
                 <Button
                     size="sm"
                     onClick={() => {
-                        setCreatedToken(null);
+                        setCreatedKey(null);
                         setIsCreateOpen(true);
                     }}
                 >
                     <Plus className="w-4 h-4" />
-                    Create Token
+                    Create Key
                 </Button>
             </div>
 
@@ -139,31 +166,31 @@ export function ApiTokensSection() {
                 <div className="flex items-center justify-center py-8">
                     <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
                 </div>
-            ) : tokens.length === 0 ? (
+            ) : apiKeys.length === 0 ? (
                 <div className="text-center py-12 border rounded-lg">
                     <KeyRound className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
-                    <h3 className="font-semibold mb-2">No API tokens</h3>
+                    <h3 className="font-semibold mb-2">No API keys</h3>
                     <Button size="sm" onClick={() => setIsCreateOpen(true)}>
                         <Plus className="w-4 h-4" />
-                        Create Token
+                        Create Key
                     </Button>
                 </div>
             ) : (
                 <div className="space-y-3">
-                    {tokens.map((token) => (
+                    {apiKeys.map((apiKey) => (
                         <div
-                            key={token.id}
+                            key={apiKey.id}
                             className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between"
                         >
                             <div className="min-w-0 space-y-1">
                                 <div className="flex flex-wrap items-center gap-2">
                                     <h3 className="font-medium">
-                                        {token.name}
+                                        {apiKey.name}
                                     </h3>
                                     <span className="rounded border px-2 py-0.5 font-mono text-xs text-muted-foreground">
-                                        {token.tokenPrefix}
+                                        {apiKey.keyPrefix}
                                     </span>
-                                    {token.revokedAt && (
+                                    {apiKey.revokedAt && (
                                         <span className="rounded border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-xs text-destructive">
                                             Revoked
                                         </span>
@@ -172,22 +199,22 @@ export function ApiTokensSection() {
                                 <div className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-3">
                                     <span>
                                         Last used:{" "}
-                                        {formatDate(token.lastUsedAt)}
+                                        {formatDate(apiKey.lastUsedAt)}
                                     </span>
                                     <span>
-                                        Expires: {formatDate(token.expiresAt)}
+                                        Expires: {formatDate(apiKey.expiresAt)}
                                     </span>
                                     <span>
-                                        Created: {formatDate(token.createdAt)}
+                                        Created: {formatDate(apiKey.createdAt)}
                                     </span>
                                 </div>
                             </div>
                             <Button
                                 variant="outline"
                                 size="icon"
-                                onClick={() => handleRevoke(token.id)}
-                                disabled={Boolean(token.revokedAt)}
-                                aria-label={`Revoke ${token.name}`}
+                                onClick={() => handleRevoke(apiKey.id)}
+                                disabled={Boolean(apiKey.revokedAt)}
+                                aria-label={`Revoke ${apiKey.name}`}
                             >
                                 <Trash2 className="w-4 h-4 text-destructive" />
                             </Button>
@@ -198,21 +225,21 @@ export function ApiTokensSection() {
 
             <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                 <DialogContent className="max-w-md">
-                    <DialogTitle>Create API Token</DialogTitle>
-                    {createdToken ? (
+                    <DialogTitle>Create API Key</DialogTitle>
+                    {createdKey ? (
                         <div className="space-y-4">
                             <DialogDescription>
-                                This token is shown once.
+                                This key is shown once.
                             </DialogDescription>
                             <div className="rounded-md border bg-muted p-3 font-mono text-sm break-all">
-                                {createdToken}
+                                {createdKey}
                             </div>
                             <div className="flex gap-2">
                                 <Button
                                     type="button"
                                     variant="outline"
                                     className="flex-1"
-                                    onClick={copyCreatedToken}
+                                    onClick={copyCreatedKey}
                                 >
                                     <Clipboard className="w-4 h-4" />
                                     Copy
@@ -221,7 +248,7 @@ export function ApiTokensSection() {
                                     type="button"
                                     className="flex-1"
                                     onClick={() => {
-                                        setCreatedToken(null);
+                                        setCreatedKey(null);
                                         setIsCreateOpen(false);
                                     }}
                                 >
@@ -233,9 +260,9 @@ export function ApiTokensSection() {
                     ) : (
                         <form onSubmit={handleCreate} className="space-y-4">
                             <div className="space-y-2">
-                                <Label htmlFor="token-name">Name</Label>
+                                <Label htmlFor="api-key-name">Name</Label>
                                 <Input
-                                    id="token-name"
+                                    id="api-key-name"
                                     value={name}
                                     onChange={(event) =>
                                         setName(event.target.value)
@@ -245,11 +272,11 @@ export function ApiTokensSection() {
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="token-expires">
+                                <Label htmlFor="api-key-expires">
                                     Expiration
                                 </Label>
                                 <Input
-                                    id="token-expires"
+                                    id="api-key-expires"
                                     type="datetime-local"
                                     value={expiresAt}
                                     onChange={(event) =>

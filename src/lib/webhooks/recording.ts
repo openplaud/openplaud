@@ -32,11 +32,12 @@ function serializeWebhookTranscript(
     transcript: V1Transcript | null,
 ): WebhookTranscript | null {
     if (!transcript) return null;
+    const text = transcript.text;
 
     return {
-        preview: transcript.text.slice(0, TRANSCRIPT_PREVIEW_CHARS),
-        truncated: transcript.text.length > TRANSCRIPT_PREVIEW_CHARS,
-        length: transcript.text.length,
+        preview: text.slice(0, TRANSCRIPT_PREVIEW_CHARS),
+        truncated: text.length > TRANSCRIPT_PREVIEW_CHARS,
+        length: text.length,
         language: transcript.language,
         provider: transcript.provider,
         model: transcript.model,

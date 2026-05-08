@@ -363,6 +363,26 @@ export const GET = apiHandler<IdContext>(async (request, context) => {
 
     const { id } = await (context as IdContext).params;
 
+    const [recording] = await db
+        .select({ id: recordings.id })
+        .from(recordings)
+        .where(
+            and(
+                eq(recordings.id, id),
+                eq(recordings.userId, session.user.id),
+                isNull(recordings.deletedAt),
+            ),
+        )
+        .limit(1);
+
+    if (!recording) {
+        throw new AppError(
+            ErrorCode.RECORDING_NOT_FOUND,
+            "Recording not found",
+            404,
+        );
+    }
+
     const [enhancement] = await db
         .select()
         .from(aiEnhancements)

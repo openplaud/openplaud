@@ -4,7 +4,7 @@
 
 export type SettingsSection =
     | "providers"
-    | "api-tokens"
+    | "api-keys"
     | "webhooks"
     | "transcription"
     | "summary"

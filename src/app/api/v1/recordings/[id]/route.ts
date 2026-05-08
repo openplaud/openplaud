@@ -1,46 +1,37 @@
 import { NextResponse } from "next/server";
 import { authenticateRequest } from "@/lib/auth-request";
+import { AppError, apiHandler, ErrorCode } from "@/lib/errors";
 import {
     enforceV1AuthenticatedRateLimit,
     enforceV1IpRateLimit,
 } from "@/lib/v1/rate-limit";
 import { getV1RecordingDetailForUser } from "@/lib/v1/serialize";
 
-export async function GET(
-    request: Request,
-    { params }: { params: Promise<{ id: string }> },
-) {
-    try {
-        const ipLimitResponse = await enforceV1IpRateLimit(request);
-        if (ipLimitResponse) return ipLimitResponse;
+type IdContext = { params: Promise<{ id: string }> };
 
-        const authn = await authenticateRequest(request);
-        if (!authn) {
-            return NextResponse.json(
-                { error: "Unauthorized" },
-                { status: 401 },
-            );
-        }
+export const GET = apiHandler<IdContext>(async (request, context) => {
+    const ipLimitResponse = await enforceV1IpRateLimit(request);
+    if (ipLimitResponse) return ipLimitResponse;
 
-        const authLimitResponse = await enforceV1AuthenticatedRateLimit(authn);
-        if (authLimitResponse) return authLimitResponse;
+    const authn = await authenticateRequest(request);
+    if (!authn) {
+        throw new AppError(ErrorCode.UNAUTHORIZED, "Unauthorized", 401);
+    }
 
-        const { id } = await params;
-        const recording = await getV1RecordingDetailForUser(authn.user.id, id);
+    const authLimitResponse = await enforceV1AuthenticatedRateLimit(authn);
+    if (authLimitResponse) return authLimitResponse;
 
-        if (!recording) {
-            return NextResponse.json(
-                { error: "Recording not found" },
-                { status: 404 },
-            );
-        }
+    const { id } = await (context as IdContext).params;
+    const recording = await getV1RecordingDetailForUser(authn.user.id, id);
 
-        return NextResponse.json(recording);
-    } catch (error) {
-        console.error("Error fetching v1 recording:", error);
-        return NextResponse.json(
-            { error: "Failed to fetch recording" },
-            { status: 500 },
+    if (!recording) {
+        throw new AppError(
+            ErrorCode.RECORDING_NOT_FOUND,
+            "Recording not found",
+            404,
+            { id },
         );
     }
-}
+
+    return NextResponse.json(recording);
+});

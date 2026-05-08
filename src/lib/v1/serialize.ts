@@ -6,6 +6,7 @@ import {
     recordings,
     transcriptions,
 } from "@/db/schema";
+import { decryptJsonField, decryptText } from "@/lib/encryption/fields";
 
 type RecordingRow = typeof recordings.$inferSelect;
 type DeviceRow = typeof plaudDevices.$inferSelect;
@@ -113,7 +114,7 @@ export function serializeTranscript(
 
     return {
         language: transcription.detectedLanguage,
-        text: transcription.text,
+        text: decryptText(transcription.text),
         provider: transcription.provider,
         model: transcription.model,
         created_at: toIso(transcription.createdAt),
@@ -124,11 +125,13 @@ export function serializeSummary(
     enhancement: AiEnhancementRow | null,
 ): V1Summary | null {
     if (!enhancement) return null;
+    const actionItems = decryptJsonField<unknown>(enhancement.actionItems);
+    const keyPoints = decryptJsonField<unknown>(enhancement.keyPoints);
 
     return {
-        text: enhancement.summary,
-        action_items: stringArrayOrNull(enhancement.actionItems),
-        key_points: stringArrayOrNull(enhancement.keyPoints),
+        text: decryptText(enhancement.summary) ?? null,
+        action_items: stringArrayOrNull(actionItems),
+        key_points: stringArrayOrNull(keyPoints),
         provider: enhancement.provider,
         model: enhancement.model,
         created_at: toIso(enhancement.createdAt),
@@ -145,7 +148,7 @@ export function serializeRecording(
 
     return {
         id: recording.id,
-        title: recording.filename,
+        title: decryptText(recording.filename),
         created_at: toIso(recording.createdAt),
         updated_at: toIso(recording.updatedAt),
         recorded_at: toIso(recording.startTime),

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { AuthenticatedRequest } from "@/lib/auth-request";
+import { ErrorCode } from "@/lib/errors";
 import {
     consumeRateLimitBucket,
     getClientIp,
@@ -17,18 +18,26 @@ function rateLimitResponse(result: RateLimitResult): NextResponse {
         1,
         Math.ceil((result.resetAt.getTime() - Date.now()) / 1000),
     );
+    const resetAt = Math.ceil(result.resetAt.getTime() / 1000);
 
     return NextResponse.json(
-        { error: "Rate limit exceeded" },
+        {
+            error: "Rate limit exceeded",
+            code: ErrorCode.RATE_LIMITED,
+            details: {
+                retryAfter,
+                limit: result.limit,
+                remaining: result.remaining,
+                resetAt,
+            },
+        },
         {
             status: 429,
             headers: {
                 "Retry-After": retryAfter.toString(),
                 "X-RateLimit-Limit": result.limit.toString(),
                 "X-RateLimit-Remaining": result.remaining.toString(),
-                "X-RateLimit-Reset": Math.ceil(
-                    result.resetAt.getTime() / 1000,
-                ).toString(),
+                "X-RateLimit-Reset": resetAt.toString(),
             },
         },
     );
@@ -51,8 +60,8 @@ export async function enforceV1AuthenticatedRateLimit(
     authn: AuthenticatedRequest,
 ): Promise<NextResponse | null> {
     const identity =
-        authn.via === "token" && authn.tokenId
-            ? `token:${authn.tokenId}`
+        authn.via === "api-key" && authn.apiKeyId
+            ? `api-key:${authn.apiKeyId}`
             : `user:${authn.user.id}`;
     const result = await consumeRateLimitBucket(`v1:auth:${identity}`, {
         limit: AUTHENTICATED_LIMIT,

@@ -170,10 +170,7 @@ export const POST = apiHandler<IdContext>(async (request, context) => {
                         })
                         .where(
                             and(
-                                eq(
-                                    transcriptions.id,
-                                    existingTranscription.id,
-                                ),
+                                eq(transcriptions.id, existingTranscription.id),
                                 eq(transcriptions.userId, session.user.id),
                             ),
                         );
@@ -221,7 +218,10 @@ export const POST = apiHandler<IdContext>(async (request, context) => {
         await emitEvent("transcription.failed", session.user.id, id, {
             error: error instanceof Error ? error.message : String(error),
         }).catch((eventError) => {
-            console.error("Failed to emit transcription failure event:", eventError);
+            console.error(
+                "Failed to emit transcription failure event:",
+                eventError,
+            );
         });
         throw error;
     }

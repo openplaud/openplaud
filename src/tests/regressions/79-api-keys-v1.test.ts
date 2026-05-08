@@ -23,16 +23,24 @@ vi.mock("@/lib/auth", () => ({
     },
 }));
 
+vi.mock("@/lib/auth-server", () => ({
+    requireApiSession: vi.fn().mockResolvedValue({
+        user: { id: "user-79" },
+    }),
+}));
+
 vi.mock("@/lib/v1/rate-limit", () => ({
     enforceV1IpRateLimit: vi.fn().mockResolvedValue(null),
     enforceV1AuthenticatedRateLimit: vi.fn().mockResolvedValue(null),
 }));
 
-import { POST as createToken } from "@/app/api/settings/tokens/route";
+import { POST as createApiKey } from "@/app/api/settings/api-keys/route";
 import { GET as listV1Recordings } from "@/app/api/v1/recordings/route";
 import { db } from "@/db";
 import { recordings } from "@/db/schema";
 import { auth } from "@/lib/auth";
+import { requireApiSession } from "@/lib/auth-server";
+import { AppError, ErrorCode } from "@/lib/errors";
 
 const now = new Date("2026-05-06T12:00:00.000Z");
 
@@ -73,27 +81,52 @@ function exprReferencesColumn(
     return false;
 }
 
-describe("Issue #79 — API tokens and v1 recordings", () => {
+describe("Issue #79 - API keys and v1 recordings", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        (requireApiSession as unknown as Mock).mockResolvedValue({
+            user: { id: "user-79" },
+        });
         (auth.api.getSession as unknown as Mock).mockResolvedValue({
             user: { id: "user-79" },
         });
     });
 
-    it("creates a token once, accepts it on v1 routes, and scopes recordings by userId", async () => {
+    it("refuses API key creation for suspended users", async () => {
+        (requireApiSession as unknown as Mock).mockRejectedValueOnce(
+            new AppError(ErrorCode.ACCOUNT_SUSPENDED, "Account suspended", 403),
+        );
+
+        const response = await createApiKey(
+            routeRequest("http://localhost/api/settings/api-keys", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: "Hermes" }),
+            }),
+        );
+
+        expect(response.status).toBe(403);
+        await expect(response.json()).resolves.toMatchObject({
+            code: ErrorCode.ACCOUNT_SUSPENDED,
+        });
+        expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it("creates a key once, accepts it on v1 routes, and scopes recordings by userId", async () => {
         let insertedHash = "";
         (db.insert as Mock).mockReturnValue({
-            values: vi.fn((values: { tokenHash: string }) => {
-                insertedHash = values.tokenHash;
+            values: vi.fn((values: { keyHash: string; source: string }) => {
+                insertedHash = values.keyHash;
+                expect(values.source).toBe("manual");
                 return {
                     returning: vi.fn().mockResolvedValue([
                         {
-                            id: "pat-1",
+                            id: "api-key-1",
                             userId: "user-79",
                             name: "Hermes",
-                            tokenHash: values.tokenHash,
-                            tokenPrefix: "opp_abcdef12",
+                            keyHash: values.keyHash,
+                            keyPrefix: "op_abcdef12",
+                            source: "manual",
                             scopes: ["read"],
                             lastUsedAt: null,
                             expiresAt: null,
@@ -106,8 +139,8 @@ describe("Issue #79 — API tokens and v1 recordings", () => {
             }),
         });
 
-        const createResponse = await createToken(
-            routeRequest("http://localhost/api/settings/tokens", {
+        const createResponse = await createApiKey(
+            routeRequest("http://localhost/api/settings/api-keys", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ name: "Hermes" }),
@@ -115,14 +148,22 @@ describe("Issue #79 — API tokens and v1 recordings", () => {
         );
 
         expect(createResponse.status).toBe(201);
-        const created = (await createResponse.json()) as { token: string };
-        expect(created.token).toMatch(/^opp_/);
+        const created = (await createResponse.json()) as {
+            key: string;
+            apiKey: { keyPrefix: string; source: string };
+        };
+        expect(created.key).toMatch(/^op_/);
+        expect(created.apiKey).toMatchObject({
+            keyPrefix: "op_abcdef12",
+            source: "manual",
+        });
 
         (auth.api.getSession as unknown as Mock).mockResolvedValue(null);
+        const updateSet = vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue(undefined),
+        });
         (db.update as Mock).mockReturnValue({
-            set: vi.fn().mockReturnValue({
-                where: vi.fn().mockResolvedValue(undefined),
-            }),
+            set: updateSet,
         });
 
         const authSelectChain = {
@@ -130,11 +171,12 @@ describe("Issue #79 — API tokens and v1 recordings", () => {
                 where: vi.fn().mockReturnValue({
                     limit: vi.fn().mockResolvedValue([
                         {
-                            id: "pat-1",
+                            id: "api-key-1",
                             userId: "user-79",
                             name: "Hermes",
-                            tokenHash: insertedHash,
-                            tokenPrefix: "opp_abcdef12",
+                            keyHash: insertedHash,
+                            keyPrefix: "op_abcdef12",
+                            source: "manual",
                             scopes: ["read"],
                             lastUsedAt: null,
                             expiresAt: null,
@@ -143,6 +185,13 @@ describe("Issue #79 — API tokens and v1 recordings", () => {
                             updatedAt: now,
                         },
                     ]),
+                }),
+            }),
+        };
+        const userSelectChain = {
+            from: vi.fn().mockReturnValue({
+                where: vi.fn().mockReturnValue({
+                    limit: vi.fn().mockResolvedValue([{ suspendedAt: null }]),
                 }),
             }),
         };
@@ -192,13 +241,14 @@ describe("Issue #79 — API tokens and v1 recordings", () => {
 
         (db.select as Mock)
             .mockReturnValueOnce(authSelectChain)
+            .mockReturnValueOnce(userSelectChain)
             .mockReturnValueOnce({
                 from: vi.fn().mockReturnValue(listChain),
             });
 
         const listResponse = await listV1Recordings(
             routeRequest("http://localhost/api/v1/recordings?limit=1", {
-                headers: { Authorization: `Bearer ${created.token}` },
+                headers: { Authorization: `Bearer ${created.key}` },
             }),
         );
 
@@ -209,6 +259,12 @@ describe("Issue #79 — API tokens and v1 recordings", () => {
         expect(listBody.data.map((recording) => recording.id)).toEqual([
             "rec-1",
         ]);
+        expect(updateSet).toHaveBeenCalledWith(
+            expect.objectContaining({
+                lastUsedAt: expect.any(Date) as Date,
+                updatedAt: expect.any(Date) as Date,
+            }),
+        );
         expect(exprReferencesColumn(whereExpr, recordings.userId)).toBe(true);
     });
 });

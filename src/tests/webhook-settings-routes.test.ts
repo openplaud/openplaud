@@ -22,6 +22,12 @@ vi.mock("@/lib/auth", () => ({
     },
 }));
 
+vi.mock("@/lib/auth-server", () => ({
+    requireApiSession: vi.fn().mockResolvedValue({
+        user: { id: "user-1" },
+    }),
+}));
+
 vi.mock("@/db", () => ({
     db: {
         insert: vi.fn(),
@@ -38,7 +44,8 @@ import { POST as redeliverWebhook } from "@/app/api/settings/webhooks/[id]/deliv
 import { PATCH as updateWebhook } from "@/app/api/settings/webhooks/[id]/route";
 import { POST as createWebhook } from "@/app/api/settings/webhooks/route";
 import { db } from "@/db";
-import { auth } from "@/lib/auth";
+import { requireApiSession } from "@/lib/auth-server";
+import { ErrorCode } from "@/lib/errors";
 import { signalWebhookWorker } from "@/lib/webhooks/worker";
 
 const now = new Date("2026-05-06T12:00:00.000Z");
@@ -75,7 +82,7 @@ function webhookEndpoint(overrides: Record<string, unknown> = {}) {
 describe("webhook settings routes", () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        (auth.api.getSession as unknown as Mock).mockResolvedValue({
+        (requireApiSession as unknown as Mock).mockResolvedValue({
             user: { id: "user-1" },
         });
     });
@@ -172,8 +179,55 @@ describe("webhook settings routes", () => {
         expect(response.status).toBe(409);
         await expect(response.json()).resolves.toEqual({
             error: "Webhook is disabled",
+            code: ErrorCode.CONFLICT,
+            details: { id: "wh-1" },
         });
         expect(db.update).not.toHaveBeenCalled();
+        expect(signalWebhookWorker).not.toHaveBeenCalled();
+    });
+
+    it("rejects manual redelivery while a delivery is processing", async () => {
+        (db.select as Mock)
+            .mockReturnValueOnce({
+                from: vi.fn().mockReturnValue({
+                    where: vi.fn().mockReturnValue({
+                        limit: vi
+                            .fn()
+                            .mockResolvedValue([{ id: "wh-1", enabled: true }]),
+                    }),
+                }),
+            })
+            .mockReturnValueOnce({
+                from: vi.fn().mockReturnValue({
+                    where: vi.fn().mockReturnValue({
+                        limit: vi
+                            .fn()
+                            .mockResolvedValue([{ status: "processing" }]),
+                    }),
+                }),
+            });
+        (db.update as Mock).mockReturnValue({
+            set: vi.fn().mockReturnValue({
+                where: vi.fn().mockReturnValue({
+                    returning: vi.fn().mockResolvedValue([]),
+                }),
+            }),
+        });
+
+        const response = await redeliverWebhook(
+            routeRequest(
+                "/api/settings/webhooks/wh-1/deliveries/delivery-1/redeliver",
+                { method: "POST" },
+            ),
+            redeliveryParams(),
+        );
+
+        expect(response.status).toBe(409);
+        await expect(response.json()).resolves.toEqual({
+            error: "Delivery is already processing",
+            code: ErrorCode.CONFLICT,
+            details: { id: "delivery-1" },
+        });
         expect(signalWebhookWorker).not.toHaveBeenCalled();
     });
 });

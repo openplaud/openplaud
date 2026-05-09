@@ -21,6 +21,11 @@ RUN bun run build
 # Bundle idempotent migration script with all dependencies
 RUN bun build src/db/migrate-idempotent.ts --target=bun --outfile=migrate-idempotent.js
 
+# Bundle one-shot encryption backfill script. Self-host operators run it once
+# after upgrading to v0.4.x via:
+#   docker compose exec app bun encrypt-backfill.js [--dry-run]
+RUN bun build scripts/encrypt-backfill.ts --target=bun --outfile=encrypt-backfill.js
+
 # Final runtime image
 FROM base AS runner
 WORKDIR /app
@@ -35,6 +40,9 @@ COPY --from=builder /app/.next/static ./.next/static
 
 # Copy bundled idempotent migration script (no node_modules needed!)
 COPY --from=builder /app/migrate-idempotent.js ./migrate-idempotent.js
+
+# Copy bundled encryption backfill script
+COPY --from=builder /app/encrypt-backfill.js ./encrypt-backfill.js
 
 # Copy migrations folder
 COPY --from=builder /app/src/db/migrations ./src/db/migrations

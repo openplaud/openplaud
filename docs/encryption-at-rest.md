@@ -68,11 +68,20 @@ Key rotation is not implemented yet. The `v1:` prefix exists so a future rotatio
 
 Pre-rollout rows stay plaintext until rewritten. The read path tolerates both shapes during this window. To eagerly encrypt existing rows:
 
+**Docker / self-host (the supported path):** the script is bundled into the image at `/app/encrypt-backfill.js`.
+
 ```bash
 # Report what would change (no writes)
-bun scripts/encrypt-backfill.ts --dry-run
+docker compose exec app bun encrypt-backfill.js --dry-run
 
 # Apply
+docker compose exec app bun encrypt-backfill.js
+```
+
+**From a source checkout (development):**
+
+```bash
+bun scripts/encrypt-backfill.ts --dry-run
 bun scripts/encrypt-backfill.ts
 ```
 
@@ -80,7 +89,13 @@ The script is idempotent (skips rows already in `v1:` form), batched, and safe t
 
 ## Self-host upgrade note
 
-After upgrading to the version that introduces this layer, run `bun scripts/encrypt-backfill.ts` once to encrypt rows written before the upgrade. New rows are encrypted automatically. Skipping the backfill is safe — pre-upgrade rows just remain plaintext.
+After upgrading to the version that introduces this layer, run the backfill once to encrypt rows written before the upgrade:
+
+```bash
+docker compose exec app bun encrypt-backfill.js
+```
+
+New rows are encrypted automatically. Skipping the backfill is safe — pre-upgrade rows just remain plaintext.
 
 ## Implementation pointers
 

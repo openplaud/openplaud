@@ -127,6 +127,13 @@
       "when": 1777730082791,
       "tag": "0017_curved_bedlam",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1778352807229,
+      "tag": "0018_quick_joshua_kane",
+      "breakpoints": true
     }
   ]
 }

@@ -66,17 +66,14 @@ export const GET = apiHandler<IdContext>(async (request, context) => {
         const rangeMatch = rangeHeader.match(/bytes=(\d+)-(\d*)/);
         if (rangeMatch) {
             const start = Number.parseInt(rangeMatch[1], 10);
-            const end = rangeMatch[2]
+            // RFC 7233: clamp an oversized end to fileSize - 1 rather than
+            // 416. Only an unsatisfiable start (past EOF or > end) is 416.
+            const requestedEnd = rangeMatch[2]
                 ? Number.parseInt(rangeMatch[2], 10)
                 : fileSize - 1;
+            const end = Math.min(requestedEnd, fileSize - 1);
 
-            if (
-                start < 0 ||
-                start >= fileSize ||
-                end < 0 ||
-                end >= fileSize ||
-                start > end
-            ) {
+            if (start < 0 || start >= fileSize || start > end) {
                 return NextResponse.json(
                     {
                         error: "Invalid range",

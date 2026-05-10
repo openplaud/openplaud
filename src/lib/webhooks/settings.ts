@@ -25,10 +25,19 @@ export function serializeWebhookEndpoint(
 export function parseWebhookEvents(value: unknown): string[] {
     if (!Array.isArray(value)) throw new Error("events must be an array");
 
-    const events = value.filter((event): event is string => {
-        return typeof event === "string" && isWebhookEvent(event);
-    });
+    // Reject unknown / typo'd event names rather than silently dropping
+    // them. A user typing "transcription.complete" (missing 'd') would
+    // otherwise see an empty selection and never receive that event.
+    const unknown = value.filter(
+        (event) => typeof event !== "string" || !isWebhookEvent(event),
+    );
+    if (unknown.length > 0) {
+        throw new Error(
+            `unknown events: ${unknown.join(", ")}. supported events: ${WEBHOOK_EVENTS.join(", ")}`,
+        );
+    }
 
+    const events = value as string[];
     if (events.length === 0) {
         throw new Error(
             `events must include at least one of: ${WEBHOOK_EVENTS.join(", ")}`,

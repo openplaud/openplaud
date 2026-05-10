@@ -186,6 +186,28 @@ describe("webhook settings routes", () => {
         expect(signalWebhookWorker).not.toHaveBeenCalled();
     });
 
+    it("rejects unknown webhook event names instead of silently dropping them", async () => {
+        const response = await createWebhook(
+            routeRequest("/api/settings/webhooks", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    url: "https://example.com/hook",
+                    // 'transcription.complete' missing trailing 'd' —
+                    // previously this silently became an empty filter,
+                    // so the user thought they subscribed but never got
+                    // any deliveries. Now it 400s.
+                    events: ["transcription.complete"],
+                }),
+            }),
+        );
+
+        expect(response.status).toBe(400);
+        const body = (await response.json()) as { error: string };
+        expect(body.error).toMatch(/unknown events/i);
+        expect(db.insert).not.toHaveBeenCalled();
+    });
+
     it("rejects manual redelivery while a delivery is processing", async () => {
         (db.select as Mock)
             .mockReturnValueOnce({

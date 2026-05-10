@@ -175,7 +175,7 @@ export const DELETE = apiHandler<IdContext>(async (request, context) => {
 
     // 2. Atomic DB writes: child rows, webhook delivery payload redaction,
     //    and tombstone in one transaction.
-    await db.transaction(async (tx) => {
+    const didTombstone = await db.transaction(async (tx) => {
         const now = new Date();
 
         await tx
@@ -209,7 +209,10 @@ export const DELETE = apiHandler<IdContext>(async (request, context) => {
                 ),
             );
 
-        await tx
+        // Returning lets us tell whether THIS request flipped the
+        // tombstone vs. a concurrent DELETE having already done it. We
+        // only want to emit `recording.deleted` for the winning request.
+        const tombstoned = await tx
             .update(recordings)
             .set({ deletedAt: now, updatedAt: now })
             .where(
@@ -218,10 +221,15 @@ export const DELETE = apiHandler<IdContext>(async (request, context) => {
                     eq(recordings.userId, userId),
                     isNull(recordings.deletedAt),
                 ),
-            );
+            )
+            .returning({ id: recordings.id });
+
+        return tombstoned.length > 0;
     });
 
-    await emitEvent("recording.deleted", userId, id);
+    if (didTombstone) {
+        await emitEvent("recording.deleted", userId, id);
+    }
 
     return NextResponse.json({ success: true });
 });

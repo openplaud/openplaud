@@ -13,6 +13,7 @@ vi.mock("@/db", () => ({
         select: vi.fn(),
         insert: vi.fn(),
         update: vi.fn(),
+        transaction: vi.fn(),
     },
 }));
 
@@ -241,6 +242,37 @@ describe("Sync", () => {
                     where: vi.fn().mockResolvedValue(undefined),
                 }),
             });
+
+            // sync-recordings now wraps the update path in a transaction
+            // that re-checks the tombstone under FOR UPDATE before writing.
+            // Stub the tx so the inner select returns a non-tombstoned row
+            // and the inner update resolves; cb returns true so the caller
+            // proceeds to emit `recording.updated`.
+            (db.transaction as Mock).mockImplementation(
+                async (cb: (tx: unknown) => Promise<boolean>) => {
+                    const tx = {
+                        select: vi.fn().mockReturnValue({
+                            from: vi.fn().mockReturnValue({
+                                where: vi.fn().mockReturnValue({
+                                    for: vi.fn().mockReturnValue({
+                                        limit: vi
+                                            .fn()
+                                            .mockResolvedValue([
+                                                { deletedAt: null },
+                                            ]),
+                                    }),
+                                }),
+                            }),
+                        }),
+                        update: vi.fn().mockReturnValue({
+                            set: vi.fn().mockReturnValue({
+                                where: vi.fn().mockResolvedValue(undefined),
+                            }),
+                        }),
+                    };
+                    return cb(tx);
+                },
+            );
 
             const result = await syncRecordingsForUser(mockUserId);
 

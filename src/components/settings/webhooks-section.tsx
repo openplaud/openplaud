@@ -304,6 +304,11 @@ export function WebhooksSection() {
                                         variant="outline"
                                         size="sm"
                                         onClick={() => {
+                                            // Clear stale deliveries from a
+                                            // previously opened webhook so
+                                            // the dialog never flashes the
+                                            // wrong endpoint's history.
+                                            setDeliveries([]);
                                             setDeliveryWebhook(webhook);
                                             refreshDeliveries(webhook.id);
                                         }}

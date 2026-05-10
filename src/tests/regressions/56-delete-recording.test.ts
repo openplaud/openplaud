@@ -231,12 +231,42 @@ describe("Issue #56 — delete recording tombstone", () => {
             [],
         ]);
 
+        // Sync now performs the update inside a tombstone-rechecking
+        // transaction. Stub the tx so the inner select returns a
+        // non-tombstoned row and the inner update resolves; cb returns
+        // true so emitEvent and the updated counter both fire.
+        (db.transaction as Mock).mockImplementation(
+            async (cb: (tx: unknown) => Promise<boolean>) => {
+                const tx = {
+                    select: vi.fn().mockReturnValue({
+                        from: vi.fn().mockReturnValue({
+                            where: vi.fn().mockReturnValue({
+                                for: vi.fn().mockReturnValue({
+                                    limit: vi
+                                        .fn()
+                                        .mockResolvedValue([
+                                            { deletedAt: null },
+                                        ]),
+                                }),
+                            }),
+                        }),
+                    }),
+                    update: vi.fn().mockReturnValue({
+                        set: vi.fn().mockReturnValue({
+                            where: vi.fn().mockResolvedValue(undefined),
+                        }),
+                    }),
+                };
+                return cb(tx);
+            },
+        );
+
         const result = await syncRecordingsForUser(mockUserId);
 
         expect(result.updatedRecordings).toBe(1);
         expect(result.newRecordings).toBe(0);
         expect(storageMock.uploadFile).toHaveBeenCalledTimes(1);
-        expect(db.update).toHaveBeenCalled();
+        expect(db.transaction).toHaveBeenCalled();
     });
 });
 
@@ -293,7 +323,7 @@ describe("DELETE /api/recordings/[id]", () => {
                       : "unknown";
 
         (db.transaction as Mock).mockImplementation(
-            async (cb: (tx: unknown) => Promise<void>) => {
+            async (cb: (tx: unknown) => Promise<unknown>) => {
                 const tx = {
                     delete: vi.fn((table: unknown) => ({
                         where: vi.fn().mockImplementation(() => {
@@ -305,8 +335,14 @@ describe("DELETE /api/recordings/[id]", () => {
                         }),
                     })),
                     update: vi.fn((table: unknown) => ({
-                        set: vi.fn((values: Record<string, unknown>) => ({
-                            where: vi.fn().mockImplementation(() => {
+                        set: vi.fn((values: Record<string, unknown>) => {
+                            // The recordings tombstone update now chains
+                            // .returning(...) so the handler can tell
+                            // whether it actually flipped the row (and
+                            // therefore should emit `recording.deleted`).
+                            // Other tx.update calls in this transaction
+                            // (webhook_deliveries) still resolve directly.
+                            const recordWrite = () => {
                                 txCalls.push({
                                     table: tableName(table),
                                     op: "update",
@@ -315,12 +351,29 @@ describe("DELETE /api/recordings/[id]", () => {
                                     table: tableName(table),
                                     values,
                                 });
+                            };
+                            const wherePromise = (): Promise<unknown> => {
+                                recordWrite();
                                 return Promise.resolve(undefined);
-                            }),
-                        })),
+                            };
+                            return {
+                                where: vi.fn().mockImplementation(() => {
+                                    const whereResult = wherePromise();
+                                    return Object.assign(whereResult, {
+                                        returning: vi
+                                            .fn()
+                                            .mockResolvedValue(
+                                                table === recordingsTable
+                                                    ? [{ id: recordingId }]
+                                                    : [],
+                                            ),
+                                    });
+                                }),
+                            };
+                        }),
                     })),
                 };
-                await cb(tx);
+                return cb(tx);
             },
         );
     });

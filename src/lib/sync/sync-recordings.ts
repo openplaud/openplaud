@@ -160,16 +160,42 @@ async function processRecording(
         };
 
         if (existingRecording) {
-            // Update existing recording
-            await db
-                .update(recordings)
-                .set({ ...recordingData, updatedAt: new Date() })
-                .where(
-                    and(
-                        eq(recordings.id, existingRecording.id),
-                        eq(recordings.userId, context.userId),
-                    ),
-                );
+            // The pre-download `select` happened before the slow
+            // download/upload above. A concurrent DELETE could have
+            // tombstoned the row in the meantime. Re-check under a row
+            // lock so we don't resurrect a deleted recording, and only
+            // emit `recording.updated` when we actually wrote.
+            const updated = await db.transaction(async (tx) => {
+                const [locked] = await tx
+                    .select({ deletedAt: recordings.deletedAt })
+                    .from(recordings)
+                    .where(
+                        and(
+                            eq(recordings.id, existingRecording.id),
+                            eq(recordings.userId, context.userId),
+                        ),
+                    )
+                    .for("update")
+                    .limit(1);
+
+                if (!locked || locked.deletedAt) return false;
+
+                await tx
+                    .update(recordings)
+                    .set({ ...recordingData, updatedAt: new Date() })
+                    .where(
+                        and(
+                            eq(recordings.id, existingRecording.id),
+                            eq(recordings.userId, context.userId),
+                        ),
+                    );
+                return true;
+            });
+
+            if (!updated) {
+                return { status: "skipped" };
+            }
+
             await emitEvent(
                 "recording.updated",
                 context.userId,
@@ -182,7 +208,9 @@ async function processRecording(
             };
         }
 
-        // Insert new recording
+        // Insert new recording. Concurrent inserts of the same plaud_file_id
+        // by parallel sync runs are caught by the (user_id, plaud_file_id)
+        // unique constraint and surface as an error to the caller.
         const [newRecording] = await db
             .insert(recordings)
             .values(recordingData)

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { recordings } from "@/db/schema";
 import { requireApiSession } from "@/lib/auth-server";
+import { decryptText } from "@/lib/encryption/fields";
 import { apiHandler } from "@/lib/errors";
 
 export const GET = apiHandler(async (request: Request) => {
@@ -19,5 +20,10 @@ export const GET = apiHandler(async (request: Request) => {
         )
         .orderBy(desc(recordings.startTime));
 
-    return NextResponse.json({ recordings: userRecordings });
+    return NextResponse.json({
+        recordings: userRecordings.map((recording) => ({
+            ...recording,
+            filename: decryptText(recording.filename),
+        })),
+    });
 });

@@ -1,0 +1,56 @@
+import { and, desc, eq } from "drizzle-orm";
+import { NextResponse } from "next/server";
+import { db } from "@/db";
+import { webhookDeliveries, webhookEndpoints } from "@/db/schema";
+import { requireApiSession } from "@/lib/auth-server";
+import { AppError, apiHandler, ErrorCode } from "@/lib/errors";
+
+type IdContext = { params: Promise<{ id: string }> };
+
+export const GET = apiHandler<IdContext>(async (request, context) => {
+    const session = await requireApiSession(request);
+
+    const { id } = await (context as IdContext).params;
+    const [endpoint] = await db
+        .select({ id: webhookEndpoints.id })
+        .from(webhookEndpoints)
+        .where(
+            and(
+                eq(webhookEndpoints.id, id),
+                eq(webhookEndpoints.userId, session.user.id),
+            ),
+        )
+        .limit(1);
+
+    if (!endpoint) {
+        throw new AppError(ErrorCode.NOT_FOUND, "Webhook not found", 404, {
+            id,
+        });
+    }
+
+    const deliveries = await db
+        .select({
+            id: webhookDeliveries.id,
+            event: webhookDeliveries.event,
+            status: webhookDeliveries.status,
+            attempts: webhookDeliveries.attempts,
+            lastAttemptAt: webhookDeliveries.lastAttemptAt,
+            nextAttemptAt: webhookDeliveries.nextAttemptAt,
+            lastResponseStatus: webhookDeliveries.lastResponseStatus,
+            lastResponseBody: webhookDeliveries.lastResponseBody,
+            lastError: webhookDeliveries.lastError,
+            createdAt: webhookDeliveries.createdAt,
+            updatedAt: webhookDeliveries.updatedAt,
+        })
+        .from(webhookDeliveries)
+        .where(
+            and(
+                eq(webhookDeliveries.endpointId, endpoint.id),
+                eq(webhookDeliveries.userId, session.user.id),
+            ),
+        )
+        .orderBy(desc(webhookDeliveries.createdAt))
+        .limit(100);
+
+    return NextResponse.json({ deliveries });
+});

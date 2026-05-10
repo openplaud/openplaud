@@ -95,6 +95,10 @@ vi.mock("@/lib/transcription/transcribe-recording", () => ({
     transcribeRecording: vi.fn().mockResolvedValue({ success: true }),
 }));
 
+vi.mock("@/lib/webhooks/emit", () => ({
+    emitEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { db } from "@/db";
 import { createPlaudClient } from "@/lib/plaud/client-factory";
 import { createUserStorageProvider } from "@/lib/storage/factory";
@@ -245,9 +249,11 @@ import {
     aiEnhancements,
     recordings as recordingsTable,
     transcriptions as transcriptionsTable,
+    webhookDeliveries,
 } from "@/db/schema";
 import { auth } from "@/lib/auth";
 import { createUserStorageProvider as createStorage } from "@/lib/storage/factory";
+import { emitEvent } from "@/lib/webhooks/emit";
 
 describe("DELETE /api/recordings/[id]", () => {
     const userId = "user-123";
@@ -261,10 +267,12 @@ describe("DELETE /api/recordings/[id]", () => {
         });
 
     let txCalls: Array<{ table: string; op: "delete" | "update" }>;
+    let txSets: Array<{ table: string; values: Record<string, unknown> }>;
 
     beforeEach(() => {
         vi.clearAllMocks();
         txCalls = [];
+        txSets = [];
 
         (auth.api.getSession as unknown as Mock).mockResolvedValue({
             user: { id: userId },
@@ -280,7 +288,9 @@ describe("DELETE /api/recordings/[id]", () => {
                   ? "ai_enhancements"
                   : t === recordingsTable
                     ? "recordings"
-                    : "unknown";
+                    : t === webhookDeliveries
+                      ? "webhook_deliveries"
+                      : "unknown";
 
         (db.transaction as Mock).mockImplementation(
             async (cb: (tx: unknown) => Promise<void>) => {
@@ -295,15 +305,19 @@ describe("DELETE /api/recordings/[id]", () => {
                         }),
                     })),
                     update: vi.fn((table: unknown) => ({
-                        set: vi.fn().mockReturnValue({
+                        set: vi.fn((values: Record<string, unknown>) => ({
                             where: vi.fn().mockImplementation(() => {
                                 txCalls.push({
                                     table: tableName(table),
                                     op: "update",
                                 });
+                                txSets.push({
+                                    table: tableName(table),
+                                    values,
+                                });
                                 return Promise.resolve(undefined);
                             }),
-                        }),
+                        })),
                     })),
                 };
                 await cb(tx);
@@ -390,7 +404,7 @@ describe("DELETE /api/recordings/[id]", () => {
         );
     });
 
-    it("deletes storage, then child rows + tombstone in one tx", async () => {
+    it("deletes storage, then child rows + webhook payloads + tombstone in one tx", async () => {
         const deleteFile = vi.fn().mockResolvedValue(undefined);
         (createStorage as Mock).mockResolvedValue({
             uploadFile: vi.fn(),
@@ -408,14 +422,30 @@ describe("DELETE /api/recordings/[id]", () => {
         expect(deleteFile.mock.invocationCallOrder[0]).toBeLessThan(
             (db.transaction as Mock).mock.invocationCallOrder[0],
         );
-        // All three writes ran in the same transaction…
-        expect(txCalls).toHaveLength(3);
-        // …in this order: transcriptions → ai_enhancements → recordings.
+        // All writes ran in the same transaction…
+        expect(txCalls).toHaveLength(4);
+        // …in this order: transcriptions → ai_enhancements → webhook redaction → recordings.
         expect(txCalls.map((c) => `${c.op}:${c.table}`)).toEqual([
             "delete:transcriptions",
             "delete:ai_enhancements",
+            "update:webhook_deliveries",
             "update:recordings",
         ]);
+        const webhookUpdate = txSets.find(
+            (entry) => entry.table === "webhook_deliveries",
+        );
+        expect(webhookUpdate?.values.payload).toMatchObject({
+            recording_id: recordingId,
+            redacted: true,
+        });
+        expect(emitEvent).toHaveBeenCalledWith(
+            "recording.deleted",
+            userId,
+            recordingId,
+        );
+        expect(
+            (db.transaction as Mock).mock.invocationCallOrder[0],
+        ).toBeLessThan((emitEvent as Mock).mock.invocationCallOrder[0]);
     });
 
     it("refuses to tombstone when storage delete fails for a non-not-found reason", async () => {
@@ -435,6 +465,7 @@ describe("DELETE /api/recordings/[id]", () => {
         expect(res.status).toBe(500);
         // No tombstone, no orphan: retry is safe.
         expect(db.transaction).not.toHaveBeenCalled();
+        expect(emitEvent).not.toHaveBeenCalled();
     });
 
     it("still tombstones when storage reports the object is already gone", async () => {
@@ -458,7 +489,13 @@ describe("DELETE /api/recordings/[id]", () => {
         expect(txCalls.map((c) => `${c.op}:${c.table}`)).toEqual([
             "delete:transcriptions",
             "delete:ai_enhancements",
+            "update:webhook_deliveries",
             "update:recordings",
         ]);
+        expect(emitEvent).toHaveBeenCalledWith(
+            "recording.deleted",
+            userId,
+            recordingId,
+        );
     });
 });

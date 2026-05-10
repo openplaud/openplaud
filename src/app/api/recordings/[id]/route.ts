@@ -178,6 +178,25 @@ export const DELETE = apiHandler<IdContext>(async (request, context) => {
     const didTombstone = await db.transaction(async (tx) => {
         const now = new Date();
 
+        // Lock the parent recording row up front. Without this, a
+        // concurrent transcribe/summary writer (which also re-checks
+        // tombstone under FOR UPDATE) could slip a new transcript or
+        // ai_enhancement row in between our child-row deletes and the
+        // final tombstone, leaving orphan rows pointing at a tombstoned
+        // recording. With the lock, concurrent writers either run before
+        // us (their rows get deleted by the child-row deletes below) or
+        // after us (they observe `deletedAt != null` and bail).
+        const [locked] = await tx
+            .select({ deletedAt: recordings.deletedAt })
+            .from(recordings)
+            .where(and(eq(recordings.id, id), eq(recordings.userId, userId)))
+            .for("update")
+            .limit(1);
+
+        // A concurrent DELETE already tombstoned and committed; nothing
+        // for us to do. Return false so we don't emit a duplicate event.
+        if (!locked || locked.deletedAt) return false;
+
         await tx
             .delete(transcriptions)
             .where(

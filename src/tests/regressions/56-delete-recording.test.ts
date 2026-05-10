@@ -325,6 +325,23 @@ describe("DELETE /api/recordings/[id]", () => {
         (db.transaction as Mock).mockImplementation(
             async (cb: (tx: unknown) => Promise<unknown>) => {
                 const tx = {
+                    // FOR UPDATE lock on the parent recording at the top
+                    // of the tombstone transaction. The default stub
+                    // returns a non-tombstoned row so the handler
+                    // proceeds; individual tests can override.
+                    select: vi.fn().mockReturnValue({
+                        from: vi.fn().mockReturnValue({
+                            where: vi.fn().mockReturnValue({
+                                for: vi.fn().mockReturnValue({
+                                    limit: vi
+                                        .fn()
+                                        .mockResolvedValue([
+                                            { deletedAt: null },
+                                        ]),
+                                }),
+                            }),
+                        }),
+                    }),
                     delete: vi.fn((table: unknown) => ({
                         where: vi.fn().mockImplementation(() => {
                             txCalls.push({
@@ -550,5 +567,55 @@ describe("DELETE /api/recordings/[id]", () => {
             userId,
             recordingId,
         );
+    });
+
+    it("bails out cleanly when a concurrent DELETE has already tombstoned the row", async () => {
+        // Both DELETE requests pass the pre-transaction read because the
+        // recording is still active when they each look it up. The
+        // tombstone-detection happens under FOR UPDATE inside the
+        // transaction: the loser sees `deletedAt != null` and returns
+        // false from the cb so no child-row deletes, no webhook payload
+        // redaction, no second `recording.deleted` emit fire.
+        const deleteFile = vi.fn().mockResolvedValue(undefined);
+        (createStorage as Mock).mockResolvedValue({
+            uploadFile: vi.fn(),
+            downloadFile: vi.fn(),
+            deleteFile,
+        });
+        stubRecordingLookup([
+            { id: recordingId, userId, storagePath, deletedAt: null },
+        ]);
+
+        // Override the default tx.select stub so the FOR UPDATE re-check
+        // returns an already-tombstoned row.
+        (db.transaction as Mock).mockImplementationOnce(
+            async (cb: (tx: unknown) => Promise<unknown>) => {
+                const tx = {
+                    select: vi.fn().mockReturnValue({
+                        from: vi.fn().mockReturnValue({
+                            where: vi.fn().mockReturnValue({
+                                for: vi.fn().mockReturnValue({
+                                    limit: vi.fn().mockResolvedValue([
+                                        {
+                                            deletedAt: new Date(
+                                                "2024-02-01T00:00:00Z",
+                                            ),
+                                        },
+                                    ]),
+                                }),
+                            }),
+                        }),
+                    }),
+                    delete: vi.fn(),
+                    update: vi.fn(),
+                };
+                return cb(tx);
+            },
+        );
+
+        const res = await deleteRecording(makeRequest(), { params });
+        expect(res.status).toBe(200);
+        expect(txCalls).toHaveLength(0);
+        expect(emitEvent).not.toHaveBeenCalled();
     });
 });

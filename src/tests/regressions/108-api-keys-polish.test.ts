@@ -54,12 +54,14 @@ describe("Issue #108 - API keys polish", () => {
                 "key_prefix",
             ]),
         );
+        // No explicit `api_keys_key_hash_idx` — the unique constraint
+        // creates an implicit btree index that the bearer-token lookup
+        // already uses. A second explicit index would just double the
+        // write cost on every key issue / revoke.
         expect(indexes).toEqual(
-            expect.arrayContaining([
-                "api_keys_user_id_idx",
-                "api_keys_key_hash_idx",
-            ]),
+            expect.arrayContaining(["api_keys_user_id_idx"]),
         );
+        expect(indexes).not.toContain("api_keys_key_hash_idx");
     });
 
     it("only accepts op-prefixed keys and updates lastUsedAt on successful auth", async () => {

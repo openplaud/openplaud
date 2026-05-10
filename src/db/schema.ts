@@ -463,7 +463,11 @@ export const apiKeys = pgTable(
     },
     (table) => ({
         userIdIdx: index("api_keys_user_id_idx").on(table.userId),
-        keyHashIdx: index("api_keys_key_hash_idx").on(table.keyHash),
+        // No explicit index on `key_hash`: the unique constraint above
+        // already creates an implicit btree index Postgres uses for the
+        // `where key_hash = ?` lookup in `authenticateRequest`. A second
+        // explicit index would just double the write cost on every issue
+        // / revoke.
     }),
 );
 

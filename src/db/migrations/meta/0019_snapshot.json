@@ -1,5 +1,5 @@
 {
-  "id": "7635e8f7-3031-4549-9634-8be2f7358ee4",
+  "id": "209d88fb-7a8d-4d72-8d6a-4de05016f589",
   "prevId": "01aaa935-3328-41d7-be4e-d3da9243014b",
   "version": "7",
   "dialect": "postgresql",
@@ -620,21 +620,6 @@
           "columns": [
             {
               "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "api_keys_key_hash_idx": {
-          "name": "api_keys_key_hash_idx",
-          "columns": [
-            {
-              "expression": "key_hash",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

@@ -365,6 +365,13 @@ async function markDeliveryAttempt(
 
 async function claimDueWebhookDeliveries(): Promise<ClaimedDelivery[]> {
     const now = new Date();
+    // postgres-js binds Date → timestamp parameters reliably when the
+    // Date sits behind a Drizzle column predicate, but raw sql`...` with
+    // Date placeholders crashes under Bun/Next 16 with
+    // ERR_INVALID_ARG_TYPE ("Received an instance of Date"). Cast the
+    // ISO string explicitly to `timestamptz` so the driver gets a
+    // plain string and Postgres still does timestamp comparison.
+    const nowParam = sql`${now.toISOString()}::timestamptz`;
 
     const candidateResult = await db.execute(sql`
         select id
@@ -380,8 +387,8 @@ async function claimDueWebhookDeliveries(): Promise<ClaimedDelivery[]> {
             inner join ${webhookEndpoints}
                 on ${webhookEndpoints.id} = ${webhookDeliveries.endpointId}
             where (
-                (${webhookDeliveries.status} = 'pending' and ${webhookDeliveries.nextAttemptAt} <= ${now})
-                or (${webhookDeliveries.status} = 'processing' and ${webhookDeliveries.nextAttemptAt} <= ${now})
+                (${webhookDeliveries.status} = 'pending' and ${webhookDeliveries.nextAttemptAt} <= ${nowParam})
+                or (${webhookDeliveries.status} = 'processing' and ${webhookDeliveries.nextAttemptAt} <= ${nowParam})
             )
             and ${webhookEndpoints.enabled} = true
         ) ranked_deliveries

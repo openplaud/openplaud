@@ -1,0 +1,1 @@
+ALTER TABLE "user_settings" ADD COLUMN "player_scrubber" varchar(20) DEFAULT 'waveform' NOT NULL;

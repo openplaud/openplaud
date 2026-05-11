@@ -210,15 +210,12 @@ export function TranscriptionPanel({
                             </div>
                         </div>
                     ) : (
-                        <div className="flex flex-col items-center justify-center py-12 text-center">
-                            <FileText className="w-12 h-12 text-muted-foreground mb-4" />
-                            <p className="text-sm text-muted-foreground mb-4">
-                                No transcription available
+                        <div className="flex flex-col items-center justify-center py-10 text-center">
+                            <FileText className="w-10 h-10 text-muted-foreground mb-3" />
+                            <p className="text-sm text-muted-foreground">
+                                No transcription yet — use the Transcribe button
+                                above.
                             </p>
-                            <Button onClick={onTranscribe} size="sm">
-                                <Sparkles className="w-4 h-4 mr-2" />
-                                Generate Transcription
-                            </Button>
                         </div>
                     )}
                 </CardContent>

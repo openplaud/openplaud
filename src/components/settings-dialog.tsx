@@ -256,14 +256,34 @@ export function SettingsDialog({
                     sections, Enter or Space to select, and Escape to close.
                 </DialogDescription>
                 <SidebarProvider className="items-start">
-                    <Sidebar className="hidden md:flex">
-                        <SidebarContent>
-                            <div className="flex items-center gap-2 px-4 py-4 border-b">
-                                <SettingsIcon className="w-5 h-5" />
-                                <h2 className="font-semibold text-lg">
-                                    Settings
-                                </h2>
-                            </div>
+                    {/*
+                      Sidebar needs an explicit height to match <main>'s
+                      h-[600px], otherwise SidebarContent's overflow-y-auto
+                      has no bound to scroll against: DialogContent uses
+                      max-h (a constraint, not a definite height) so the
+                      sidebar's h-full would resolve to its content height
+                      and grow rather than scroll once we cross ~13 nav items.
+                    */}
+                    <Sidebar className="hidden md:flex md:h-[600px]">
+                        {/*
+                          Header sits outside SidebarContent so it doesn't
+                          scroll away with the nav. min-h-0 on SidebarContent
+                          is the flex-scroll incantation: without it, a
+                          flex-1 child can refuse to shrink below its
+                          content height even with overflow-y-auto.
+                        */}
+                        {/*
+                          Match the main panel <header>'s h-16 exactly
+                          so the two bottom borders line up. Previously
+                          this used py-4 which resolved to ~56px,
+                          leaving an 8px step between the sidebar and
+                          breadcrumb rules.
+                        */}
+                        <div className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
+                            <SettingsIcon className="size-5" />
+                            <h2 className="text-lg font-semibold">Settings</h2>
+                        </div>
+                        <SidebarContent className="min-h-0">
                             <SidebarGroup>
                                 <SidebarGroupContent>
                                     <SidebarMenu

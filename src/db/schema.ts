@@ -229,6 +229,14 @@ export const recordings = pgTable(
         zonemins: integer("zonemins"),
         scene: integer("scene"),
         isTrash: boolean("is_trash").notNull().default(false),
+        // Coarse amplitude peaks for the audio waveform, generated
+        // client-side on first listen and POSTed back via
+        // /api/recordings/[id]/peaks. Null until the first successful
+        // decode; idempotent thereafter (write-once). Stored as a JSON
+        // array of N normalized floats in [0, 1] (typically N=500),
+        // so payload is ~3–6 KB. Used purely for visualization — no
+        // audio reconstruction is possible from these values.
+        waveformPeaks: jsonb("waveform_peaks"),
         // Soft-delete tombstone. Set when the user deletes a recording from
         // OpenPlaud's UI. Sync skips tombstoned rows so re-syncing from Plaud
         // does not resurrect deleted recordings. The audio file is hard-deleted
@@ -380,6 +388,13 @@ export const userSettings = pgTable("user_settings", {
     defaultPlaybackSpeed: real("default_playback_speed").notNull().default(1.0),
     defaultVolume: integer("default_volume").notNull().default(75),
     autoPlayNext: boolean("auto_play_next").notNull().default(false),
+    // Player scrubber style: 'waveform' (default) shows the canvas
+    // amplitude waveform when peaks are available; 'slider' forces the
+    // plain progress bar regardless. Users who prefer the minimal look
+    // (or whose machines struggle with the canvas) opt out here.
+    playerScrubber: varchar("player_scrubber", { length: 20 })
+        .notNull()
+        .default("waveform"),
     // Transcription settings
     defaultTranscriptionLanguage: varchar("default_transcription_language", {
         length: 10,
@@ -395,6 +410,10 @@ export const userSettings = pgTable("user_settings", {
         .notNull()
         .default("newest"), // 'newest', 'oldest', 'name'
     itemsPerPage: integer("items_per_page").notNull().default(50),
+    // Recording list row density: 'comfortable' (2-line, current) or 'compact' (1-line)
+    listDensity: varchar("list_density", { length: 20 })
+        .notNull()
+        .default("comfortable"),
     theme: varchar("theme", { length: 20 }).notNull().default("system"), // 'light', 'dark', 'system'
     // Storage settings
     autoDeleteRecordings: boolean("auto_delete_recordings")

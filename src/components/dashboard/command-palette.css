@@ -1,0 +1,38 @@
+/* cmdk styling — scoped to the dashboard command palette.
+ * Plain CSS (no @apply) so this works regardless of how the
+ * Tailwind v4 build is wired up.
+ */
+.command-palette [cmdk-group-heading] {
+    padding: 0.375rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted-foreground);
+}
+
+.command-palette [cmdk-item] {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+    border-radius: 0.375rem;
+    padding: 0.5rem;
+    font-size: 0.875rem;
+    outline: none;
+    transition: background-color 120ms ease;
+}
+
+.command-palette [cmdk-item][data-selected="true"] {
+    background-color: var(--accent);
+    color: var(--accent-foreground);
+}
+
+.command-palette [cmdk-item][data-disabled="true"] {
+    pointer-events: none;
+    opacity: 0.5;
+}
+
+.command-palette [cmdk-group] + [cmdk-group] {
+    margin-top: 0.5rem;
+}

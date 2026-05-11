@@ -1,0 +1,1 @@
+ALTER TABLE "user_settings" ADD COLUMN "list_density" varchar(20) DEFAULT 'comfortable' NOT NULL;

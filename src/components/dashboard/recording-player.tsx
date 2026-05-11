@@ -1,17 +1,38 @@
 "use client";
 
-import { Pause, Play, Volume2 } from "lucide-react";
+import {
+    AudioWaveform,
+    Loader2,
+    Pause,
+    Play,
+    Volume2,
+    VolumeX,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { MetalButton } from "@/components/metal-button";
+import { Waveform } from "@/components/dashboard/waveform";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
+import { useWaveform } from "@/hooks/use-waveform";
+import { formatBytes } from "@/lib/format-bytes";
+import { formatDateTime } from "@/lib/format-date";
+import { formatDuration } from "@/lib/format-duration";
 import type { Recording } from "@/types/recording";
 
 interface RecordingPlayerProps {
     recording: Recording;
     onEnded?: () => void;
+    initialPlaybackSpeed?: number;
+    initialVolume?: number;
+    initialAutoPlayNext?: boolean;
+    /**
+     * Which scrubber style to render. `"slider"` forces the plain
+     * progress bar even when waveform peaks are available; `"waveform"`
+     * shows the canvas waveform when peaks exist and falls back to the
+     * slider otherwise. Read from userSettings.playerScrubber.
+     */
+    scrubberStyle?: "waveform" | "slider";
 }
 
 const playbackSpeedOptions = [
@@ -23,38 +44,22 @@ const playbackSpeedOptions = [
     { label: "2x", value: 2.0 },
 ];
 
-export function RecordingPlayer({ recording, onEnded }: RecordingPlayerProps) {
+export function RecordingPlayer({
+    recording,
+    onEnded,
+    initialPlaybackSpeed = 1.0,
+    initialVolume = 75,
+    initialAutoPlayNext = false,
+    scrubberStyle = "waveform",
+}: RecordingPlayerProps) {
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
-    const [volume, setVolume] = useState(75);
-    const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
-    const [autoPlayNext, setAutoPlayNext] = useState(false);
+    const [volume, setVolume] = useState(initialVolume);
+    const [playbackSpeed, setPlaybackSpeed] = useState(initialPlaybackSpeed);
+    const [autoPlayNext] = useState(initialAutoPlayNext);
     const audioRef = useRef<HTMLAudioElement>(null);
     const isSeekingRef = useRef(false);
-    const settingsLoadedRef = useRef(false);
-
-    useEffect(() => {
-        if (settingsLoadedRef.current) return;
-
-        fetch("/api/settings/user")
-            .then((res) => res.json())
-            .then((data) => {
-                if (data.defaultVolume !== undefined) {
-                    setVolume(data.defaultVolume);
-                }
-                if (data.defaultPlaybackSpeed !== undefined) {
-                    setPlaybackSpeed(data.defaultPlaybackSpeed);
-                }
-                if (data.autoPlayNext !== undefined) {
-                    setAutoPlayNext(data.autoPlayNext);
-                }
-                settingsLoadedRef.current = true;
-            })
-            .catch(() => {
-                settingsLoadedRef.current = true;
-            });
-    }, []);
 
     useEffect(() => {
         const recordingId = recording.id; // Explicitly use recording to satisfy linter
@@ -221,91 +226,241 @@ export function RecordingPlayer({ recording, onEnded }: RecordingPlayerProps) {
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [currentTime, duration, togglePlayPause]);
 
-    const formatTime = (seconds: number) => {
-        if (!seconds || Number.isNaN(seconds)) return "0:00";
-        const mins = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
-        return `${mins}:${secs.toString().padStart(2, "0")}`;
-    };
+    // Local alias kept so existing JSX reads naturally; the helper
+    // itself lives in @/lib/format-duration and handles the H:MM:SS
+    // switch for recordings longer than an hour.
+    const formatTime = formatDuration;
 
     const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
+    // Waveform peaks: cached server-side if present, decoded client-side
+    // on first listen for recordings under AUTO_DECODE_MAX_MS. Long
+    // recordings show a manual "Generate waveform" button instead so we
+    // don't surprise the user with a multi-hundred-MB decode.
+    const {
+        peaks: waveformPeaks,
+        status: waveformStatus,
+        decode: triggerWaveformDecode,
+    } = useWaveform({
+        recordingId: recording.id,
+        durationMs: recording.duration,
+        initialPeaks: recording.waveformPeaks ?? null,
+        // Skip auto-decode entirely when the user has opted out of the
+        // waveform UI — there's no point spending CPU on peaks the
+        // player will never display.
+        autoStart: scrubberStyle === "waveform",
+    });
+
+    // Seek by waveform click. Receives a [0, 1] ratio; converts to the
+    // same audio.currentTime path as the slider so seeking semantics are
+    // identical regardless of which control the user touches.
+    const handleWaveformSeek = useCallback((ratio: number) => {
+        const audio = audioRef.current;
+        if (!audio) return;
+        const audioDuration = audio.duration;
+        if (!audioDuration || Number.isNaN(audioDuration)) {
+            audio.load();
+            return;
+        }
+        const newTime = Math.max(
+            0,
+            Math.min(audioDuration, ratio * audioDuration),
+        );
+        isSeekingRef.current = true;
+        audio.currentTime = newTime;
+        setCurrentTime(newTime);
+    }, []);
+
+    // Speed cycling: factored out so it can be reused (button + future
+    // command palette action).
+    const cycleSpeed = useCallback(() => {
+        const currentIndex = playbackSpeedOptions.findIndex(
+            (opt) => opt.value === playbackSpeed,
+        );
+        const nextIndex = (currentIndex + 1) % playbackSpeedOptions.length;
+        const nextSpeed = playbackSpeedOptions[nextIndex].value;
+        setPlaybackSpeed(nextSpeed);
+        if (audioRef.current) {
+            audioRef.current.playbackRate = nextSpeed;
+        }
+    }, [playbackSpeed]);
+
+    // Click-to-mute: stash the previous volume so unmute restores it.
+    // A pure 0/75 toggle would be surprising for users who set their
+    // own preferred level.
+    const previousVolumeRef = useRef<number>(volume > 0 ? volume : 75);
+    useEffect(() => {
+        if (volume > 0) previousVolumeRef.current = volume;
+    }, [volume]);
+    const toggleMute = useCallback(() => {
+        setVolume((v) => (v > 0 ? 0 : previousVolumeRef.current || 75));
+    }, []);
+
+    const speedLabel =
+        playbackSpeedOptions.find((opt) => opt.value === playbackSpeed)
+            ?.label || "1x";
+    const speakerIcon =
+        volume === 0 ? (
+            <VolumeX className="size-4" />
+        ) : (
+            <Volume2 className="size-4" />
+        );
+
+    const seekDisabled = !duration || duration === 0;
+    const seekRatio = duration > 0 ? currentTime / duration : 0;
+
+    // Compact metadata line under the title — replaces the redundant
+    // toLocaleString() subtitle. Order is information-density-first:
+    // when (relative), then how long (duration), then how big (size).
+    const metaParts: string[] = [
+        formatDateTime(recording.startTime, "relative"),
+        formatTime(duration || recording.duration / 1000),
+        formatBytes(recording.filesize),
+    ];
+
     return (
         <Card>
-            <CardHeader>
-                <CardTitle>{recording.filename}</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                    {new Date(recording.startTime).toLocaleString()}
-                </p>
+            <CardHeader className="gap-1">
+                <CardTitle className="truncate text-lg">
+                    {recording.filename}
+                </CardTitle>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                    {metaParts.map((part, i) => (
+                        <span
+                            key={part}
+                            className="inline-flex items-center gap-2"
+                        >
+                            {i > 0 && (
+                                <span aria-hidden="true" className="opacity-40">
+                                    ·
+                                </span>
+                            )}
+                            <span>{part}</span>
+                        </span>
+                    ))}
+                    {scrubberStyle === "waveform" &&
+                        waveformStatus === "decoding" && (
+                            <span className="inline-flex items-center gap-1">
+                                <span aria-hidden="true" className="opacity-40">
+                                    ·
+                                </span>
+                                <Loader2 className="size-3 animate-spin" />
+                                Analyzing audio…
+                            </span>
+                        )}
+                    {scrubberStyle === "waveform" &&
+                        waveformStatus === "skipped" && (
+                            <button
+                                type="button"
+                                onClick={triggerWaveformDecode}
+                                className="inline-flex items-center gap-1 underline-offset-2 hover:text-foreground hover:underline"
+                                title="Decode waveform in your browser (may take a few seconds)"
+                            >
+                                <span aria-hidden="true" className="opacity-40">
+                                    ·
+                                </span>
+                                <AudioWaveform className="size-3" />
+                                Generate waveform
+                            </button>
+                        )}
+                    {scrubberStyle === "waveform" &&
+                        waveformStatus === "error" && (
+                            <button
+                                type="button"
+                                onClick={triggerWaveformDecode}
+                                className="inline-flex items-center gap-1 text-destructive underline-offset-2 hover:underline"
+                            >
+                                <span aria-hidden="true" className="opacity-40">
+                                    ·
+                                </span>
+                                <AudioWaveform className="size-3" />
+                                Retry waveform
+                            </button>
+                        )}
+                </div>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent>
                 <div className="flex items-center gap-4">
                     <Button
                         onClick={togglePlayPause}
                         size="lg"
-                        className="w-12 h-12 rounded-full"
+                        aria-label={isPlaying ? "Pause" : "Play"}
+                        className="h-12 w-12 shrink-0 rounded-full"
                     >
                         {isPlaying ? (
-                            <Pause className="w-5 h-5" />
+                            <Pause className="size-5" />
                         ) : (
-                            <Play className="w-5 h-5" />
+                            <Play className="size-5" />
                         )}
                     </Button>
 
-                    <div className="flex-1 space-y-2">
-                        <Slider
-                            value={[progress]}
-                            onValueChange={handleSeek}
-                            onValueCommit={handleSeek}
-                            max={100}
-                            step={0.1}
-                            className="w-full"
-                            disabled={!duration || duration === 0}
-                        />
-                        <div className="flex justify-between text-xs text-muted-foreground">
-                            <span>{formatTime(currentTime)}</span>
-                            <span>{formatTime(duration)}</span>
-                        </div>
+                    {/* Fixed-width time label, monospace so digit width
+                        is stable as currentTime advances. Sits next to
+                        play so the eye can pair them without scanning. */}
+                    <span
+                        className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground"
+                        aria-live="off"
+                    >
+                        <span className="text-foreground">
+                            {formatTime(currentTime)}
+                        </span>
+                        <span className="mx-1 opacity-40">/</span>
+                        <span>{formatTime(duration)}</span>
+                    </span>
+
+                    {/* Waveform takes whatever's left, with min-w-0 so
+                        flex doesn't expand the parent when bars are dense. */}
+                    <div className="min-w-0 flex-1">
+                        {scrubberStyle === "waveform" && waveformPeaks ? (
+                            <Waveform
+                                peaks={waveformPeaks}
+                                progress={seekRatio}
+                                durationSeconds={duration}
+                                onSeek={handleWaveformSeek}
+                                disabled={seekDisabled}
+                                height={56}
+                            />
+                        ) : (
+                            <Slider
+                                value={[progress]}
+                                onValueChange={handleSeek}
+                                onValueCommit={handleSeek}
+                                max={100}
+                                step={0.1}
+                                className="w-full"
+                                disabled={seekDisabled}
+                            />
+                        )}
                     </div>
 
-                    <div className="flex items-center gap-3">
-                        <MetalButton
-                            onClick={() => {
-                                const currentIndex =
-                                    playbackSpeedOptions.findIndex(
-                                        (opt) => opt.value === playbackSpeed,
-                                    );
-                                const nextIndex =
-                                    (currentIndex + 1) %
-                                    playbackSpeedOptions.length;
-                                const nextSpeed =
-                                    playbackSpeedOptions[nextIndex].value;
-                                setPlaybackSpeed(nextSpeed);
-                                if (audioRef.current) {
-                                    audioRef.current.playbackRate = nextSpeed;
-                                }
-                            }}
-                            variant="default"
-                            size="sm"
-                            className="w-12 h-8 font-mono text-xs px-2"
-                            title="Click to cycle playback speed"
-                        >
-                            {playbackSpeedOptions.find(
-                                (opt) => opt.value === playbackSpeed,
-                            )?.label || "1x"}
-                        </MetalButton>
+                    <Button
+                        onClick={cycleSpeed}
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-12 shrink-0 px-0 font-mono text-xs tabular-nums"
+                        title="Click to cycle playback speed"
+                        aria-label={`Playback speed ${speedLabel}. Click to change.`}
+                    >
+                        {speedLabel}
+                    </Button>
 
-                        <div className="flex items-center gap-2 w-32">
-                            <Volume2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                            <Slider
-                                value={[volume]}
-                                onValueChange={(value) =>
-                                    setVolume(value[0] ?? 75)
-                                }
-                                max={100}
-                                className="flex-1"
-                            />
-                        </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={toggleMute}
+                            className="text-muted-foreground transition-colors hover:text-foreground"
+                            aria-label={volume === 0 ? "Unmute" : "Mute"}
+                            title={volume === 0 ? "Unmute" : "Mute"}
+                        >
+                            {speakerIcon}
+                        </button>
+                        <Slider
+                            value={[volume]}
+                            onValueChange={(value) => setVolume(value[0] ?? 75)}
+                            max={100}
+                            className="w-20"
+                            aria-label="Volume"
+                        />
                     </div>
                 </div>
 

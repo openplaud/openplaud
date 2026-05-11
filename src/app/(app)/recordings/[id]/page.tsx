@@ -43,12 +43,19 @@ export default async function RecordingDetailPage({
 
     // Content fields are encrypted at rest; decrypt server-side before
     // handing off to the client component.
+    // jsonb fields come back typed as `unknown` from drizzle; narrow to
+    // the Recording shape's `number[] | null` here once, server-side.
+    const waveformPeaks = Array.isArray(recording.waveformPeaks)
+        ? (recording.waveformPeaks as number[])
+        : null;
+
     return (
         <RecordingWorkstation
             recording={{
                 ...recording,
                 filename: decryptText(recording.filename),
                 startTime: recording.startTime.toISOString(),
+                waveformPeaks,
             }}
             transcription={
                 transcription

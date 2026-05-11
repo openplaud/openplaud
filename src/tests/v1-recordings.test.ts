@@ -41,6 +41,7 @@ const recording = {
     zonemins: null,
     scene: null,
     isTrash: false,
+    waveformPeaks: null,
     deletedAt: null,
     createdAt: now,
     updatedAt: now,

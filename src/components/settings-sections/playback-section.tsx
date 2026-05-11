@@ -1,6 +1,6 @@
 "use client";
 
-import { Play } from "lucide-react";
+import { AudioWaveform, Play } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
@@ -30,6 +30,9 @@ export function PlaybackSection() {
     const [defaultPlaybackSpeed, setDefaultPlaybackSpeed] = useState(1.0);
     const [defaultVolume, setDefaultVolume] = useState(75);
     const [autoPlayNext, setAutoPlayNext] = useState(false);
+    const [playerScrubber, setPlayerScrubber] = useState<"waveform" | "slider">(
+        "waveform",
+    );
     const saveTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
     useEffect(() => {
@@ -41,6 +44,11 @@ export function PlaybackSection() {
                     setDefaultPlaybackSpeed(data.defaultPlaybackSpeed ?? 1.0);
                     setDefaultVolume(data.defaultVolume ?? 75);
                     setAutoPlayNext(data.autoPlayNext ?? false);
+                    setPlayerScrubber(
+                        data.playerScrubber === "slider"
+                            ? "slider"
+                            : "waveform",
+                    );
                 }
             } catch (error) {
                 console.error("Failed to fetch settings:", error);
@@ -64,6 +72,7 @@ export function PlaybackSection() {
             defaultPlaybackSpeed?: number;
             defaultVolume?: number;
             autoPlayNext?: boolean;
+            playerScrubber?: "waveform" | "slider";
         },
         debounceMs?: number,
     ) => {
@@ -79,6 +88,10 @@ export function PlaybackSection() {
         if (updates.autoPlayNext !== undefined) {
             previousValues.autoPlayNext = autoPlayNext;
             setAutoPlayNext(updates.autoPlayNext);
+        }
+        if (updates.playerScrubber !== undefined) {
+            previousValues.playerScrubber = playerScrubber;
+            setPlayerScrubber(updates.playerScrubber);
         }
 
         if (saveTimeoutRef.current) {
@@ -108,6 +121,12 @@ export function PlaybackSection() {
                 if (updates.autoPlayNext !== undefined) {
                     const prev = previousValues.autoPlayNext;
                     if (typeof prev === "boolean") setAutoPlayNext(prev);
+                }
+                if (updates.playerScrubber !== undefined) {
+                    const prev = previousValues.playerScrubber;
+                    if (prev === "waveform" || prev === "slider") {
+                        setPlayerScrubber(prev);
+                    }
                 }
                 toast.error("Failed to save settings. Changes reverted.");
             }
@@ -221,6 +240,42 @@ export function PlaybackSection() {
                         }}
                         disabled={isSavingSettings}
                     />
+                </div>
+
+                <div className="space-y-2">
+                    <Label
+                        htmlFor="player-scrubber"
+                        className="flex items-center gap-2"
+                    >
+                        <AudioWaveform className="size-4" />
+                        Scrubber style
+                    </Label>
+                    <Select
+                        value={playerScrubber}
+                        onValueChange={(value) => {
+                            const next =
+                                value === "slider" ? "slider" : "waveform";
+                            handlePlaybackSettingChange({
+                                playerScrubber: next,
+                            });
+                        }}
+                        disabled={isSavingSettings}
+                    >
+                        <SelectTrigger id="player-scrubber" className="w-full">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="waveform">
+                                Waveform (default)
+                            </SelectItem>
+                            <SelectItem value="slider">Progress bar</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                        Waveform shows audio amplitude and decodes in-browser on
+                        first listen. Progress bar is the plain horizontal
+                        slider with no decoding cost.
+                    </p>
                 </div>
             </div>
 

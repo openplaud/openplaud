@@ -128,6 +128,10 @@ export async function sendNewRecordingEmail(
     const settingsUrl = `${baseUrl}/settings#notifications`;
 
     // Render React email component to HTML
+    // `pretty: false` skips @react-email/render's prettier formatting
+    // pass. Recipients never see source HTML, and avoiding prettier keeps
+    // it out of the runtime require graph (Next 16 flags it as an
+    // unresolved external otherwise).
     const html = await render(
         React.createElement(NewRecordingEmail, {
             count,
@@ -135,6 +139,7 @@ export async function sendNewRecordingEmail(
             dashboardUrl,
             settingsUrl,
         }),
+        { pretty: false },
     );
 
     // Generate plain text version
@@ -171,6 +176,7 @@ export async function sendPasswordResetEmail(
         React.createElement(PasswordResetEmail, {
             resetUrl,
         }),
+        { pretty: false },
     );
 
     const text = `
@@ -204,6 +210,7 @@ export async function sendTestEmail(email: string): Promise<void> {
             dashboardUrl,
             settingsUrl,
         }),
+        { pretty: false },
     );
 
     // Generate plain text version

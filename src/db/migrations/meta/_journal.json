@@ -141,6 +141,27 @@
       "when": 1778428394706,
       "tag": "0019_lucky_swordsman",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1778495483176,
+      "tag": "0020_breezy_cargill",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1778497248616,
+      "tag": "0021_sleepy_meltdown",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1778498592155,
+      "tag": "0022_icy_norman_osborn",
+      "breakpoints": true
     }
   ]
 }

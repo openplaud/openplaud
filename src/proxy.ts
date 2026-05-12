@@ -17,7 +17,7 @@ import { type NextRequest, NextResponse } from "next/server";
  *    requested URL in `?next=`. Server components don't have access to
  *    the request URL otherwise.
  */
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
     if (pathname.startsWith("/api/_int/")) {

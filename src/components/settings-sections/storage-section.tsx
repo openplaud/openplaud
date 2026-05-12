@@ -4,14 +4,33 @@ import { HardDrive } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { SettingsSectionHeader } from "@/components/settings/section-header";
+import { SettingsCard } from "@/components/settings/settings-card";
+import { BreakdownBar } from "@/components/settings-sections/storage/breakdown-bar";
+import { LargestRecordings } from "@/components/settings-sections/storage/largest-recordings";
+import { UsageHero } from "@/components/settings-sections/storage/usage-hero";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useSettings } from "@/hooks/use-settings";
-import { formatBytes } from "@/lib/format-bytes";
 
 interface StorageSectionProps {
     isHosted?: boolean;
+}
+
+interface StorageUsage {
+    storageType: string;
+    usedBytes: number;
+    recordingCount: number;
+    totalDurationMs: number;
+    largest: {
+        id: string;
+        filename: string;
+        filesize: number;
+        duration: number;
+        startTime: string;
+    }[];
+    diskFreeBytes: number | null;
+    quotaBytes: number | null;
 }
 
 export function StorageSection({ isHosted = false }: StorageSectionProps) {
@@ -19,11 +38,7 @@ export function StorageSection({ isHosted = false }: StorageSectionProps) {
         useSettings();
     const [autoDeleteRecordings, setAutoDeleteRecordings] = useState(false);
     const [retentionDays, setRetentionDays] = useState<number | null>(null);
-    const [storageUsage, setStorageUsage] = useState<{
-        storageType: string;
-        totalSize: number;
-        totalRecordings: number;
-    } | null>(null);
+    const [usage, setUsage] = useState<StorageUsage | null>(null);
     const saveTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
     // Tracks a retention-days edit that was scheduled but not yet sent.
     // Used to flush the pending save on unmount so closing the settings
@@ -59,28 +74,34 @@ export function StorageSection({ isHosted = false }: StorageSectionProps) {
         fetch("/api/settings/storage", { signal: controller.signal })
             .then(async (res) => {
                 if (!res.ok) return null;
-                const data = await res.json();
+                const data = (await res.json()) as Partial<StorageUsage>;
+                // Defensive shape check — only the fields the UI actually
+                // reads. Missing optional fields fall back to safe zeros.
                 if (
-                    typeof data?.totalSize === "number" &&
-                    typeof data?.totalRecordings === "number" &&
-                    typeof data?.storageType === "string"
+                    typeof data?.usedBytes === "number" &&
+                    typeof data?.recordingCount === "number" &&
+                    Array.isArray(data?.largest)
                 ) {
-                    return data as {
-                        storageType: string;
-                        totalSize: number;
-                        totalRecordings: number;
-                    };
+                    return {
+                        storageType: data.storageType ?? "local",
+                        usedBytes: data.usedBytes,
+                        recordingCount: data.recordingCount,
+                        totalDurationMs: data.totalDurationMs ?? 0,
+                        largest: data.largest,
+                        diskFreeBytes: data.diskFreeBytes ?? null,
+                        quotaBytes: data.quotaBytes ?? null,
+                    } satisfies StorageUsage;
                 }
                 return null;
             })
             .then((data) => {
                 if (cancelled) return;
-                setStorageUsage(data);
+                setUsage(data);
             })
             .catch((err) => {
                 if (cancelled) return;
                 if ((err as { name?: string })?.name === "AbortError") return;
-                setStorageUsage(null);
+                setUsage(null);
             });
 
         return () => {
@@ -180,55 +201,47 @@ export function StorageSection({ isHosted = false }: StorageSectionProps) {
                 description="Where OpenPlaud keeps the audio files behind your recordings."
                 icon={HardDrive}
             />
-            <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-lg border bg-card p-4">
-                        <div className="text-xs text-muted-foreground">
-                            Total Size
-                        </div>
-                        <div className="text-2xl font-semibold tabular-nums mt-1">
-                            {typeof storageUsage?.totalSize === "number"
-                                ? formatBytes(storageUsage.totalSize)
-                                : "—"}
-                        </div>
-                    </div>
-                    <div className="rounded-lg border bg-card p-4">
-                        <div className="text-xs text-muted-foreground">
-                            Recordings
-                        </div>
-                        <div className="text-2xl font-semibold tabular-nums mt-1">
-                            {typeof storageUsage?.totalRecordings === "number"
-                                ? storageUsage.totalRecordings
-                                : "—"}
-                        </div>
-                    </div>
+
+            <UsageHero
+                usedBytes={usage?.usedBytes ?? 0}
+                recordingCount={usage?.recordingCount ?? 0}
+                totalDurationMs={usage?.totalDurationMs ?? 0}
+                diskFreeBytes={usage?.diskFreeBytes ?? null}
+                quotaBytes={usage?.quotaBytes ?? null}
+            />
+
+            {usage && usage.largest.length > 0 && (
+                <div className="space-y-3">
+                    <BreakdownBar
+                        segments={usage.largest.map((r) => ({
+                            id: r.id,
+                            bytes: r.filesize,
+                        }))}
+                        totalBytes={usage.usedBytes}
+                    />
+                    <LargestRecordings items={usage.largest} />
                 </div>
-                {!isHosted && (
-                    <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Type</span>
-                        <span className="font-medium">
-                            {storageUsage?.storageType || "Local"}
+            )}
+
+            {!isHosted && (
+                <div className="rounded-lg border bg-card/40 px-4 py-3 space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Backend</span>
+                        <span className="font-medium capitalize">
+                            {usage?.storageType ?? "local"}
                         </span>
                     </div>
-                )}
-                <p className="text-xs text-muted-foreground pt-2 border-t">
-                    {isHosted
-                        ? "Storage for your account on OpenPlaud Hosted. Manage what's kept with auto-delete below."
-                        : "Storage is configured at the instance level via environment variables."}
-                </p>
-            </div>
+                    <p className="text-xs text-muted-foreground">
+                        Storage backend is configured at the instance level via
+                        environment variables.
+                    </p>
+                </div>
+            )}
 
-            <div className="space-y-4 pt-4 border-t">
-                <div className="flex items-center justify-between">
-                    <div className="space-y-0.5 flex-1">
-                        <Label htmlFor="auto-delete" className="text-base">
-                            Auto-delete old recordings
-                        </Label>
-                        <p className="text-sm text-muted-foreground">
-                            Automatically delete recordings older than the
-                            retention period
-                        </p>
-                    </div>
+            <SettingsCard
+                title="Auto-delete old recordings"
+                description="Automatically delete recordings older than the retention period."
+                action={
                     <Switch
                         id="auto-delete"
                         checked={autoDeleteRecordings}
@@ -248,8 +261,8 @@ export function StorageSection({ isHosted = false }: StorageSectionProps) {
                         }}
                         disabled={isSavingSettings}
                     />
-                </div>
-
+                }
+            >
                 {autoDeleteRecordings && (
                     <div className="space-y-2">
                         <Label htmlFor="retention-days">
@@ -311,7 +324,7 @@ export function StorageSection({ isHosted = false }: StorageSectionProps) {
                         </p>
                     </div>
                 )}
-            </div>
+            </SettingsCard>
         </div>
     );
 }

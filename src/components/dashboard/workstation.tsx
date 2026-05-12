@@ -16,9 +16,14 @@ import { TranscriptionPanel } from "@/components/dashboard/transcription-panel";
 import { UserMenu } from "@/components/dashboard/user-menu";
 import { OnboardingDialog } from "@/components/onboarding-dialog";
 import { SettingsDialog } from "@/components/settings-dialog";
-import { SyncStatus } from "@/components/sync-status";
+import { SyncButton } from "@/components/sync-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useAutoSync } from "@/hooks/use-auto-sync";
 import { useListKeyboardNav } from "@/hooks/use-list-keyboard-nav";
 import { useTheme } from "@/hooks/use-theme";
@@ -373,55 +378,41 @@ export function Workstation({
                             */}
                         </div>
                         <div className="ml-auto flex shrink-0 items-center gap-2">
-                            <SyncStatus
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button
+                                        onClick={() => setPaletteOpen(true)}
+                                        variant="outline"
+                                        size="sm"
+                                        className="hidden h-9 md:inline-flex"
+                                        aria-label="Open command palette"
+                                    >
+                                        <Command className="mr-2 size-4" />
+                                        <span>Search</span>
+                                        <kbd className="ml-2 hidden rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground lg:inline">
+                                            ⌘K
+                                        </kbd>
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom">
+                                    Search recordings, transcripts, and actions
+                                </TooltipContent>
+                            </Tooltip>
+                            {/*
+                              Sync button is status-aware: its label is
+                              the last-sync relative time, so the user
+                              sees "Synced 2m ago" / "Retry sync" /
+                              "Syncing..." without a separate status
+                              block. Tooltip carries next-sync ETA and
+                              error detail.
+                            */}
+                            <SyncButton
                                 lastSyncTime={lastSyncTime}
                                 nextSyncTime={nextSyncTime}
                                 isAutoSyncing={isAutoSyncing}
                                 lastSyncResult={lastSyncResult}
-                                className="hidden md:flex"
+                                onSync={handleSync}
                             />
-                            <Button
-                                onClick={() => setPaletteOpen(true)}
-                                variant="outline"
-                                size="sm"
-                                className="hidden h-9 md:inline-flex"
-                                aria-label="Open command palette"
-                                title="Command palette (⌘K)"
-                            >
-                                <Command className="mr-2 size-4" />
-                                <span>Search</span>
-                                <kbd className="ml-2 hidden rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground lg:inline">
-                                    ⌘K
-                                </kbd>
-                            </Button>
-                            <Button
-                                onClick={handleSync}
-                                disabled={isAutoSyncing}
-                                variant="outline"
-                                size="sm"
-                                className="h-9"
-                                aria-label={
-                                    isAutoSyncing
-                                        ? "Syncing device"
-                                        : "Sync device"
-                                }
-                            >
-                                {isAutoSyncing ? (
-                                    <>
-                                        <RefreshCw className="size-4 animate-spin sm:mr-2" />
-                                        <span className="hidden sm:inline">
-                                            Syncing...
-                                        </span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <RefreshCw className="size-4 sm:mr-2" />
-                                        <span className="hidden sm:inline">
-                                            Sync Device
-                                        </span>
-                                    </>
-                                )}
-                            </Button>
                             <input
                                 ref={uploadInputRef}
                                 type="file"
@@ -429,25 +420,32 @@ export function Workstation({
                                 className="hidden"
                                 onChange={handleUpload}
                             />
-                            <Button
-                                onClick={triggerUpload}
-                                disabled={isProcessing}
-                                variant="outline"
-                                size="sm"
-                                className="h-9"
-                                aria-label={
-                                    isUploading
-                                        ? "Uploading audio"
-                                        : "Upload audio"
-                                }
-                            >
-                                <Upload className="size-4 sm:mr-2" />
-                                <span className="hidden sm:inline">
-                                    {isUploading
-                                        ? "Uploading..."
-                                        : "Upload Audio"}
-                                </span>
-                            </Button>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button
+                                        onClick={triggerUpload}
+                                        disabled={isProcessing}
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-9"
+                                        aria-label={
+                                            isUploading
+                                                ? "Uploading audio"
+                                                : "Upload audio"
+                                        }
+                                    >
+                                        <Upload className="size-4 sm:mr-2" />
+                                        <span className="hidden sm:inline">
+                                            {isUploading
+                                                ? "Uploading..."
+                                                : "Upload Audio"}
+                                        </span>
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom">
+                                    Upload an audio file from your computer
+                                </TooltipContent>
+                            </Tooltip>
                             <UserMenu
                                 isAdmin={isAdmin}
                                 initialTheme={initialSettings.theme}

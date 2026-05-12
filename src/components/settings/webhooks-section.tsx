@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useConfirm } from "@/components/confirm-dialog";
 import { SettingsSectionHeader } from "@/components/settings/section-header";
 import { Button } from "@/components/ui/button";
 import {
@@ -70,6 +71,7 @@ function emptyForm(events = DEFAULT_EVENTS) {
 }
 
 export function WebhooksSection() {
+    const confirm = useConfirm();
     const [webhooks, setWebhooks] = useState<WebhookEndpoint[]>([]);
     const [events, setEvents] = useState<string[]>(DEFAULT_EVENTS);
     const [isLoading, setIsLoading] = useState(true);
@@ -188,21 +190,25 @@ export function WebhooksSection() {
         }
     };
 
-    const handleDelete = async (webhookId: string) => {
-        if (!confirm("Delete this webhook?")) return;
-        try {
-            const response = await fetch(
-                `/api/settings/webhooks/${webhookId}`,
-                {
-                    method: "DELETE",
-                },
-            );
-            if (!response.ok) throw new Error("Failed to delete webhook");
-            toast.success("Webhook deleted");
-            await refreshWebhooks();
-        } catch {
-            toast.error("Failed to delete webhook");
-        }
+    const handleDelete = (webhookId: string) => {
+        void confirm({
+            title: "Delete this webhook?",
+            description:
+                "Deliveries will stop immediately. You'll have to recreate the endpoint and re-share its signing secret with any consumers.",
+            confirmLabel: "Delete",
+            pendingLabel: "Deleting…",
+            destructive: true,
+            onConfirm: async () => {
+                const response = await fetch(
+                    `/api/settings/webhooks/${webhookId}`,
+                    { method: "DELETE" },
+                );
+                if (!response.ok) throw new Error("Failed to delete webhook");
+                toast.success("Webhook deleted");
+                await refreshWebhooks();
+            },
+            errorMessage: "Failed to delete webhook",
+        });
     };
 
     const copySecret = async () => {

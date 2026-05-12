@@ -20,7 +20,7 @@ import {
     useRef,
     useState,
 } from "react";
-import { toast } from "sonner";
+import { useConfirm } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -140,6 +140,7 @@ export const RecordingList = forwardRef<
     const [density, setDensity] = useState<ListDensity>(initialDensity);
     const [query, setQuery] = useState("");
     const [visibleCount, setVisibleCount] = useState(initialChunkSize);
+    const confirm = useConfirm();
     const searchRef = useRef<HTMLInputElement>(null);
     const sentinelRef = useRef<HTMLDivElement>(null);
     const rowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
@@ -612,19 +613,66 @@ export const RecordingList = forwardRef<
                                                         <DropdownMenuSeparator />
                                                         <DropdownMenuItem
                                                             variant="destructive"
-                                                            onSelect={async () => {
-                                                                try {
-                                                                    await onDelete(
-                                                                        recording,
-                                                                    );
-                                                                } catch (err) {
-                                                                    toast.error(
-                                                                        err instanceof
-                                                                            Error
-                                                                            ? err.message
-                                                                            : "Failed to delete",
-                                                                    );
-                                                                }
+                                                            onSelect={(e) => {
+                                                                // Let the
+                                                                // dropdown
+                                                                // close before
+                                                                // we open the
+                                                                // confirm so
+                                                                // focus
+                                                                // doesn't
+                                                                // bounce.
+                                                                e.preventDefault();
+                                                                void confirm({
+                                                                    title: "Delete this recording?",
+                                                                    description:
+                                                                        (
+                                                                            <>
+                                                                                <span className="font-medium text-foreground">
+                                                                                    {
+                                                                                        recording.filename
+                                                                                    }
+                                                                                </span>
+                                                                                <br />
+                                                                                The
+                                                                                audio
+                                                                                file
+                                                                                and
+                                                                                any
+                                                                                transcript
+                                                                                or
+                                                                                summary
+                                                                                will
+                                                                                be
+                                                                                removed.
+                                                                                If
+                                                                                the
+                                                                                file
+                                                                                is
+                                                                                still
+                                                                                on
+                                                                                your
+                                                                                Plaud
+                                                                                device,
+                                                                                the
+                                                                                next
+                                                                                sync
+                                                                                will
+                                                                                re-download
+                                                                                it.
+                                                                            </>
+                                                                        ),
+                                                                    confirmLabel:
+                                                                        "Delete",
+                                                                    pendingLabel:
+                                                                        "Deleting…",
+                                                                    destructive: true,
+                                                                    onConfirm:
+                                                                        () =>
+                                                                            onDelete(
+                                                                                recording,
+                                                                            ),
+                                                                });
                                                             }}
                                                         >
                                                             <Trash2 />

@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { ConfirmDialogProvider } from "@/components/confirm-dialog";
 import { RybbitAnalytics } from "@/components/rybbit-analytics";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -37,8 +39,28 @@ export default function RootLayout({
                     enableSystem
                     disableTransitionOnChange
                 >
-                    {children}
-                    <Toaster />
+                    {/*
+                      Tooltip provider wraps the app so any descendant
+                      `<Tooltip>` works without a local provider. 200ms
+                      delay is the shadcn default-ish: short enough to
+                      feel responsive, long enough to avoid firing on
+                      incidental mouseovers.
+                    */}
+                    <TooltipProvider delayDuration={200}>
+                        {/*
+                          App-wide imperative confirm dialog. Any
+                          client component can `useConfirm()` to get
+                          a Promise-returning function for destructive
+                          flows (delete recording, delete webhook,
+                          delete API key, delete custom prompt, etc.).
+                          One instance, one dialog node, consistent
+                          look + pending-state handling.
+                        */}
+                        <ConfirmDialogProvider>
+                            {children}
+                            <Toaster />
+                        </ConfirmDialogProvider>
+                    </TooltipProvider>
                 </ThemeProvider>
                 <RybbitAnalytics />
             </body>

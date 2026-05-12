@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useConfirm } from "@/components/confirm-dialog";
 
 /**
  * Per-row admin soft-delete. Does NOT hard-delete the audio blob -- the
@@ -16,9 +17,15 @@ export function RecordingDeleteButton({
     recordingId: string;
 }) {
     const router = useRouter();
+    const confirm = useConfirm();
     const [busy, setBusy] = useState(false);
 
-    async function onClick() {
+    function onClick() {
+        // Reason input stays as a native prompt for now — our shared
+        // confirm dialog is yes/no only and admin actions need an
+        // auditable free-text reason. Confirm step does use the
+        // shared dialog so the visual treatment matches user-facing
+        // destructive flows.
         const reason = window.prompt(
             "Reason for soft-deleting this recording (logged):",
         );
@@ -26,40 +33,44 @@ export function RecordingDeleteButton({
             toast.error("Reason required (min 4 chars)");
             return;
         }
-        if (
-            !window.confirm(
-                "Soft-delete this recording? The user will no longer see it. Audio blob is retained.",
-            )
-        ) {
-            return;
-        }
-        setBusy(true);
-        try {
-            const res = await fetch(
-                "/api/admin/actions/soft-delete-recording",
-                {
-                    method: "POST",
-                    headers: { "content-type": "application/json" },
-                    body: JSON.stringify({ recordingId, reason }),
-                },
-            );
-            if (res.status === 404) {
-                toast.error("Admin session expired. Reauth and try again.");
-                router.replace(
-                    `/admin/reauth?next=${window.location.pathname}`,
-                );
-                return;
-            }
-            if (!res.ok) {
-                const j = await res.json().catch(() => ({}));
-                toast.error(j.error ?? `Failed (${res.status})`);
-                return;
-            }
-            toast.success("Recording soft-deleted");
-            router.refresh();
-        } finally {
-            setBusy(false);
-        }
+        void confirm({
+            title: "Soft-delete this recording?",
+            description:
+                "The user will no longer see it. The audio blob is retained on storage for recovery.",
+            confirmLabel: "Soft-delete",
+            pendingLabel: "Deleting…",
+            destructive: true,
+            onConfirm: async () => {
+                setBusy(true);
+                try {
+                    const res = await fetch(
+                        "/api/admin/actions/soft-delete-recording",
+                        {
+                            method: "POST",
+                            headers: { "content-type": "application/json" },
+                            body: JSON.stringify({ recordingId, reason }),
+                        },
+                    );
+                    if (res.status === 404) {
+                        toast.error(
+                            "Admin session expired. Reauth and try again.",
+                        );
+                        router.replace(
+                            `/admin/reauth?next=${window.location.pathname}`,
+                        );
+                        return;
+                    }
+                    if (!res.ok) {
+                        const j = await res.json().catch(() => ({}));
+                        throw new Error(j.error ?? `Failed (${res.status})`);
+                    }
+                    toast.success("Recording soft-deleted");
+                    router.refresh();
+                } finally {
+                    setBusy(false);
+                }
+            },
+        });
     }
 
     return (

@@ -4,6 +4,7 @@ import { Bot, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useConfirm } from "@/components/confirm-dialog";
 import { AddProviderDialog } from "@/components/settings/add-provider-dialog";
 import { EditProviderDialog } from "@/components/settings/edit-provider-dialog";
 import { SettingsSectionHeader } from "@/components/settings/section-header";
@@ -47,6 +48,7 @@ export function ProvidersSection({
     initialProviders = [],
     isHosted = false,
 }: ProvidersSectionProps) {
+    const confirm = useConfirm();
     const { isLoadingSettings, isSavingSettings, setIsLoadingSettings } =
         useSettings();
     const [providers, setProviders] = useState<Provider[]>(initialProviders);
@@ -167,22 +169,24 @@ export function ProvidersSection({
         });
     };
 
-    const handleDeleteCustomPrompt = async (id: string) => {
-        if (!confirm("Are you sure you want to delete this custom prompt?")) {
-            return;
-        }
-
-        const updatedPrompts = customPrompts.filter((p) => p.id !== id);
-        setCustomPrompts(updatedPrompts);
-
-        const newSelectedPrompt =
-            selectedPromptId === id ? "default" : selectedPromptId;
-
-        setSelectedPromptId(newSelectedPrompt);
-
-        await handlePromptSettingChange({
-            selectedPrompt: newSelectedPrompt,
-            customPrompts: updatedPrompts,
+    const handleDeleteCustomPrompt = (id: string) => {
+        void confirm({
+            title: "Delete this custom prompt?",
+            description:
+                "Recordings already summarized with this prompt keep their existing summaries, but you won't be able to apply it again.",
+            confirmLabel: "Delete",
+            destructive: true,
+            onConfirm: async () => {
+                const updatedPrompts = customPrompts.filter((p) => p.id !== id);
+                setCustomPrompts(updatedPrompts);
+                const newSelectedPrompt =
+                    selectedPromptId === id ? "default" : selectedPromptId;
+                setSelectedPromptId(newSelectedPrompt);
+                await handlePromptSettingChange({
+                    selectedPrompt: newSelectedPrompt,
+                    customPrompts: updatedPrompts,
+                });
+            },
         });
     };
 
@@ -202,33 +206,32 @@ export function ProvidersSection({
         setIsEditProviderOpen(true);
     };
 
-    const handleDelete = async (id: string) => {
-        if (!confirm("Are you sure you want to delete this provider?")) {
-            return;
-        }
-
-        setDeletingId(id);
-        try {
-            const response = await fetch(`/api/settings/ai/providers/${id}`, {
-                method: "DELETE",
-            });
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || "Failed to delete");
-            }
-
-            toast.success("Provider deleted successfully");
-            await refreshProviders();
-        } catch (error) {
-            toast.error(
-                error instanceof Error
-                    ? error.message
-                    : "Failed to delete provider",
-            );
-        } finally {
-            setDeletingId(null);
-        }
+    const handleDelete = (id: string) => {
+        void confirm({
+            title: "Delete this provider?",
+            description:
+                "Its API key will be removed from this account. Recordings transcribed or summarized through it keep their data, but you'll need to re-add the provider to use it again.",
+            confirmLabel: "Delete",
+            pendingLabel: "Deleting…",
+            destructive: true,
+            onConfirm: async () => {
+                setDeletingId(id);
+                try {
+                    const response = await fetch(
+                        `/api/settings/ai/providers/${id}`,
+                        { method: "DELETE" },
+                    );
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.error || "Failed to delete");
+                    }
+                    toast.success("Provider deleted successfully");
+                    await refreshProviders();
+                } finally {
+                    setDeletingId(null);
+                }
+            },
+        });
     };
 
     return (

@@ -301,8 +301,18 @@ export function SettingsDialog({
                             <h2 className="text-lg font-semibold">Settings</h2>
                         </div>
                         <SidebarContent className="min-h-0">
-                            <SidebarMenu
-                                role="navigation"
+                            {/*
+                              Use a real <nav> for the navigation
+                              landmark instead of overloading
+                              SidebarMenu (which renders <ul>) with
+                              role="navigation". Each group below has
+                              its own <ul> via SidebarMenu, so the
+                              <li> items always sit under a proper
+                              list parent — fixing the previous
+                              ul > div > li nesting which is invalid
+                              HTML and confuses screen readers.
+                            */}
+                            <nav
                                 aria-label="Settings sections"
                                 className="space-y-4"
                             >
@@ -315,69 +325,74 @@ export function SettingsDialog({
                                             {group.label}
                                         </div>
                                         <SidebarGroupContent>
-                                            {group.items.map((item) => {
-                                                // Resolve the item's flat
-                                                // index so keyboard nav
-                                                // (which still indexes a
-                                                // flat list) stays in
-                                                // sync with what's
-                                                // rendered.
-                                                const flatIndex =
-                                                    settingsNav.findIndex(
-                                                        (n) => n.id === item.id,
-                                                    );
-                                                return (
-                                                    <SidebarMenuItem
-                                                        key={item.id}
-                                                    >
-                                                        <SidebarMenuButton
-                                                            data-settings-nav={
-                                                                flatIndex === 0
-                                                                    ? "first"
-                                                                    : undefined
-                                                            }
-                                                            isActive={
-                                                                activeSection ===
-                                                                item.id
-                                                            }
-                                                            data-keyboard-selected={
-                                                                keyboardSelectedIndex ===
-                                                                flatIndex
-                                                            }
-                                                            onClick={() =>
-                                                                handleSectionChange(
-                                                                    item.id,
-                                                                )
-                                                            }
-                                                            aria-label={`${item.name} settings`}
-                                                            aria-current={
-                                                                activeSection ===
-                                                                item.id
-                                                                    ? "page"
-                                                                    : undefined
-                                                            }
-                                                            className={
-                                                                item.id ===
-                                                                "dev"
-                                                                    ? "text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 data-[active=true]:bg-red-500/10 data-[active=true]:text-red-700 dark:data-[active=true]:text-red-300"
-                                                                    : undefined
-                                                            }
+                                            <SidebarMenu>
+                                                {group.items.map((item) => {
+                                                    // Resolve the item's flat
+                                                    // index so keyboard nav
+                                                    // (which still indexes a
+                                                    // flat list) stays in
+                                                    // sync with what's
+                                                    // rendered.
+                                                    const flatIndex =
+                                                        settingsNav.findIndex(
+                                                            (n) =>
+                                                                n.id ===
+                                                                item.id,
+                                                        );
+                                                    return (
+                                                        <SidebarMenuItem
+                                                            key={item.id}
                                                         >
-                                                            <item.icon
-                                                                className="size-4"
-                                                                aria-hidden="true"
-                                                            />
-                                                            <span>
-                                                                {item.name}
-                                                            </span>
-                                                        </SidebarMenuButton>
-                                                    </SidebarMenuItem>
-                                                );
-                                            })}
+                                                            <SidebarMenuButton
+                                                                data-settings-nav={
+                                                                    flatIndex ===
+                                                                    0
+                                                                        ? "first"
+                                                                        : undefined
+                                                                }
+                                                                isActive={
+                                                                    activeSection ===
+                                                                    item.id
+                                                                }
+                                                                data-keyboard-selected={
+                                                                    keyboardSelectedIndex ===
+                                                                    flatIndex
+                                                                }
+                                                                onClick={() =>
+                                                                    handleSectionChange(
+                                                                        item.id,
+                                                                    )
+                                                                }
+                                                                aria-label={`${item.name} settings`}
+                                                                aria-current={
+                                                                    activeSection ===
+                                                                    item.id
+                                                                        ? "page"
+                                                                        : undefined
+                                                                }
+                                                                className={
+                                                                    item.id ===
+                                                                    "dev"
+                                                                        ? "text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 data-[active=true]:bg-red-500/10 data-[active=true]:text-red-700 dark:data-[active=true]:text-red-300"
+                                                                        : undefined
+                                                                }
+                                                            >
+                                                                <item.icon
+                                                                    className="size-4"
+                                                                    aria-hidden="true"
+                                                                />
+                                                                <span>
+                                                                    {item.name}
+                                                                </span>
+                                                            </SidebarMenuButton>
+                                                        </SidebarMenuItem>
+                                                    );
+                                                })}
+                                            </SidebarMenu>
                                         </SidebarGroupContent>
                                     </SidebarGroup>
                                 ))}
-                            </SidebarMenu>
+                            </nav>
                         </SidebarContent>
                     </Sidebar>
 

@@ -54,7 +54,12 @@ function getAudioContext(): AudioContext {
 
 export interface PeaksResult {
     peaks: number[];
-    /** Total samples that were decoded (across all channels). */
+    /**
+     * Per-channel frame count (i.e. `audio.length`). Multiply by
+     * `numberOfChannels` if you need total decoded samples — we don't
+     * surface channel count separately because the only consumer
+     * (waveform render) doesn't need it.
+     */
     sampleCount: number;
     /** Decoded audio length in seconds. */
     durationSeconds: number;

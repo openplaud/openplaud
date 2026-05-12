@@ -38,6 +38,12 @@ export function serializeRecording(
         startTime: recording.startTime.toISOString(),
         hasTranscript: flags?.hasTranscript ?? false,
         hasSummary: flags?.hasSummary ?? false,
-        waveformPeaks: flags?.waveformPeaks ?? null,
+        // Empty arrays would be invalid per the field contract ("null
+        // when never decoded"); collapse them to null at the
+        // serialization boundary so consumers never have to special-case
+        // `peaks.length === 0`.
+        waveformPeaks: flags?.waveformPeaks?.length
+            ? flags.waveformPeaks
+            : null,
     };
 }

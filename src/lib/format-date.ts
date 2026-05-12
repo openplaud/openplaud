@@ -32,7 +32,9 @@ export function formatDateTime(
  * Bucket a date into a human group label for the recording list.
  * Buckets are stable and ordered newest → oldest:
  *   Today | Yesterday | This week | Earlier this month |
- *   <Month YYYY> for older within this year | <Month YYYY> for previous years.
+ *   <Month> for older within this year | <Month YYYY> for previous years.
+ * The current-year buckets omit the year because the section header
+ * "this year" is implicit and adding `2025` to every label is noise.
  *
  * Callers should preserve their existing sort order; this function only
  * returns a label, it does not re-sort.

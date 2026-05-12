@@ -272,9 +272,15 @@ export function CommandPalette({
                                     // The state (audio-only / transcribed
                                     // / processed) is conveyed by the
                                     // leading icon — no text duplication.
-                                    const durationText = r.duration
-                                        ? formatDurationMs(r.duration)
-                                        : null;
+                                    // Null/undefined check — a 0 ms
+                                    // duration is a real value (treat as
+                                    // "0:00") and should still render so
+                                    // the user can see the recording is
+                                    // tracked even if it failed to record.
+                                    const durationText =
+                                        r.duration != null
+                                            ? formatDurationMs(r.duration)
+                                            : null;
                                     const timeText = formatDateTime(
                                         r.startTime,
                                         dateTimeFormat,

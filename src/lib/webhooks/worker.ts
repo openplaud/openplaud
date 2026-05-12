@@ -369,9 +369,12 @@ async function claimDueWebhookDeliveries(): Promise<ClaimedDelivery[]> {
     // Date sits behind a Drizzle column predicate, but raw sql`...` with
     // Date placeholders crashes under Bun/Next 16 with
     // ERR_INVALID_ARG_TYPE ("Received an instance of Date"). Cast the
-    // ISO string explicitly to `timestamptz` so the driver gets a
-    // plain string and Postgres still does timestamp comparison.
-    const nowParam = sql`${now.toISOString()}::timestamptz`;
+    // ISO string explicitly to `timestamp` to match the column type
+    // (`webhookDeliveries.nextAttemptAt` is `timestamp`, not
+    // `timestamptz`); using `::timestamptz` would force a timezone
+    // conversion on every comparison and skew the due window in any
+    // non-UTC server timezone.
+    const nowParam = sql`${now.toISOString()}::timestamp`;
 
     const candidateResult = await db.execute(sql`
         select id

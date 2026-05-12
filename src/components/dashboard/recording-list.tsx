@@ -614,14 +614,36 @@ export const RecordingList = forwardRef<
                                                         <DropdownMenuItem
                                                             variant="destructive"
                                                             onSelect={(e) => {
-                                                                // Let the
+                                                                // Keep the
                                                                 // dropdown
-                                                                // close before
-                                                                // we open the
-                                                                // confirm so
+                                                                // mounted
+                                                                // while the
+                                                                // confirm
+                                                                // dialog
+                                                                // opens —
+                                                                // Radix's
+                                                                // standard
+                                                                // dialog-from-menu
+                                                                // pattern
+                                                                // (without
+                                                                // this, the
+                                                                // menu's
+                                                                // close
+                                                                // animation
+                                                                // races the
+                                                                // dialog's
+                                                                // open and
                                                                 // focus
-                                                                // doesn't
-                                                                // bounce.
+                                                                // bounces
+                                                                // back to
+                                                                // the
+                                                                // trigger).
+                                                                // The
+                                                                // confirm's
+                                                                // overlay
+                                                                // dismisses
+                                                                // the menu
+                                                                // visually.
                                                                 e.preventDefault();
                                                                 void confirm({
                                                                     title: "Delete this recording?",

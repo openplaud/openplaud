@@ -256,7 +256,13 @@ export function Waveform({
         (e: React.PointerEvent<HTMLDivElement>) => {
             if (disabled) return;
             isDraggingRef.current = true;
-            (e.target as Element).setPointerCapture(e.pointerId);
+            // Capture on `currentTarget` (the wrapper div that owns the
+            // pointer handlers), not `e.target` — the user might press
+            // on the inner <canvas>, which would still capture but only
+            // until the canvas is removed from the tree, and would also
+            // stop working the day we add e.g. an absolute-positioned
+            // tooltip child that swallows the pointer event.
+            e.currentTarget.setPointerCapture(e.pointerId);
             const r = ratioFromClientX(e.clientX);
             setHoverRatio(r);
             onSeek(r);

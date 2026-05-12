@@ -27,11 +27,26 @@ interface Transcription {
 interface RecordingWorkstationProps {
     recording: Recording;
     transcription?: Transcription;
+    /**
+     * User playback preferences forwarded into the embedded
+     * RecordingPlayer. Server-resolved (with the same defaults as the
+     * dashboard's Workstation) so callers don't need to know the
+     * shape of user_settings; the page server-component reads them
+     * once and hands them down here.
+     */
+    initialPlaybackSpeed?: number;
+    initialVolume?: number;
+    initialAutoPlayNext?: boolean;
+    scrubberStyle?: "waveform" | "slider";
 }
 
 export function RecordingWorkstation({
     recording,
     transcription,
+    initialPlaybackSpeed,
+    initialVolume,
+    initialAutoPlayNext,
+    scrubberStyle,
 }: RecordingWorkstationProps) {
     const router = useRouter();
     const [isTranscribing, setIsTranscribing] = useState(false);
@@ -118,7 +133,13 @@ export function RecordingWorkstation({
 
                 {/* Content */}
                 <div className="space-y-6">
-                    <RecordingPlayer recording={recording} />
+                    <RecordingPlayer
+                        recording={recording}
+                        initialPlaybackSpeed={initialPlaybackSpeed}
+                        initialVolume={initialVolume}
+                        initialAutoPlayNext={initialAutoPlayNext}
+                        scrubberStyle={scrubberStyle}
+                    />
                     <TranscriptionPanel
                         recording={recording}
                         transcription={transcription}

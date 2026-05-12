@@ -20,7 +20,11 @@ import { cn } from "@/lib/utils";
  * dominate the toolbar.
  */
 function compactAgo(from: Date): string {
-    const diffMs = Date.now() - from.getTime();
+    // Guard against `new Date(invalid)` reaching us — `getTime()` would
+    // return NaN and every downstream branch would render "NaN m ago".
+    const ts = from.getTime();
+    if (!Number.isFinite(ts)) return "";
+    const diffMs = Date.now() - ts;
     if (diffMs < 0) return "just now";
     const sec = Math.floor(diffMs / 1000);
     if (sec < 45) return "just now";

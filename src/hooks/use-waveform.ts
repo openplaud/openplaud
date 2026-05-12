@@ -31,9 +31,13 @@ interface UseWaveformResult {
 
 /**
  * Decode + cache the waveform for a single recording. Idempotent across
- * tab focus changes and recording switches; in-flight decodes are
- * abortable so switching the selected recording mid-decode doesn't leak
- * CPU on the wrong file.
+ * tab focus changes and recording switches; in-flight network fetches
+ * are aborted via AbortController on switch / unmount, but the CPU-bound
+ * `decodePeaks()` itself is not interruptible — once decoding starts we
+ * let it finish and drop the result if the recording id has changed or
+ * the component unmounted (the stale-result guards below). In practice
+ * the decode is bounded by AUTO_DECODE_MAX_MS and runs off-main-thread
+ * in modern browsers, so the wasted work is small.
  */
 export function useWaveform({
     recordingId,
@@ -66,6 +70,20 @@ export function useWaveform({
         setPeaks(initialPeaks);
         setStatus(initialPeaks ? "ready" : "idle");
     }, [recordingId]);
+
+    // Unmount cleanup: abort any in-flight fetch so we don't keep
+    // bytes flowing into a component that's gone. The recording-switch
+    // effect above only fires on dep change — it does not run on the
+    // final unmount, so without this hook a decode started seconds
+    // before unmount would still resolve and call setPeaks on a
+    // dead component (React 19 swallows the warning, but the network
+    // and CPU work is still wasted).
+    useEffect(() => {
+        return () => {
+            abortRef.current?.abort();
+            abortRef.current = null;
+        };
+    }, []);
 
     const runDecode = useCallback(async () => {
         const id = recordingId;

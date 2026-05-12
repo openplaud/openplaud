@@ -39,6 +39,11 @@ export function StorageSection({ isHosted = false }: StorageSectionProps) {
     const [autoDeleteRecordings, setAutoDeleteRecordings] = useState(false);
     const [retentionDays, setRetentionDays] = useState<number | null>(null);
     const [usage, setUsage] = useState<StorageUsage | null>(null);
+    // Distinct from `usage === null` so we can tell "haven't loaded
+    // yet" apart from "loaded and the API returned no shape we can
+    // use". Without this, the UsageHero rendered all-zero numbers
+    // during the fetch — indistinguishable from a real empty account.
+    const [isLoadingUsage, setIsLoadingUsage] = useState(true);
     const saveTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
     // Tracks a retention-days edit that was scheduled but not yet sent.
     // Used to flush the pending save on unmount so closing the settings
@@ -71,6 +76,7 @@ export function StorageSection({ isHosted = false }: StorageSectionProps) {
         };
         fetchSettings();
 
+        setIsLoadingUsage(true);
         fetch("/api/settings/storage", { signal: controller.signal })
             .then(async (res) => {
                 if (!res.ok) return null;
@@ -97,11 +103,13 @@ export function StorageSection({ isHosted = false }: StorageSectionProps) {
             .then((data) => {
                 if (cancelled) return;
                 setUsage(data);
+                setIsLoadingUsage(false);
             })
             .catch((err) => {
                 if (cancelled) return;
                 if ((err as { name?: string })?.name === "AbortError") return;
                 setUsage(null);
+                setIsLoadingUsage(false);
             });
 
         return () => {
@@ -202,15 +210,31 @@ export function StorageSection({ isHosted = false }: StorageSectionProps) {
                 icon={HardDrive}
             />
 
-            <UsageHero
-                usedBytes={usage?.usedBytes ?? 0}
-                recordingCount={usage?.recordingCount ?? 0}
-                totalDurationMs={usage?.totalDurationMs ?? 0}
-                diskFreeBytes={usage?.diskFreeBytes ?? null}
-                quotaBytes={usage?.quotaBytes ?? null}
-            />
+            {isLoadingUsage ? (
+                // Match UsageHero's vertical footprint so the layout
+                // doesn't jump when the fetch resolves. animate-pulse
+                // signals "data on the way" without committing to
+                // specific numbers (which would falsely read as
+                // "you have 0 recordings").
+                <div
+                    className="h-32 animate-pulse rounded-lg border bg-muted/40"
+                    aria-hidden="true"
+                />
+            ) : usage ? (
+                <UsageHero
+                    usedBytes={usage.usedBytes}
+                    recordingCount={usage.recordingCount}
+                    totalDurationMs={usage.totalDurationMs}
+                    diskFreeBytes={usage.diskFreeBytes}
+                    quotaBytes={usage.quotaBytes}
+                />
+            ) : (
+                <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-6 text-center text-sm text-muted-foreground">
+                    Couldn't load storage usage. Refresh to try again.
+                </div>
+            )}
 
-            {usage && usage.largest.length > 0 && (
+            {!isLoadingUsage && usage && usage.largest.length > 0 && (
                 <div className="space-y-3">
                     <BreakdownBar
                         segments={usage.largest.map((r) => ({

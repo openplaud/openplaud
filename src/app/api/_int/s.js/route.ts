@@ -23,7 +23,15 @@ export async function GET() {
     }
 
     const upstream = `${env.RYBBIT_HOST.replace(/\/$/, "")}/api/script.js`;
-    const res = await fetch(upstream, { cache: "no-store" });
+    let res: Response;
+    try {
+        res = await fetch(upstream, { cache: "no-store" });
+    } catch {
+        // DNS failure, timeout, refused connection, etc. Mirror the
+        // event proxy and produce a controlled 502 instead of letting
+        // the route handler crash into a 500.
+        return new NextResponse("Bad gateway", { status: 502 });
+    }
     if (!res.ok || !res.body) {
         return new NextResponse("Bad gateway", { status: 502 });
     }

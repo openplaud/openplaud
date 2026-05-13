@@ -60,6 +60,10 @@ afterEach(() => {
     mockEnv.IS_HOSTED = undefined;
     mockEnv.RYBBIT_HOST = undefined;
     mockEnv.RYBBIT_SITE_ID = undefined;
+    // Restore per-test, not just per-file: Vitest workers can execute
+    // multiple test files in the same process and a leaked `fetch` mock
+    // would cause order-dependent failures elsewhere.
+    globalThis.fetch = originalFetch;
     vi.restoreAllMocks();
 });
 

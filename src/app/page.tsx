@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { Footer } from "@/components/footer";
 import { Deploy } from "@/components/landing/deploy";
 import { FAQ } from "@/components/landing/faq";
 import { Features } from "@/components/landing/features";
@@ -10,6 +9,7 @@ import { LandingNav } from "@/components/landing/landing-nav";
 import { Pricing } from "@/components/landing/pricing";
 import { RedditQuotes } from "@/components/landing/reddit-quotes";
 import { TheMath } from "@/components/landing/the-math";
+import { LandingFooter } from "@/components/landing-footer";
 import { getSession } from "@/lib/auth-server";
 import { env } from "@/lib/env";
 
@@ -41,7 +41,7 @@ export default async function HomePage() {
                 <FAQ />
                 <FinalCTA />
             </main>
-            <Footer />
+            <LandingFooter />
         </div>
     );
 }

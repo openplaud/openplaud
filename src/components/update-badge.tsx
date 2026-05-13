@@ -29,7 +29,14 @@ export async function UpdateBadge() {
 
     const latestTag = await fetchLatestReleaseTag();
     if (!latestTag) return null;
-    if (compareSemver(APP_VERSION, latestTag) >= 0) return null;
+    // `compareSemver` returns null when either input fails to parse as
+    // X.Y.Z -- treat that as "can't determine, hide the badge" rather
+    // than surface a misleading or crashing UI. APP_VERSION is sourced
+    // from package.json and not pre-validated against the tag regex,
+    // so a malformed local version (e.g. "0.4.2-dirty") lands here.
+    const cmp = compareSemver(APP_VERSION, latestTag);
+    if (cmp === null) return null;
+    if (cmp >= 0) return null;
 
     return (
         <Link

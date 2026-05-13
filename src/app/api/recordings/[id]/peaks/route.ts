@@ -101,9 +101,13 @@ export const POST = apiHandler<IdContext>(async (request, context) => {
         return NextResponse.json({ stored: false });
     }
 
-    // Conditional write: only set peaks if still NULL. Two simultaneous
-    // POSTs race here; whoever commits first wins, the loser falls
-    // through to the `stored: false` path on the next request.
+    // Conditional write: only set peaks if still NULL **and** the
+    // recording hasn't been deleted in the meantime. Both predicates
+    // sit on the UPDATE itself so a concurrent DELETE that flips
+    // `deletedAt` between our SELECT above and this UPDATE simply
+    // matches zero rows — we never resurrect a tombstoned recording
+    // by writing peaks to it. No transaction needed; one statement
+    // does the check-and-write atomically.
     const result = await db
         .update(recordings)
         .set({ waveformPeaks: normalized, updatedAt: new Date() })
@@ -111,6 +115,7 @@ export const POST = apiHandler<IdContext>(async (request, context) => {
             and(
                 eq(recordings.id, id),
                 eq(recordings.userId, session.user.id),
+                isNull(recordings.deletedAt),
                 sql`${recordings.waveformPeaks} is null`,
             ),
         );

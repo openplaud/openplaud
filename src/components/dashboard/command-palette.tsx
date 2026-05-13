@@ -156,7 +156,14 @@ export function CommandPalette({
             if (r.hasTranscript) continue;
             if (inFlightActions.get(r.id) === "transcribing") continue;
             const snippet = transcriptSnippet(transcriptions.get(r.id)?.text);
-            const value = [r.filename, r.id, snippet ?? ""].join(" ");
+            // Filter falsy parts before joining so the value doesn't
+            // end in a trailing space when `snippet` is null. cmdk
+            // trims values internally, so a trailing space would
+            // make `activeValue` (trimmed) miss this map's key and
+            // ⌘↵ / Ctrl+↵ would silently no-op.
+            const value = [r.filename, r.id, snippet]
+                .filter((p): p is string => Boolean(p))
+                .join(" ");
             map.set(value, r.id);
         }
         return map;

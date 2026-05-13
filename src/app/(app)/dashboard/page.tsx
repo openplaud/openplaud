@@ -10,6 +10,7 @@ import {
 import { isAdminEmail } from "@/lib/admin/guard";
 import { requireAuth } from "@/lib/auth-server";
 import { decryptText } from "@/lib/encryption/fields";
+import { initialSettingsFromRow } from "@/lib/settings/initial-settings";
 import { serializeRecording } from "@/types/recording";
 
 export default async function DashboardPage() {
@@ -91,31 +92,10 @@ export default async function DashboardPage() {
         .where(eq(userSettings.userId, session.user.id))
         .limit(1);
 
-    const initialSettings = {
-        dateTimeFormat: (settingsRow?.dateTimeFormat ?? "relative") as
-            | "relative"
-            | "absolute"
-            | "iso",
-        recordingListSortOrder: (settingsRow?.recordingListSortOrder ??
-            "newest") as "newest" | "oldest" | "name",
-        itemsPerPage: settingsRow?.itemsPerPage ?? 50,
-        listDensity: (settingsRow?.listDensity ?? "comfortable") as
-            | "comfortable"
-            | "compact",
-        theme: (settingsRow?.theme ?? "system") as "light" | "dark" | "system",
-        defaultPlaybackSpeed: settingsRow?.defaultPlaybackSpeed ?? 1.0,
-        defaultVolume: settingsRow?.defaultVolume ?? 75,
-        autoPlayNext: settingsRow?.autoPlayNext ?? false,
-        playerScrubber: (settingsRow?.playerScrubber ?? "waveform") as
-            | "waveform"
-            | "slider",
-        syncInterval: settingsRow?.syncInterval ?? 300000,
-        autoSyncEnabled: settingsRow?.autoSyncEnabled ?? true,
-        syncOnMount: settingsRow?.syncOnMount ?? true,
-        syncOnVisibilityChange: settingsRow?.syncOnVisibilityChange ?? true,
-        syncNotifications: settingsRow?.syncNotifications ?? true,
-        browserNotifications: settingsRow?.browserNotifications ?? true,
-    };
+    // One source of truth for InitialSettings + their defaults lives in
+    // `src/lib/settings/initial-settings.ts`; adding a new preference
+    // there is the only place callers need to touch.
+    const initialSettings = initialSettingsFromRow(settingsRow);
 
     return (
         <Workstation

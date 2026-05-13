@@ -27,7 +27,9 @@ function compactAgo(from: Date): string {
     const diffMs = Date.now() - ts;
     if (diffMs < 0) return "just now";
     const sec = Math.floor(diffMs / 1000);
-    if (sec < 45) return "just now";
+    // Everything under a minute reads as "just now" — otherwise the
+    // 45–59 s window renders "0m ago" because `min = floor(sec/60)`.
+    if (sec < 60) return "just now";
     const min = Math.floor(sec / 60);
     if (min < 60) return `${min}m ago`;
     const hr = Math.floor(min / 60);

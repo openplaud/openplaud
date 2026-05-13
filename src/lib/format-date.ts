@@ -45,7 +45,11 @@ export function dateGroupLabel(date: Date | string): string {
     if (isYesterday(d)) return "Yesterday";
     const now = new Date();
     const days = differenceInDays(now, d);
-    if (days < 7) return "This week";
+    // Guard for past-only: a future-dated recording (clock skew, bad
+    // device metadata) would otherwise land in "This week" because
+    // `days` would be negative. Future items fall through to the
+    // month/year buckets below, which is the right home for them.
+    if (days >= 0 && days < 7) return "This week";
     if (
         d.getMonth() === now.getMonth() &&
         d.getFullYear() === now.getFullYear()

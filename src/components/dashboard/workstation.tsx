@@ -32,6 +32,7 @@ import {
     showNewRecordingNotification,
     showSyncCompleteNotification,
 } from "@/lib/notifications/browser";
+import type { InitialSettings } from "@/lib/settings/initial-settings";
 import { SYNC_CONFIG } from "@/lib/sync-config";
 import { cn } from "@/lib/utils";
 import type { Recording } from "@/types/recording";
@@ -41,23 +42,9 @@ interface TranscriptionData {
     language?: string;
 }
 
-interface InitialSettings {
-    dateTimeFormat: "relative" | "absolute" | "iso";
-    recordingListSortOrder: "newest" | "oldest" | "name";
-    itemsPerPage: number;
-    listDensity: "comfortable" | "compact";
-    theme: "light" | "dark" | "system";
-    defaultPlaybackSpeed: number;
-    defaultVolume: number;
-    autoPlayNext: boolean;
-    playerScrubber: "waveform" | "slider";
-    syncInterval: number;
-    autoSyncEnabled: boolean;
-    syncOnMount: boolean;
-    syncOnVisibilityChange: boolean;
-    syncNotifications: boolean;
-    browserNotifications: boolean;
-}
+// InitialSettings + its defaults live in
+// `src/lib/settings/initial-settings.ts` so server pages and the
+// client component agree on shape and fallback values.
 
 interface WorkstationProps {
     recordings: Recording[];
@@ -88,7 +75,11 @@ export function Workstation({
     const [currentRecording, setCurrentRecording] = useState<Recording | null>(
         recordings.length > 0 ? recordings[0] : null,
     );
-    const [isTranscribing, setIsTranscribing] = useState(false);
+    // No standalone `isTranscribing` boolean: that races when two
+    // transcribes run concurrently (each request's `finally` would
+    // flip it back to false while another was still pending). The
+    // per-id `inFlightActions` map below is the source of truth;
+    // `isCurrentTranscribing` / `anyTranscribing` are derived from it.
     const [isUploading, setIsUploading] = useState(false);
     const uploadInputRef = useRef<HTMLInputElement>(null);
     const [settingsOpen, setSettingsOpen] = useState(false);
@@ -130,7 +121,17 @@ export function Workstation({
         ? transcriptions.get(currentRecording.id)
         : undefined;
 
-    const isProcessing = isTranscribing || isUploading;
+    // Any transcribe in flight (across all recordings) blocks new
+    // uploads. The previous `isTranscribing` boolean conflated "this
+    // recording is being transcribed" with "some transcribe is
+    // happening"; splitting them out fixes the concurrency bug.
+    const anyTranscribing = Array.from(inFlightActions.values()).some(
+        (kind) => kind === "transcribing",
+    );
+    const isCurrentTranscribing =
+        currentRecording !== null &&
+        inFlightActions.get(currentRecording.id) === "transcribing";
+    const isProcessing = anyTranscribing || isUploading;
 
     // Keep currentRecording in sync with the recordings prop (updated
     // after router.refresh()). If the previously-selected recording is no
@@ -228,7 +229,6 @@ export function Workstation({
     const transcribeById = useCallback(
         async (id: string) => {
             markAction(id, "transcribing");
-            setIsTranscribing(true);
             try {
                 const response = await fetch(
                     `/api/recordings/${id}/transcribe`,
@@ -244,7 +244,10 @@ export function Workstation({
             } catch {
                 toast.error("Failed to transcribe recording");
             } finally {
-                setIsTranscribing(false);
+                // Per-id clear only — don't touch any global "is
+                // transcribing" flag (there isn't one), so a concurrent
+                // transcribe on a different recording keeps its own
+                // marker intact.
                 markAction(id, null);
             }
         },
@@ -350,7 +353,11 @@ export function Workstation({
         onOpenPalette: () => setPaletteOpen(true),
         onOpenShortcuts: () => setShortcutsOpen(true),
         onOpenSettings: () => setSettingsOpen(true),
-        enabled: !settingsOpen && !onboardingOpen && !paletteOpen,
+        // Disable global j/k/?/,/Enter etc. while any modal is open
+        // so the modal owns keyboard focus exclusively. The shortcuts
+        // dialog itself uses these very keys to navigate its rows.
+        enabled:
+            !settingsOpen && !onboardingOpen && !paletteOpen && !shortcutsOpen,
     });
 
     return (
@@ -617,7 +624,9 @@ export function Workstation({
                                         <TranscriptionPanel
                                             recording={currentRecording}
                                             transcription={currentTranscription}
-                                            isTranscribing={isTranscribing}
+                                            isTranscribing={
+                                                isCurrentTranscribing
+                                            }
                                             onTranscribe={handleTranscribe}
                                         />
                                     </>

@@ -12,6 +12,7 @@
  *     cross-tenant data leak)
  */
 
+import { PgDialect } from "drizzle-orm/pg-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const envState = {
@@ -42,11 +43,19 @@ vi.mock("@/lib/encryption/fields", () => ({
     ),
 }));
 
-// Captures every where(...) clause passed to a query builder. Each call
-// is a Drizzle SQL expression, but inspecting it directly is brittle; we
-// instead assert that *every* select issued a where() (= userId scoping)
-// by counting calls.
+// Captures every where(...) clause passed to a query builder. Each
+// call is a Drizzle SQL expression; below we render it via the PG
+// dialect so we can assert both that a `where` was issued **and** that
+// the userId predicate is actually present (not just that some
+// where() happened, which a count-only check would let pass even if
+// the SQL had no userId reference at all).
 const whereSpy = vi.fn();
+const pgDialect = new PgDialect();
+
+function whereCallToSql(call: unknown[]) {
+    const arg = call[0] as Parameters<typeof pgDialect.sqlToQuery>[0];
+    return pgDialect.sqlToQuery(arg);
+}
 
 const mockDb = {
     select: vi.fn(),
@@ -145,9 +154,19 @@ describe("GET /api/settings/storage", () => {
             }),
         ]);
 
-        // Every select issued a where() — userId scoping in place.
-        // Two queries → two where() calls.
+        // Tenant isolation: every where() the route issued must
+        // reference `user_id` AND bind the session user's id as a
+        // parameter. Counting calls alone wouldn't catch a regression
+        // that swaps `eq(recordings.userId, ...)` for, say,
+        // `eq(recordings.id, ...)` while leaving a single where() in
+        // place. Rendering the SQL via the real PG dialect verifies
+        // both predicate column and bound value.
         expect(whereSpy).toHaveBeenCalledTimes(2);
+        for (const call of whereSpy.mock.calls) {
+            const { sql, params } = whereCallToSql(call);
+            expect(sql).toMatch(/"user_id"/);
+            expect(params).toContain("user-storage-1");
+        }
     });
 
     it("hides the storage backend and skips disk-free on hosted", async () => {

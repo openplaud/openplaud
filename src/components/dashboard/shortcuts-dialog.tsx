@@ -33,7 +33,10 @@ const groups: { title: string; rows: ShortcutRow[] }[] = [
         rows: [
             { keys: ["j"], description: "Next recording" },
             { keys: ["k"], description: "Previous recording" },
-            { keys: ["Enter"], description: "Focus player" },
+            // No `Enter → Focus player` row here: selecting a recording
+            // via j/k already mounts the player; there's no separate
+            // "focus the player" gesture and adding one would conflict
+            // with the search box's Enter handler.
         ],
     },
     {

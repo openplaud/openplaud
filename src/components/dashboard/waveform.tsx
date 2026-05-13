@@ -301,23 +301,35 @@ export function Waveform({
         (e: React.KeyboardEvent<HTMLDivElement>) => {
             if (disabled) return;
             const step = e.shiftKey ? 0.05 : 0.01;
+            // Track whether we handled the key so we know whether to
+            // stop propagation. Without this guard, an ArrowLeft on a
+            // focused waveform would (a) move the waveform by 1% here,
+            // then (b) bubble to RecordingPlayer's window-level
+            // listener which would also seek -5 s — a visible double
+            // jump. We only swallow the events we actually consumed so
+            // unrelated keys (Tab, Esc, etc.) keep working normally.
+            let handled = false;
             switch (e.key) {
                 case "ArrowLeft":
-                    e.preventDefault();
                     onSeek(Math.max(0, progress - step));
+                    handled = true;
                     break;
                 case "ArrowRight":
-                    e.preventDefault();
                     onSeek(Math.min(1, progress + step));
+                    handled = true;
                     break;
                 case "Home":
-                    e.preventDefault();
                     onSeek(0);
+                    handled = true;
                     break;
                 case "End":
-                    e.preventDefault();
                     onSeek(1);
+                    handled = true;
                     break;
+            }
+            if (handled) {
+                e.preventDefault();
+                e.stopPropagation();
             }
         },
         [disabled, progress, onSeek],

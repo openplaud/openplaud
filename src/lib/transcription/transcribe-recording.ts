@@ -39,6 +39,15 @@ export interface TranscribeOptions {
     providerId?: string;
     /** Override the provider's default model for this single call. */
     model?: string;
+    /**
+     * Re-run the provider call even when a transcript already exists.
+     * Used by the manual "Re-transcribe" button so a user clicking it
+     * with an override (or just wanting a fresh result) actually re-hits
+     * the API and overwrites the stored transcript. The sync worker
+     * leaves this `false` so duplicate post-sync auto-transcribes remain
+     * idempotent.
+     */
+    force?: boolean;
 }
 
 export interface TranscribeResult {
@@ -93,11 +102,13 @@ export async function transcribeRecording(
             )
             .limit(1);
 
-        if (existingTranscription?.text) {
-            // Idempotent: a prior run already produced a transcript. The
-            // manual re-transcribe path purges the transcription row
-            // before calling us, so this short-circuit only fires when a
-            // duplicate auto-transcribe was scheduled.
+        if (existingTranscription?.text && !opts.force) {
+            // Idempotent short-circuit: a prior run already produced a
+            // transcript and the caller hasn't asked for a forced re-run.
+            // The sync worker relies on this so duplicate post-sync
+            // auto-transcribes are no-ops. The manual "Re-transcribe"
+            // route passes `force: true` to bypass it (so provider/model
+            // overrides actually take effect).
             return {
                 success: true,
                 text: decryptText(existingTranscription.text),

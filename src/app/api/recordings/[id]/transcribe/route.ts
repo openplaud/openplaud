@@ -32,9 +32,14 @@ export const POST = apiHandler<IdContext>(async (request, context) => {
         typeof body.providerId === "string" ? body.providerId : undefined;
     const model = typeof body.model === "string" ? body.model : undefined;
 
+    // `force: true` so a manual "Re-transcribe" click always re-hits the
+    // provider and overwrites the existing transcript. Without this the
+    // worker's idempotent short-circuit would silently no-op the click
+    // (and any providerId/model override sent with it).
     const result = await transcribeRecording(session.user.id, id, {
         providerId,
         model,
+        force: true,
     });
 
     if (!result.success) {

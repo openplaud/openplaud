@@ -156,7 +156,11 @@ describe("issue #101 — transcribeRecording sends chunking_strategy for diarize
 
     function mockRecordingFlow(opts: {
         defaultModel: string;
-        overrideProviderId?: string;
+        /**
+         * Stub an existing transcription row. Used to exercise the
+         * idempotent short-circuit vs. the `force: true` re-run path.
+         */
+        existingTranscription?: { id: string; text: string };
     }) {
         const recordingRow = {
             id: recordingId,
@@ -183,11 +187,17 @@ describe("issue #101 — transcribeRecording sends chunking_strategy for diarize
                     }),
                 }),
             })
-            // existing transcription (none)
+            // existing transcription
             .mockReturnValueOnce({
                 from: vi.fn().mockReturnValue({
                     where: vi.fn().mockReturnValue({
-                        limit: vi.fn().mockResolvedValue([]),
+                        limit: vi
+                            .fn()
+                            .mockResolvedValue(
+                                opts.existingTranscription
+                                    ? [opts.existingTranscription]
+                                    : [],
+                            ),
                     }),
                 }),
             })
@@ -303,16 +313,58 @@ describe("issue #101 — transcribeRecording sends chunking_strategy for diarize
         });
         // Provider default is plain whisper-1; the manual route overrides
         // it to the diarize model. The shared helper must still inject
-        // chunking_strategy.
+        // chunking_strategy. `force: true` mirrors the real route so the
+        // existing-transcription short-circuit can't hide the override.
         mockRecordingFlow({ defaultModel: "whisper-1" });
 
         const result = await transcribeRecording(userId, recordingId, {
             model: "gpt-4o-transcribe-diarize",
+            force: true,
         });
 
         expect(result.success).toBe(true);
         const args = audioCreate.mock.calls[0]?.[0];
         expect(args.model).toBe("gpt-4o-transcribe-diarize");
         expect(args.chunking_strategy).toBe("auto");
+    });
+
+    it("force: true re-runs the provider even when a transcript already exists", async () => {
+        // Without `force`, the worker would short-circuit on the existing
+        // transcription row and the manual override would never reach the
+        // provider. The manual route passes `force: true` for exactly
+        // this reason.
+        audioCreate.mockResolvedValue({
+            segments: [{ speaker: "speaker_1", text: "fresh diarized run" }],
+        });
+        mockRecordingFlow({
+            defaultModel: "whisper-1",
+            existingTranscription: { id: "tr-1", text: "enc:stale" },
+        });
+
+        const result = await transcribeRecording(userId, recordingId, {
+            model: "gpt-4o-transcribe-diarize",
+            force: true,
+        });
+
+        expect(result.success).toBe(true);
+        expect(audioCreate).toHaveBeenCalledTimes(1);
+        const args = audioCreate.mock.calls[0]?.[0];
+        expect(args.model).toBe("gpt-4o-transcribe-diarize");
+        expect(args.chunking_strategy).toBe("auto");
+    });
+
+    it("without force, short-circuits on an existing transcript and skips the provider call", async () => {
+        mockRecordingFlow({
+            defaultModel: "gpt-4o-transcribe-diarize",
+            existingTranscription: {
+                id: "tr-1",
+                text: "enc:already transcribed",
+            },
+        });
+
+        const result = await transcribeRecording(userId, recordingId);
+
+        expect(result.success).toBe(true);
+        expect(audioCreate).not.toHaveBeenCalled();
     });
 });

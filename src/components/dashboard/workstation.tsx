@@ -62,6 +62,13 @@ interface WorkstationProps {
      */
     userEmail?: string | null;
     initialSettings: InitialSettings;
+    /**
+     * True when running in OpenPlaud's hosted mode (`IS_HOSTED=true`).
+     * Forwarded into SettingsDialog so hosted-only UI gating (e.g. the
+     * self-host-only storage backend card) reflects the deployment mode.
+     * Server-supplied; never derive client-side.
+     */
+    isHosted?: boolean;
 }
 
 export function Workstation({
@@ -70,6 +77,7 @@ export function Workstation({
     isAdmin = false,
     userEmail = null,
     initialSettings,
+    isHosted = false,
 }: WorkstationProps) {
     const router = useRouter();
     const [currentRecording, setCurrentRecording] = useState<Recording | null>(
@@ -676,6 +684,7 @@ export function Workstation({
                 open={settingsOpen}
                 onOpenChange={setSettingsOpen}
                 initialProviders={providers}
+                isHosted={isHosted}
                 onReRunOnboarding={() => {
                     setSettingsOpen(false);
                     setOnboardingOpen(true);

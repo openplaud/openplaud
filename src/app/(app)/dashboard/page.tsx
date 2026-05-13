@@ -10,6 +10,7 @@ import {
 import { isAdminEmail } from "@/lib/admin/guard";
 import { requireAuth } from "@/lib/auth-server";
 import { decryptText } from "@/lib/encryption/fields";
+import { env } from "@/lib/env";
 import { initialSettingsFromRow } from "@/lib/settings/initial-settings";
 import { serializeRecording } from "@/types/recording";
 
@@ -104,6 +105,7 @@ export default async function DashboardPage() {
             isAdmin={isAdminEmail(session.user.email)}
             userEmail={session.user.email ?? null}
             initialSettings={initialSettings}
+            isHosted={env.IS_HOSTED}
         />
     );
 }

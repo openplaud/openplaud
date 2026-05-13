@@ -7,9 +7,9 @@
  *   - RYBBIT_HOST is an optional URL; non-URL strings must be rejected.
  *   - Partial config (only one of the two set) parses fine at the schema
  *     level. The runtime gate in src/components/rybbit-analytics.tsx and
- *     next.config.ts requires BOTH to be set before activating analytics,
- *     so a half-configured hosted deploy stays disabled rather than
- *     half-broken.
+ *     the proxy route handlers under src/app/api/_int/* require BOTH to
+ *     be set before activating analytics, so a half-configured hosted
+ *     deploy stays disabled rather than half-broken.
  *
  * NEXT_PHASE is set so importing env.ts does not run the runtime
  * validation (DATABASE_URL etc) - we only need the schema here.
@@ -63,8 +63,8 @@ describe("PR #90: Rybbit env contract", () => {
 
     it("accepts only RYBBIT_SITE_ID without RYBBIT_HOST (partial config)", () => {
         // The schema allows partial config; runtime gates in the analytics
-        // component + next.config.ts enforce that BOTH must be set before
-        // analytics activates. This stays disabled, not half-broken.
+        // component + /api/_int/* route handlers enforce that BOTH must be
+        // set before analytics activates. This stays disabled, not half-broken.
         const parsed = envSchema.parse({ RYBBIT_SITE_ID: "abc123" });
         expect(parsed.RYBBIT_SITE_ID).toBe("abc123");
         expect(parsed.RYBBIT_HOST).toBeUndefined();

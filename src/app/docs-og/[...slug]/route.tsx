@@ -42,9 +42,13 @@ export async function GET(_req: Request, { params }: RouteContext) {
         // Match the OpenPlaud primary token (warm terracotta). Hardcoded as
         // a literal because the OG runtime is the edge ImageResponse
         // environment -- it can't read CSS custom properties from
-        // `globals.css`. Keep this in sync if the brand color shifts.
-        primaryColor: "oklch(0.6171 0.1375 39.0427)",
-        primaryTextColor: "oklch(1 0 0)",
+        // `globals.css`. Satori (the renderer behind `next/og`) does NOT
+        // support the `oklch()` color function; passing one fails the
+        // prerender with "Unexpected token type: function". The hex below
+        // is the sRGB conversion of `oklch(0.6171 0.1375 39.0427)` from
+        // `globals.css` -- keep both in sync if the brand color shifts.
+        primaryColor: "#c96442",
+        primaryTextColor: "#ffffff",
     });
 }
 

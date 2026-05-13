@@ -49,12 +49,20 @@ export default function InstallPage() {
                             OpenPlaud
                         </span>
                     </Link>
-                    <Link
-                        href="/#deploy"
-                        className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                        ← Back to landing
-                    </Link>
+                    {/* The marketing landing only exists on hosted
+                        (`/` redirects to `/login` on self-host), so
+                        "Back to landing" is hosted-only chrome. Hiding
+                        rather than rewriting the href -- on a
+                        self-host instance there is no landing to go
+                        back to. */}
+                    {env.IS_HOSTED ? (
+                        <Link
+                            href="/#deploy"
+                            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                            ← Back to landing
+                        </Link>
+                    ) : null}
                 </div>
             </header>
 
@@ -93,6 +101,7 @@ export default function InstallPage() {
                             <Link
                                 href="/install.sh"
                                 target="_blank"
+                                rel="noopener noreferrer"
                                 className="text-xs text-muted-foreground hover:text-foreground transition-colors font-mono"
                             >
                                 View raw script →

@@ -3,16 +3,24 @@ import { Github, X } from "@/components/icons/icons";
 import { Logo } from "@/components/icons/logo";
 
 /**
- * Marketing footer for the hosted landing page (`/`). This file is
- * intentionally not used by `src/app/(app)/layout.tsx` -- signed-in
+ * Marketing footer for hosted public surfaces. Currently mounted on:
+ *   - `/`                           (`src/app/page.tsx`)
+ *   - `/install` (hosted branch)    (`src/app/install/page.tsx`)
+ *   - `/privacy`, `/terms`          (`src/app/(legal)/layout.tsx`)
+ *
+ * Intentionally not used by `src/app/(app)/layout.tsx` -- signed-in
  * users get the minimal `Footer` (AppFooter) from `./footer.tsx`
  * instead. Splitting them keeps app chrome from inheriting marketing-
  * sitemap weight, and keeps marketing free to grow columns without
  * bloating every workstation screen.
  *
- * Reached only when `IS_HOSTED=true` (enforced by `src/app/page.tsx`
- * redirecting to `/login` when the flag is unset), so this component
- * never needs to internally branch on hosted/self-host.
+ * Every call site that mounts this component is hosted-only -- either
+ * by virtue of `src/app/page.tsx` redirecting to `/login` when
+ * `IS_HOSTED` is unset, the `(legal)` layout calling `notFound()` on
+ * self-host, or `/install` branching on `env.IS_HOSTED` to render
+ * `Footer` instead. The component itself therefore never needs to
+ * internally branch on hosted/self-host; new call sites must keep
+ * this invariant.
  */
 
 type FooterLink = {

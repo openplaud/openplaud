@@ -12,9 +12,14 @@ import { APP_RELEASE_URL, APP_VERSION_TAG } from "@/lib/version";
  * chrome that ships under every workstation, dashboard, and settings
  * pane, so weight here is paid for on every view.
  *
+ * Also mounted on `/install` when `!env.IS_HOSTED` -- on a self-host
+ * instance the install page is reachable but the marketing-sitemap
+ * `LandingFooter` would be dishonest chrome (no "Pricing" or "For
+ * Professionals" surface exists), so the page falls back to this
+ * minimal footer.
+ *
  * The richer marketing footer lives in `landing-footer.tsx` and is
- * only mounted from `src/app/page.tsx` (hosted-only by virtue of the
- * `IS_HOSTED` redirect at the top of that file).
+ * mounted on `/`, `/install` (hosted branch), and the `(legal)` layout.
  *
  * Server component so it can read `env.IS_HOSTED` directly -- hosted
  * gets a support link, self-host gets the update badge. Neither side

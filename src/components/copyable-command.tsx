@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Copy } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Single-line shell command with a copy-to-clipboard button. Styled to
@@ -21,14 +21,33 @@ export function CopyableCommand({
     ariaLabel?: string;
 }) {
     const [copied, setCopied] = useState(false);
+    // Tracked so we can cancel a pending "flip back to Copy" timer if
+    // the component unmounts (route change, parent re-render) before
+    // it fires. Modern React no-ops setState-after-unmount silently,
+    // but cancelling the timer is the cheap correct thing.
+    const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        return () => {
+            if (resetTimerRef.current !== null) {
+                clearTimeout(resetTimerRef.current);
+            }
+        };
+    }, []);
 
     async function handleCopy() {
         try {
             await navigator.clipboard.writeText(command);
             setCopied(true);
+            if (resetTimerRef.current !== null) {
+                clearTimeout(resetTimerRef.current);
+            }
             // 1.6s is long enough to read "Copied" without lingering
             // past the user's next interaction.
-            setTimeout(() => setCopied(false), 1600);
+            resetTimerRef.current = setTimeout(() => {
+                setCopied(false);
+                resetTimerRef.current = null;
+            }, 1600);
         } catch {
             // Clipboard write can reject in iframes, insecure contexts,
             // or when the user denies permission. Swallow rather than

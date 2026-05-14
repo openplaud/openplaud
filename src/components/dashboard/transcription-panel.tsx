@@ -11,8 +11,6 @@ import {
     Sparkles,
     Trash2,
 } from "lucide-react";
-import React, { useCallback, useEffect, useState } from "react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -22,20 +20,13 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { useTranscriptionSummary } from "@/hooks/use-transcription-summary";
 import { SUMMARY_PRESETS } from "@/lib/ai/summary-presets";
 import type { Recording } from "@/types/recording";
 
 interface Transcription {
     text?: string;
     language?: string;
-}
-
-interface SummaryData {
-    summary: string | null;
-    keyPoints: string[] | null;
-    actionItems: string[] | null;
-    provider?: string;
-    model?: string;
 }
 
 interface TranscriptionPanelProps {
@@ -51,92 +42,19 @@ export function TranscriptionPanel({
     isTranscribing,
     onTranscribe,
 }: TranscriptionPanelProps) {
-    const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
-    const [isSummarizing, setIsSummarizing] = useState(false);
-    const [summaryExpanded, setSummaryExpanded] = useState(true);
-    const [summaryPreset, setSummaryPreset] = useState("general");
-    // Key to force re-fetch summary (e.g. after transcription text changes)
-    const [summaryFetchKey, setSummaryFetchKey] = useState(0);
-    const transcriptionTextRef = React.useRef(transcription?.text);
-
-    // Detect when transcription text actually changes → invalidate summary
-    if (transcription?.text !== transcriptionTextRef.current) {
-        transcriptionTextRef.current = transcription?.text;
-        // will trigger the useEffect below on next render
-        setSummaryFetchKey((k) => k + 1);
-        setSummaryData(null);
-    }
-
-    // Fetch existing summary when recording changes
-    // biome-ignore lint/correctness/useExhaustiveDependencies: summaryFetchKey is an intentional re-fetch signal
-    useEffect(() => {
-        setSummaryData(null);
-        if (!recording?.id) return;
-
-        const controller = new AbortController();
-        fetch(`/api/recordings/${recording.id}/summary`, {
-            signal: controller.signal,
-        })
-            .then((res) => res.json())
-            .then((data) => {
-                if (data.summary) {
-                    setSummaryData(data);
-                }
-            })
-            .catch(() => {});
-
-        return () => controller.abort();
-    }, [recording?.id, summaryFetchKey]);
-
-    const handleSummarize = useCallback(async () => {
-        setIsSummarizing(true);
-        try {
-            const response = await fetch(
-                `/api/recordings/${recording.id}/summary`,
-                {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ preset: summaryPreset }),
-                },
-            );
-
-            if (response.ok) {
-                const data = await response.json();
-                setSummaryData(data);
-                toast.success("Summary generated");
-            } else {
-                const error = await response.json();
-                toast.error(error.error || "Summary generation failed");
-            }
-        } catch {
-            toast.error("Failed to generate summary");
-        } finally {
-            setIsSummarizing(false);
-        }
-    }, [recording.id, summaryPreset]);
-
-    const handleDeleteSummary = useCallback(async () => {
-        // Optimistic delete
-        const previous = summaryData;
-        setSummaryData(null);
-
-        try {
-            const response = await fetch(
-                `/api/recordings/${recording.id}/summary`,
-                { method: "DELETE" },
-            );
-
-            if (response.ok) {
-                toast.success("Summary deleted");
-            } else {
-                setSummaryData(previous);
-                toast.error("Failed to delete summary");
-            }
-        } catch {
-            setSummaryData(previous);
-            toast.error("Failed to delete summary");
-        }
-    }, [recording.id, summaryData]);
+    const {
+        summaryData,
+        isSummarizing,
+        summaryExpanded,
+        setSummaryExpanded,
+        summaryPreset,
+        setSummaryPreset,
+        handleSummarize,
+        handleDeleteSummary,
+    } = useTranscriptionSummary({
+        recordingId: recording?.id,
+        transcriptionText: transcription?.text,
+    });
 
     return (
         <div className="space-y-4">
@@ -221,7 +139,7 @@ export function TranscriptionPanel({
                 </CardContent>
             </Card>
 
-            {/* Summary Card — only show when transcription exists */}
+            {/* Summary Card -- only show when transcription exists */}
             {transcription?.text && (
                 <Card>
                     <CardHeader>

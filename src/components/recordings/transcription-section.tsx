@@ -9,7 +9,7 @@ import {
     Sparkles,
     Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { LEDIndicator } from "@/components/led-indicator";
 import { MetalButton } from "@/components/metal-button";
@@ -21,15 +21,8 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { useTranscriptionSummary } from "@/hooks/use-transcription-summary";
 import { SUMMARY_PRESETS } from "@/lib/ai/summary-presets";
-
-interface SummaryData {
-    summary: string | null;
-    keyPoints: string[] | null;
-    actionItems: string[] | null;
-    provider?: string;
-    model?: string;
-}
 
 interface TranscriptionSectionProps {
     recordingId: string;
@@ -49,34 +42,20 @@ export function TranscriptionSection({
     const [transcriptionType, setTranscriptionType] = useState(initialType);
     const [isProcessing, setIsProcessing] = useState(false);
 
-    // Summary state
-    const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
-    const [isSummarizing, setIsSummarizing] = useState(false);
-    const [summaryExpanded, setSummaryExpanded] = useState(true);
-    const [summaryPreset, setSummaryPreset] = useState("general");
-
-    // Key to force re-fetch summary (e.g. after re-transcription)
-    const [summaryFetchKey, setSummaryFetchKey] = useState(0);
-
-    // Fetch existing summary on mount / after re-transcribe
-    // biome-ignore lint/correctness/useExhaustiveDependencies: summaryFetchKey is an intentional re-fetch trigger
-    useEffect(() => {
-        const controller = new AbortController();
-        fetch(`/api/recordings/${recordingId}/summary`, {
-            signal: controller.signal,
-        })
-            .then((res) => res.json())
-            .then((data) => {
-                if (data.summary) {
-                    setSummaryData(data);
-                } else {
-                    setSummaryData(null);
-                }
-            })
-            .catch(() => {});
-
-        return () => controller.abort();
-    }, [recordingId, summaryFetchKey]);
+    const {
+        summaryData,
+        isSummarizing,
+        summaryExpanded,
+        setSummaryExpanded,
+        summaryPreset,
+        setSummaryPreset,
+        handleSummarize,
+        handleDeleteSummary,
+        refetchSummary,
+    } = useTranscriptionSummary({
+        recordingId,
+        transcriptionText: transcription,
+    });
 
     const handleTranscribe = async () => {
         setIsProcessing(true);
@@ -107,9 +86,12 @@ export function TranscriptionSection({
             setTranscription(data.transcription);
             setDetectedLanguage(data.detectedLanguage);
             setTranscriptionType("server");
-            // Invalidate cached summary — it was based on old text
-            setSummaryData(null);
-            setSummaryFetchKey((k) => k + 1);
+            // Force a summary re-fetch -- the server may have already
+            // auto-summarized. The hook also handles text-change
+            // invalidation via its internal ref, but we trigger here
+            // explicitly because we own the transcription state and
+            // know the moment it changes.
+            refetchSummary();
             toast.success("Transcription complete");
         } catch {
             toast.error("Transcription failed. Please try again.");
@@ -117,56 +99,6 @@ export function TranscriptionSection({
             setIsProcessing(false);
         }
     };
-
-    const handleSummarize = useCallback(async () => {
-        setIsSummarizing(true);
-        try {
-            const response = await fetch(
-                `/api/recordings/${recordingId}/summary`,
-                {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ preset: summaryPreset }),
-                },
-            );
-
-            if (response.ok) {
-                const data = await response.json();
-                setSummaryData(data);
-                toast.success("Summary generated");
-            } else {
-                const error = await response.json();
-                toast.error(error.error || "Summary generation failed");
-            }
-        } catch {
-            toast.error("Failed to generate summary");
-        } finally {
-            setIsSummarizing(false);
-        }
-    }, [recordingId, summaryPreset]);
-
-    const handleDeleteSummary = useCallback(async () => {
-        // Optimistic delete
-        const previous = summaryData;
-        setSummaryData(null);
-
-        try {
-            const response = await fetch(
-                `/api/recordings/${recordingId}/summary`,
-                { method: "DELETE" },
-            );
-
-            if (response.ok) {
-                toast.success("Summary deleted");
-            } else {
-                setSummaryData(previous);
-                toast.error("Failed to delete summary");
-            }
-        } catch {
-            setSummaryData(previous);
-            toast.error("Failed to delete summary");
-        }
-    }, [recordingId, summaryData]);
 
     return (
         <div className="space-y-6">
@@ -239,7 +171,7 @@ export function TranscriptionSection({
                 </div>
             </Panel>
 
-            {/* Summary Panel — only show when transcription exists */}
+            {/* Summary Panel -- only show when transcription exists */}
             {transcription && (
                 <Panel>
                     <div className="space-y-4">

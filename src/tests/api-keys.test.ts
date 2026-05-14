@@ -30,7 +30,9 @@ import {
     getApiKeyPrefix,
     hashApiKey,
     isApiKeyActive,
+    maskApiKey,
     normalizeApiKeyScopes,
+    validateApiKeyFormat,
 } from "@/lib/auth-request";
 
 describe("API keys", () => {
@@ -39,11 +41,46 @@ describe("API keys", () => {
         mockEnv.API_TOKEN_HASH_SECRET = undefined;
     });
 
-    it("generates op-prefixed keys and display prefixes", () => {
+    it("generates op-prefixed base62 keys with a CRC32 checksum suffix", () => {
         const key = createApiKey();
 
-        expect(key).toMatch(/^op_[A-Za-z0-9_-]{24}$/);
+        // Default payload length is 30, checksum is 4 → 3 + 30 + 4 = 37.
+        expect(key).toMatch(/^op_[0-9A-Za-z]{34}$/);
+        expect(key).toHaveLength(37);
         expect(getApiKeyPrefix(key)).toBe(key.slice(0, 12));
+        expect(validateApiKeyFormat(key)).toBe(true);
+    });
+
+    it("rejects keys whose checksum does not match the payload", () => {
+        const key = createApiKey();
+        // Flip one payload character (anything in position 5 that is base62
+        // but not equal to the original).
+        const original = key[5];
+        const swapped = original === "a" ? "b" : "a";
+        const tampered = `${key.slice(0, 5)}${swapped}${key.slice(6)}`;
+
+        expect(tampered).not.toBe(key);
+        expect(validateApiKeyFormat(tampered)).toBe(false);
+    });
+
+    it("rejects legacy nanoid-shaped keys via validateApiKeyFormat", () => {
+        // Strict format check: legacy `op_` + nanoid keys (which may include
+        // `-` / `_` and carry no checksum) are not valid under the new scheme.
+        // Authentication still accepts them — it looks up by HMAC hash —
+        // this helper is intentionally stricter.
+        expect(validateApiKeyFormat("op_abc-def_ghijklmnopqrstuv")).toBe(false);
+        expect(validateApiKeyFormat("not-an-op-key")).toBe(false);
+        expect(validateApiKeyFormat("op_short")).toBe(false);
+    });
+
+    it("masks a full key while preserving prefix and checksum", () => {
+        const key = createApiKey();
+        const masked = maskApiKey(key);
+
+        expect(masked.startsWith(key.slice(0, 12))).toBe(true);
+        expect(masked.endsWith(key.slice(-4))).toBe(true);
+        expect(masked).toHaveLength(key.length);
+        expect(masked).not.toBe(key);
     });
 
     it("hashes keys deterministically without storing the raw key", () => {

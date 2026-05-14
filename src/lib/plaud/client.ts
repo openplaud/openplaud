@@ -5,7 +5,7 @@ import type {
     PlaudRecordingsResponse,
     PlaudTempUrlResponse,
 } from "@/types/plaud";
-import { DEFAULT_SERVER_KEY, PLAUD_SERVERS } from "./servers";
+import { DEFAULT_SERVER_KEY, PLAUD_SERVERS, PLAUD_USER_AGENT } from "./servers";
 import { resolveWorkspaceToken } from "./workspace";
 
 export interface PlaudUpdateFilenameResponse {
@@ -173,6 +173,7 @@ export class PlaudClient {
                     ...options?.headers,
                     Authorization: `Bearer ${bearer}`,
                     "Content-Type": "application/json",
+                    "User-Agent": PLAUD_USER_AGENT,
                 },
             });
 

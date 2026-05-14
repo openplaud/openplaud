@@ -29,6 +29,8 @@ import { PROMPT_PRESETS } from "@/lib/ai/prompt-presets";
 
 type AISubSection = "providers" | "prompts";
 
+const EMPTY_PROVIDERS: Provider[] = [];
+
 interface Provider {
     id: string;
     provider: string;
@@ -45,7 +47,7 @@ interface ProvidersSectionProps {
 }
 
 export function ProvidersSection({
-    initialProviders = [],
+    initialProviders = EMPTY_PROVIDERS,
     isHosted = false,
 }: ProvidersSectionProps) {
     const confirm = useConfirm();
@@ -75,9 +77,11 @@ export function ProvidersSection({
     } | null>(null);
     const [viewingPromptId, setViewingPromptId] = useState<string | null>(null);
 
-    useEffect(() => {
-        setProviders(initialProviders);
-    }, [initialProviders]);
+    // Note: `initialProviders` is the server-rendered seed only. The local
+    // `providers` state diverges from it after add/edit/delete actions in
+    // this component, so we do NOT re-sync from the prop on changes (would
+    // clobber local edits). If the parent ever needs to force a reset,
+    // pass a `key` prop instead.
 
     useEffect(() => {
         const fetchSettings = async () => {
@@ -248,7 +252,7 @@ export function ProvidersSection({
                             onClick={() => setIsAddProviderOpen(true)}
                             size="sm"
                         >
-                            <Plus className="w-4 h-4 mr-2" />
+                            <Plus className="size-4 mr-2" />
                             Add Provider
                         </Button>
                     )}
@@ -276,7 +280,7 @@ export function ProvidersSection({
                                 : "border-transparent text-muted-foreground hover:text-foreground"
                         }`}
                     >
-                        <Sparkles className="w-4 h-4 inline mr-2" />
+                        <Sparkles className="size-4 inline mr-2" />
                         Prompts
                     </button>
                 </div>
@@ -286,7 +290,7 @@ export function ProvidersSection({
                     <div>
                         {providers.length === 0 ? (
                             <div className="text-center py-12">
-                                <Bot className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+                                <Bot className="size-16 mx-auto mb-4 text-muted-foreground" />
                                 <h3 className="font-semibold mb-2">
                                     No providers configured
                                 </h3>
@@ -297,7 +301,7 @@ export function ProvidersSection({
                                     onClick={() => setIsAddProviderOpen(true)}
                                     size="sm"
                                 >
-                                    <Plus className="w-4 h-4 mr-2" />
+                                    <Plus className="size-4 mr-2" />
                                     Add Provider
                                 </Button>
                             </div>
@@ -344,7 +348,7 @@ export function ProvidersSection({
                                                 variant="outline"
                                                 size="icon"
                                             >
-                                                <Pencil className="w-4 h-4" />
+                                                <Pencil className="size-4" />
                                             </Button>
                                             <Button
                                                 onClick={() =>
@@ -357,9 +361,9 @@ export function ProvidersSection({
                                                 }
                                             >
                                                 {deletingId === provider.id ? (
-                                                    <div className="animate-spin w-4 h-4 border-2 border-destructive border-t-transparent rounded-full" />
+                                                    <div className="animate-spin size-4 border-2 border-destructive border-t-transparent rounded-full" />
                                                 ) : (
-                                                    <Trash2 className="w-4 h-4 text-destructive" />
+                                                    <Trash2 className="size-4 text-destructive" />
                                                 )}
                                             </Button>
                                         </div>
@@ -375,7 +379,7 @@ export function ProvidersSection({
                     <div className="space-y-6">
                         {isLoadingSettings ? (
                             <div className="flex items-center justify-center py-8">
-                                <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
+                                <div className="animate-spin size-6 border-2 border-primary border-t-transparent rounded-full" />
                             </div>
                         ) : (
                             <>
@@ -493,7 +497,7 @@ export function ProvidersSection({
                                             }
                                             size="sm"
                                         >
-                                            <Plus className="w-4 h-4 mr-2" />
+                                            <Plus className="size-4 mr-2" />
                                             Add Custom Prompt
                                         </Button>
                                     </div>
@@ -550,7 +554,7 @@ export function ProvidersSection({
                                                                     )
                                                                 }
                                                             >
-                                                                <Pencil className="w-4 h-4" />
+                                                                <Pencil className="size-4" />
                                                             </Button>
                                                             <Button
                                                                 variant="outline"
@@ -561,7 +565,7 @@ export function ProvidersSection({
                                                                     )
                                                                 }
                                                             >
-                                                                <Trash2 className="w-4 h-4 text-destructive" />
+                                                                <Trash2 className="size-4 text-destructive" />
                                                             </Button>
                                                         </div>
                                                     </div>
@@ -643,10 +647,14 @@ export function ProvidersSection({
                                         id="custom-prompt-name"
                                         value={editingCustomPrompt.name}
                                         onChange={(e) =>
-                                            setEditingCustomPrompt({
-                                                ...editingCustomPrompt,
-                                                name: e.target.value,
-                                            })
+                                            setEditingCustomPrompt((prev) =>
+                                                prev
+                                                    ? {
+                                                          ...prev,
+                                                          name: e.target.value,
+                                                      }
+                                                    : prev,
+                                            )
                                         }
                                         placeholder="My Custom Prompt"
                                     />
@@ -660,10 +668,15 @@ export function ProvidersSection({
                                         className="w-full min-h-[300px] px-3 py-2 text-sm border rounded-md resize-y font-mono"
                                         value={editingCustomPrompt.prompt}
                                         onChange={(e) =>
-                                            setEditingCustomPrompt({
-                                                ...editingCustomPrompt,
-                                                prompt: e.target.value,
-                                            })
+                                            setEditingCustomPrompt((prev) =>
+                                                prev
+                                                    ? {
+                                                          ...prev,
+                                                          prompt: e.target
+                                                              .value,
+                                                      }
+                                                    : prev,
+                                            )
                                         }
                                         placeholder={`You are a title generator for audio recordings. Generate a concise, descriptive title based on the transcription provided.
 

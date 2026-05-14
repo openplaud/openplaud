@@ -14,6 +14,7 @@
 
 import { AppError, ErrorCode } from "@/lib/errors";
 import { DEFAULT_PLAUD_API_BASE } from "./client";
+import { PLAUD_USER_AGENT } from "./servers";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -62,7 +63,10 @@ export async function plaudSendCode(
 }> {
     const res = await fetch(`${apiBase}/auth/otp-send-code`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+            "Content-Type": "application/json",
+            "User-Agent": PLAUD_USER_AGENT,
+        },
         body: JSON.stringify({ username: email }),
     });
 
@@ -105,7 +109,10 @@ export async function plaudVerifyOtp(
 }> {
     const res = await fetch(`${apiBase}/auth/otp-login`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+            "Content-Type": "application/json",
+            "User-Agent": PLAUD_USER_AGENT,
+        },
         body: JSON.stringify({ code, token: otpToken }),
     });
 
@@ -184,6 +191,7 @@ export async function fetchPlaudUserMeEmail(
             headers: {
                 Authorization: `Bearer ${accessToken}`,
                 "Content-Type": "application/json",
+                "User-Agent": PLAUD_USER_AGENT,
             },
         });
         if (!res.ok) return null;

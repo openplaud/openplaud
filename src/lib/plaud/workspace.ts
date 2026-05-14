@@ -24,6 +24,7 @@ import type {
     PlaudWorkspaceListResponse,
     PlaudWorkspaceTokenResponse,
 } from "@/types/plaud";
+import { PLAUD_USER_AGENT } from "./servers";
 
 /**
  * SSRF barrier. `apiBase` is user-influenced (originally chosen at OTP-send
@@ -74,6 +75,7 @@ export async function listPlaudWorkspaces(
         headers: {
             Authorization: `Bearer ${userToken}`,
             "Content-Type": "application/json",
+            "User-Agent": PLAUD_USER_AGENT,
         },
     });
 
@@ -141,6 +143,7 @@ export async function mintPlaudWorkspaceToken(
         headers: {
             Authorization: `Bearer ${userToken}`,
             "Content-Type": "application/json",
+            "User-Agent": PLAUD_USER_AGENT,
         },
         body: "{}",
     });

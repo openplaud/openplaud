@@ -9,9 +9,9 @@ interface LEDIndicatorProps {
 }
 
 const sizeMap = {
-    sm: "w-2 h-2",
-    md: "w-3 h-3",
-    lg: "w-4 h-4",
+    sm: "size-2",
+    md: "size-3",
+    lg: "size-4",
 };
 
 export function LEDIndicator({

@@ -11,8 +11,8 @@ import {
     Trash2,
     X,
 } from "lucide-react";
+import type * as React from "react";
 import {
-    forwardRef,
     useCallback,
     useEffect,
     useImperativeHandle,
@@ -116,25 +116,20 @@ function transcriptSnippet(
     return `${stripped.slice(0, maxChars - 1).trimEnd()}\u2026`;
 }
 
-export const RecordingList = forwardRef<
-    RecordingListHandle,
-    RecordingListProps
->(function RecordingList(
-    {
-        recordings,
-        transcriptions,
-        currentRecording,
-        pendingUploads,
-        inFlightActions,
-        onSelect,
-        onDelete,
-        initialDateTimeFormat,
-        initialSortOrder,
-        initialDensity,
-        initialChunkSize,
-    },
+export function RecordingList({
+    recordings,
+    transcriptions,
+    currentRecording,
+    pendingUploads,
+    inFlightActions,
+    onSelect,
+    onDelete,
+    initialDateTimeFormat,
+    initialSortOrder,
+    initialDensity,
+    initialChunkSize,
     ref,
-) {
+}: RecordingListProps & { ref?: React.Ref<RecordingListHandle> }) {
     const [dateTimeFormat] = useState<DateTimeFormat>(initialDateTimeFormat);
     const [sortOrder, setSortOrder] = useState<SortOrder>(initialSortOrder);
     const [density, setDensity] = useState<ListDensity>(initialDensity);
@@ -727,4 +722,4 @@ export const RecordingList = forwardRef<
             </CardContent>
         </Card>
     );
-});
+}

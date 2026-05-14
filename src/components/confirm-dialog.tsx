@@ -1,12 +1,6 @@
 "use client";
 
-import {
-    createContext,
-    type ReactNode,
-    useContext,
-    useRef,
-    useState,
-} from "react";
+import { createContext, type ReactNode, use, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
     AlertDialog,
@@ -73,7 +67,7 @@ type ConfirmFn = (opts: ConfirmOptions) => Promise<boolean>;
 const ConfirmContext = createContext<ConfirmFn | null>(null);
 
 export function useConfirm(): ConfirmFn {
-    const fn = useContext(ConfirmContext);
+    const fn = use(ConfirmContext);
     if (!fn) {
         throw new Error(
             "useConfirm() must be used inside <ConfirmDialogProvider>",

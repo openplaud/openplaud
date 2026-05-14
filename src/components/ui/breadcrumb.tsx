@@ -2,7 +2,7 @@
 
 import { Slot } from "@radix-ui/react-slot";
 import { ChevronRight } from "lucide-react";
-import * as React from "react";
+import type * as React from "react";
 import { cn } from "@/lib/utils";
 
 function Breadcrumb({ className, ...props }: React.ComponentProps<"nav">) {
@@ -32,12 +32,15 @@ function BreadcrumbItem({ className, ...props }: React.ComponentProps<"li">) {
     );
 }
 
-const BreadcrumbLink = React.forwardRef<
-    React.ElementRef<"a">,
-    React.ComponentPropsWithoutRef<"a"> & {
-        asChild?: boolean;
-    }
->(({ className, asChild = false, ...props }, ref) => {
+function BreadcrumbLink({
+    className,
+    asChild = false,
+    ref,
+    ...props
+}: React.ComponentPropsWithoutRef<"a"> & {
+    asChild?: boolean;
+    ref?: React.Ref<HTMLAnchorElement>;
+}) {
     const Comp = asChild ? Slot : "a";
     return (
         <Comp
@@ -46,8 +49,7 @@ const BreadcrumbLink = React.forwardRef<
             {...props}
         />
     );
-});
-BreadcrumbLink.displayName = "BreadcrumbLink";
+}
 
 function BreadcrumbPage({ className, ...props }: React.ComponentProps<"span">) {
     return (

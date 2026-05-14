@@ -3,9 +3,14 @@ FROM oven/bun:1 AS base
 WORKDIR /app
 
 # Install dependencies
+# `--ignore-scripts` skips the `fumadocs-mdx` postinstall (declared in
+# package.json by PR #131). That hook needs `source.config.ts` and
+# `content/docs/`, which aren't present in this hermetic deps stage --
+# only `package.json` + the lockfile are. We regenerate fumadocs sources
+# explicitly in the builder stage below, where the full tree is available.
 FROM base AS deps
 COPY package.json pnpm-lock.yaml ./
-RUN bun install --frozen-lockfile
+RUN bun install --frozen-lockfile --ignore-scripts
 
 # Build Next.js
 FROM base AS builder
@@ -16,6 +21,9 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
+# Compile MDX docs into `src/.source/` before `next build` -- this is what
+# the postinstall hook would have done on a non-Docker install.
+RUN bunx fumadocs-mdx source.config.ts src/.source
 RUN bun run build
 
 # Bundle idempotent migration script with all dependencies

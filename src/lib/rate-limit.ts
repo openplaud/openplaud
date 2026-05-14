@@ -30,11 +30,12 @@ function bucketKey(rawKey: string): string {
 }
 
 function firstForwardedForIp(value: string | null): string | null {
-    const parts = value
-        ?.split(",")
-        .map((part) => part.trim())
-        .filter(Boolean);
-    return parts?.[0] ?? null;
+    if (!value) return null;
+    for (const part of value.split(",")) {
+        const trimmed = part.trim();
+        if (trimmed) return trimmed;
+    }
+    return null;
 }
 
 export function getClientIp(request: Request): string {

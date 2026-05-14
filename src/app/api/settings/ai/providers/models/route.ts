@@ -103,6 +103,10 @@ async function fetchOpenRouterAudioModels(
         response = await fetch(url, {
             headers: { Authorization: `Bearer ${apiKey}` },
             signal: controller.signal,
+            // Model catalog is fetched on demand; never cache between
+            // requests. Provider catalogs (esp. OpenRouter) change daily and
+            // Next.js's default fetch cache would silently serve stale data.
+            cache: "no-store",
         });
     } catch (err) {
         if ((err as Error).name === "AbortError") {
@@ -142,10 +146,11 @@ async function fetchOpenRouterAudioModels(
     const list = Array.isArray(payload?.data) ? payload.data : [];
 
     const models: ModelOption[] = list
-        .filter((m) =>
-            (m.architecture?.input_modalities ?? []).includes("audio"),
+        .flatMap((m) =>
+            (m.architecture?.input_modalities ?? []).includes("audio")
+                ? [{ id: m.id, name: m.name || m.id }]
+                : [],
         )
-        .map((m) => ({ id: m.id, name: m.name || m.id }))
         // Stable alphabetical order so the dropdown doesn't reshuffle on
         // every refresh as OpenRouter's catalog re-orders.
         .sort((a, b) => a.name.localeCompare(b.name));

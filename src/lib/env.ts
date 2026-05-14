@@ -128,10 +128,10 @@ export const envSchema = z.object({
         .string()
         .optional()
         .transform((val) =>
-            (val ?? "")
-                .split(",")
-                .map((s) => s.trim().toLowerCase())
-                .filter(Boolean),
+            (val ?? "").split(",").flatMap((s) => {
+                const trimmed = s.trim().toLowerCase();
+                return trimmed ? [trimmed] : [];
+            }),
         ),
 
     // ADMIN_IP_ALLOWLIST: optional comma-separated CIDR list. When set, admin
@@ -141,10 +141,10 @@ export const envSchema = z.object({
         .string()
         .optional()
         .transform((val) =>
-            (val ?? "")
-                .split(",")
-                .map((s) => s.trim())
-                .filter(Boolean),
+            (val ?? "").split(",").flatMap((s) => {
+                const trimmed = s.trim();
+                return trimmed ? [trimmed] : [];
+            }),
         ),
 
     // ADMIN_REAUTH_TTL_MINUTES: how long an admin's elevated cookie is valid

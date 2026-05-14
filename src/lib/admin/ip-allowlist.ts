@@ -135,9 +135,10 @@ export function ipMatchesAllowlist(
         ip = ip.slice(7);
     }
 
-    const parsedEntries = allowlist
-        .map(parseCidr)
-        .filter((p): p is ParsedCidr => p !== null);
+    const parsedEntries = allowlist.flatMap((entry) => {
+        const parsed = parseCidr(entry);
+        return parsed ? [parsed] : [];
+    });
     if (parsedEntries.length === 0) {
         // Misconfigured allowlist -- fail closed.
         return false;

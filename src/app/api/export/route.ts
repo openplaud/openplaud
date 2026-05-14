@@ -99,9 +99,9 @@ export const GET = apiHandler(async (request: Request) => {
         case "srt":
             // SRT format for subtitles
             exportData = decryptedRecordings
-                .map((recording, index) => {
+                .flatMap((recording, index) => {
                     const transcription = transcriptionMap.get(recording.id);
-                    if (!transcription?.text) return "";
+                    if (!transcription?.text) return [];
                     const startTime = new Date(recording.startTime);
                     const endTime = new Date(
                         startTime.getTime() + recording.duration,
@@ -125,9 +125,10 @@ export const GET = apiHandler(async (request: Request) => {
                             .padStart(3, "0");
                         return `${hours}:${minutes}:${seconds},${ms}`;
                     };
-                    return `${index + 1}\n${formatSRTTime(startTime)} --> ${formatSRTTime(endTime)}\n${transcription.text}\n\n`;
+                    return [
+                        `${index + 1}\n${formatSRTTime(startTime)} --> ${formatSRTTime(endTime)}\n${transcription.text}\n\n`,
+                    ];
                 })
-                .filter(Boolean)
                 .join("");
             contentType = "text/plain";
             filename = `recordings-${new Date().toISOString().split("T")[0]}.srt`;
@@ -136,9 +137,9 @@ export const GET = apiHandler(async (request: Request) => {
         case "vtt":
             // WebVTT format
             exportData = `WEBVTT\n\n${decryptedRecordings
-                .map((recording) => {
+                .flatMap((recording) => {
                     const transcription = transcriptionMap.get(recording.id);
-                    if (!transcription?.text) return "";
+                    if (!transcription?.text) return [];
                     const startTime = new Date(recording.startTime);
                     const endTime = new Date(
                         startTime.getTime() + recording.duration,
@@ -162,9 +163,10 @@ export const GET = apiHandler(async (request: Request) => {
                             .padStart(3, "0");
                         return `${hours}:${minutes}:${seconds}.${ms}`;
                     };
-                    return `${formatVTTTime(startTime)} --> ${formatVTTTime(endTime)}\n${transcription.text}\n\n`;
+                    return [
+                        `${formatVTTTime(startTime)} --> ${formatVTTTime(endTime)}\n${transcription.text}\n\n`,
+                    ];
                 })
-                .filter(Boolean)
                 .join("")}`;
             contentType = "text/vtt";
             filename = `recordings-${new Date().toISOString().split("T")[0]}.vtt`;

@@ -22,6 +22,13 @@ const ENUM_FIELDS = {
     defaultExportFormat: ["json", "csv", "zip"],
 } as const satisfies Record<string, readonly string[]>;
 
+// O(1) membership lookup tables built once at module load. The per-request
+// validator iterates many fields; .includes() over short tuples is fine but
+// converting to Sets makes intent explicit and removes the lint nag.
+const ENUM_FIELD_SETS: Record<string, ReadonlySet<string>> = Object.fromEntries(
+    Object.entries(ENUM_FIELDS).map(([k, v]) => [k, new Set(v)]),
+);
+
 // Default settings values
 const DEFAULT_SETTINGS = {
     autoTranscribe: false,
@@ -175,9 +182,7 @@ export const PUT = apiHandler(async (request: Request) => {
             field in ENUM_FIELDS &&
             value !== undefined &&
             value !== null &&
-            !(ENUM_FIELDS as Record<string, readonly string[]>)[field].includes(
-                value as string,
-            )
+            !ENUM_FIELD_SETS[field].has(value as string)
         ) {
             throw new AppError(
                 ErrorCode.INVALID_INPUT,

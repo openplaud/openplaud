@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- Plaud sync from hosted/VPS deploys whose ASN is flagged by Cloudflare: pair the Webshare residential proxy from v0.5.1 with a Chrome TLS/JA3 fingerprint via `wreq-js`, so Bun's default handshake stops getting a 403 + Cloudflare challenge even from a clean residential IP. Required because Cloudflare scores ASN and TLS fingerprint independently; #148 only addressed the ASN side. Direct path (no `WEBSHARE_API_KEY` set) is unchanged and does not load the new dependency at runtime ([#152](https://github.com/openplaud/openplaud/pull/152)).
+
 ## [0.5.1] - 2026-05-15
 
 ### Added

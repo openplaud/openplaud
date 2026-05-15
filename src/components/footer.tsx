@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { Github } from "@/components/icons/icons";
 import { Logo } from "@/components/icons/logo";
+import { ReportBugButton } from "@/components/report-bug-dialog";
 import { UpdateBadge } from "@/components/update-badge";
 import { env } from "@/lib/env";
 import { APP_RELEASE_URL, APP_VERSION_TAG } from "@/lib/version";
@@ -72,14 +73,18 @@ export function Footer() {
                         >
                             Docs
                         </Link>
-                        {env.IS_HOSTED ? (
-                            <Link
-                                href="mailto:support@openplaud.com"
-                                className="hover:text-foreground transition-colors"
-                            >
-                                Support
-                            </Link>
-                        ) : null}
+                        {/* Single bug-report entry point for both modes.
+                            Self-host → GitHub-only dialog. Hosted →
+                            GitHub + mailto. Replaces the old
+                            hosted-only "Support" mailto link — hosted
+                            users now get the same dialog with the
+                            mailto button included inside it, and self-
+                            hosters get a proper reporting path that
+                            previously didn't exist. */}
+                        <ReportBugButton
+                            isHosted={env.IS_HOSTED}
+                            className="hover:text-foreground transition-colors"
+                        />
                         <Link
                             href="https://github.com/openplaud/openplaud"
                             target="_blank"

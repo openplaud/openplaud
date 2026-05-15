@@ -54,10 +54,8 @@ body:
       label: Deployment Type
       description: How are you running OpenPlaud?
       options:
-        - Docker Compose (recommended)
-        - Docker
-        - Local development (pnpm dev)
-        - Other
+        - Self-hosted
+        - Hosted (openplaud.com)
     validations:
       required: true
 

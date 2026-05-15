@@ -22,7 +22,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { parseApiError } from "@/lib/api-errors";
+import { toastApiError } from "@/lib/api-errors";
 import {
     DEFAULT_SERVER_KEY,
     PLAUD_SERVERS,
@@ -188,12 +188,19 @@ function ConnectorPane({
                 }),
             });
             if (!res.ok) {
-                const err = await parseApiError(res);
-                throw new Error(err.error || "Failed to connect Plaud");
+                await toastApiError(res, {
+                    fallback: "Failed to connect Plaud",
+                    errorContext: "connect Plaud via connector extension",
+                });
+                return;
             }
             toast.success("Plaud account connected");
             onConnected();
         } catch (err) {
+            // Reachable only for client-side throws (extension bridge
+            // failure, network blow-up before `fetch` returns). Server
+            // errors went through `toastApiError` above and already
+            // toasted with the `Report` action when applicable.
             toast.error(
                 err instanceof Error ? err.message : "Failed to connect",
             );
@@ -327,8 +334,11 @@ function EmailCodePane({
                 body: JSON.stringify({ email: trimmed }),
             });
             if (!res.ok) {
-                const err = await parseApiError(res);
-                throw new Error(err.error || "Failed to send code");
+                await toastApiError(res, {
+                    fallback: "Failed to send code",
+                    errorContext: "send Plaud verification code",
+                });
+                return;
             }
             const data = await res.json();
             setOtpToken(data.otpToken);
@@ -337,6 +347,8 @@ function EmailCodePane({
             setStep("code");
             toast.success("Verification code sent — check your email");
         } catch (err) {
+            // Network blow-up before `fetch` returns. Server errors were
+            // handled by `toastApiError` above.
             toast.error(
                 err instanceof Error ? err.message : "Failed to send code",
             );
@@ -364,8 +376,11 @@ function EmailCodePane({
                 }),
             });
             if (!res.ok) {
-                const err = await parseApiError(res);
-                throw new Error(err.error || "Verification failed");
+                await toastApiError(res, {
+                    fallback: "Verification failed",
+                    errorContext: "verify Plaud OTP code",
+                });
+                return;
             }
             toast.success("Plaud account connected");
             onConnected();
@@ -535,8 +550,11 @@ function PasteTokenPane({
                 }),
             });
             if (!res.ok) {
-                const err = await parseApiError(res);
-                throw new Error(err.error || "Failed to connect Plaud");
+                await toastApiError(res, {
+                    fallback: "Failed to connect Plaud",
+                    errorContext: "connect Plaud via pasted access token",
+                });
+                return;
             }
             toast.success("Plaud account connected");
             onConnected();

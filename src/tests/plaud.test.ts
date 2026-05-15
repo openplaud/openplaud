@@ -8,6 +8,19 @@ import {
     type Mock,
     vi,
 } from "vitest";
+
+// Mock env so importing PlaudClient (which transitively imports env via
+// the proxy module) doesn't trip the DATABASE_URL/ENCRYPTION_KEY runtime
+// checks. WEBSHARE_API_KEY is left undefined so plaudFetch falls through
+// to the direct path, preserving every existing test's expectations.
+const mockEnv = vi.hoisted(() => ({
+    WEBSHARE_API_KEY: undefined as string | undefined,
+}));
+
+vi.mock("@/lib/env", () => ({
+    env: mockEnv,
+}));
+
 import { DEFAULT_PLAUD_API_BASE, PlaudClient } from "../lib/plaud/client";
 import {
     DEFAULT_SERVER_KEY,

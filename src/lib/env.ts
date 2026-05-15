@@ -83,6 +83,19 @@ export const envSchema = z.object({
     S3_ACCESS_KEY_ID: z.string().optional(),
     S3_SECRET_ACCESS_KEY: z.string().optional(),
 
+    // Webshare residential-proxy API key. When set, Plaud-bound outbound
+    // requests (api*.plaud.ai, resource.plaud.ai) are routed through a
+    // random valid proxy from the Webshare list, with automatic rotation
+    // on Cloudflare 403/407 responses. Unset (default) keeps every call
+    // on the direct egress path — the right default for self-hosters on
+    // residential or homelab IPs that Cloudflare doesn't flag. Hosted
+    // deployments on flagged datacenter ASNs (Contabo, OVH, …) need this.
+    // See src/lib/plaud/proxy.ts for the rationale.
+    WEBSHARE_API_KEY: z
+        .string()
+        .optional()
+        .transform((val) => (val === "" ? undefined : val)),
+
     SMTP_HOST: z.string().optional(),
     SMTP_PORT: z
         .string()
@@ -205,6 +218,7 @@ function validateEnv(): Env {
             S3_REGION: process.env.S3_REGION,
             S3_ACCESS_KEY_ID: process.env.S3_ACCESS_KEY_ID,
             S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY,
+            WEBSHARE_API_KEY: process.env.WEBSHARE_API_KEY,
             SMTP_HOST: process.env.SMTP_HOST,
             SMTP_PORT: process.env.SMTP_PORT,
             SMTP_SECURE: process.env.SMTP_SECURE,

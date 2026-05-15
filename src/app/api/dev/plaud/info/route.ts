@@ -5,6 +5,7 @@ import { plaudConnections } from "@/db/schema";
 import { requireApiSession } from "@/lib/auth-server";
 import { AppError, apiHandler, ErrorCode } from "@/lib/errors";
 import { createPlaudClient } from "@/lib/plaud/client-factory";
+import { isPlaudProxyConfigured } from "@/lib/plaud/proxy";
 import { serverKeyFromApiBase } from "@/lib/plaud/servers";
 
 /**
@@ -67,6 +68,10 @@ export const GET = apiHandler(async (request: Request) => {
         reachable,
         latencyMs,
         error: errorMessage,
+        // Whether outbound Plaud calls go through the Webshare residential
+        // proxy. Surfaced here so we can quickly tell, on a flagged-egress
+        // VPS, whether the proxy path is wired up.
+        usingPlaudProxy: isPlaudProxyConfigured(),
         connection: {
             id: connection.id,
             apiBase: connection.apiBase,

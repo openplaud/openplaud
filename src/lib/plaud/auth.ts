@@ -14,6 +14,7 @@
 
 import { AppError, ErrorCode } from "@/lib/errors";
 import { DEFAULT_PLAUD_API_BASE } from "./client";
+import { plaudFetch } from "./fetch";
 import { safeParseJson } from "./parse";
 import { PLAUD_USER_AGENT } from "./servers";
 
@@ -62,7 +63,7 @@ export async function plaudSendCode(
     /** Final resolved API base (may differ from input after region redirect) */
     apiBase: string;
 }> {
-    const res = await fetch(`${apiBase}/auth/otp-send-code`, {
+    const res = await plaudFetch(`${apiBase}/auth/otp-send-code`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
@@ -112,7 +113,7 @@ export async function plaudVerifyOtp(
 ): Promise<{
     accessToken: string;
 }> {
-    const res = await fetch(`${apiBase}/auth/otp-login`, {
+    const res = await plaudFetch(`${apiBase}/auth/otp-login`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
@@ -191,7 +192,7 @@ export async function fetchPlaudUserMeEmail(
     apiBase: string,
 ): Promise<string | null> {
     try {
-        const res = await fetch(`${apiBase}/user/me`, {
+        const res = await plaudFetch(`${apiBase}/user/me`, {
             method: "GET",
             headers: {
                 Authorization: `Bearer ${accessToken}`,

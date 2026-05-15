@@ -32,6 +32,14 @@ import {
     type Mock,
     vi,
 } from "vitest";
+
+// Mock env so importing Plaud modules (which transitively load env via
+// `proxy.ts`) doesn't trip the DATABASE_URL/ENCRYPTION_KEY runtime checks.
+const mockEnv = vi.hoisted(() => ({
+    WEBSHARE_API_KEY: undefined as string | undefined,
+}));
+vi.mock("@/lib/env", () => ({ env: mockEnv }));
+
 import { AppError, ErrorCode } from "@/lib/errors";
 import { plaudSendCode, plaudVerifyOtp } from "@/lib/plaud/auth";
 import {

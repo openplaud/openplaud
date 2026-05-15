@@ -24,6 +24,7 @@ import type {
     PlaudWorkspaceListResponse,
     PlaudWorkspaceTokenResponse,
 } from "@/types/plaud";
+import { plaudFetch } from "./fetch";
 import { safeParseJson } from "./parse";
 import { PLAUD_USER_AGENT } from "./servers";
 
@@ -71,7 +72,7 @@ export async function listPlaudWorkspaces(
         apiBase,
         "/team-app/workspaces/list?need_personal_workspace=true",
     );
-    const res = await fetch(url, {
+    const res = await plaudFetch(url.toString(), {
         method: "GET",
         headers: {
             Authorization: `Bearer ${userToken}`,
@@ -142,7 +143,7 @@ export async function mintPlaudWorkspaceToken(
         apiBase,
         `/user-app/auth/workspace/token/${encodeURIComponent(workspaceId)}`,
     );
-    const res = await fetch(url, {
+    const res = await plaudFetch(url.toString(), {
         method: "POST",
         headers: {
             Authorization: `Bearer ${userToken}`,

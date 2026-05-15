@@ -1,4 +1,13 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+
+// Mock env so importing PlaudClient (which transitively loads env via
+// `proxy.ts`) doesn't trip the DATABASE_URL/ENCRYPTION_KEY runtime checks
+// when running `pnpm test` without a populated .env.
+const mockEnv = vi.hoisted(() => ({
+    WEBSHARE_API_KEY: process.env.WEBSHARE_API_KEY,
+}));
+vi.mock("@/lib/env", () => ({ env: mockEnv }));
+
 import { PlaudClient } from "../lib/plaud/client";
 
 const bearerToken = process.env.PLAUD_BEARER_TOKEN;

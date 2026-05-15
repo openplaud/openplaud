@@ -5,6 +5,7 @@ import type {
     PlaudRecordingsResponse,
     PlaudTempUrlResponse,
 } from "@/types/plaud";
+import { plaudFetch } from "./fetch";
 import { safeParseJson } from "./parse";
 import { DEFAULT_SERVER_KEY, PLAUD_SERVERS, PLAUD_USER_AGENT } from "./servers";
 import { resolveWorkspaceToken } from "./workspace";
@@ -168,7 +169,7 @@ export class PlaudClient {
         const url = `${this.apiBase}${endpoint}`;
 
         try {
-            const response = await fetch(url, {
+            const response = await plaudFetch(url, {
                 ...options,
                 headers: {
                     ...options?.headers,
@@ -320,7 +321,11 @@ export class PlaudClient {
                     ? tempUrlResponse.temp_url_opus
                     : tempUrlResponse.temp_url;
 
-            const response = await fetch(downloadUrl);
+            // Signed-URL host is resource.plaud.ai, which sits on the
+            // same Cloudflare zone as the API — route through the same
+            // proxy machinery so download attempts don't fail with a
+            // Cloudflare 403 after the API call succeeded.
+            const response = await plaudFetch(downloadUrl);
             if (!response.ok) {
                 throw new AppError(
                     ErrorCode.PLAUD_UPSTREAM_ERROR,

@@ -5,6 +5,13 @@ const openAiMocks = vi.hoisted(() => ({
     chatCreate: vi.fn(),
 }));
 
+// Mock env so transitive imports of Plaud modules (via the sync code
+// path under test) don't trip DATABASE_URL/ENCRYPTION_KEY runtime checks.
+const mockEnv = vi.hoisted(() => ({
+    WEBSHARE_API_KEY: undefined as string | undefined,
+}));
+vi.mock("@/lib/env", () => ({ env: mockEnv }));
+
 vi.mock("@/db", () => ({
     db: {
         select: vi.fn(),

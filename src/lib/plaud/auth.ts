@@ -14,6 +14,7 @@
 
 import { AppError, ErrorCode } from "@/lib/errors";
 import { DEFAULT_PLAUD_API_BASE } from "./client";
+import { safeParseJson } from "./parse";
 import { PLAUD_USER_AGENT } from "./servers";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -70,7 +71,11 @@ export async function plaudSendCode(
         body: JSON.stringify({ username: email }),
     });
 
-    const body = (await res.json()) as PlaudSendCodeResponse;
+    // Use `safeParseJson` so a Cloudflare HTML challenge body (which
+    // Plaud returns on WAF rejection) surfaces as a typed `PLAUD_API_ERROR`
+    // / `PLAUD_UPSTREAM_ERROR` instead of a raw `SyntaxError` that
+    // `apiHandler` would flatten to `INTERNAL_ERROR` (500). See #142.
+    const body = await safeParseJson<PlaudSendCodeResponse>(res);
 
     // Region mismatch → retry against the correct regional server
     if (body.status === -302 && body.data?.domains?.api) {
@@ -116,7 +121,7 @@ export async function plaudVerifyOtp(
         body: JSON.stringify({ code, token: otpToken }),
     });
 
-    const body = (await res.json()) as PlaudOtpLoginResponse;
+    const body = await safeParseJson<PlaudOtpLoginResponse>(res);
 
     // Tokens can appear at root or nested under data
     const accessToken =

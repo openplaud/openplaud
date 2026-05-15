@@ -5,6 +5,7 @@ import type {
     PlaudRecordingsResponse,
     PlaudTempUrlResponse,
 } from "@/types/plaud";
+import { safeParseJson } from "./parse";
 import { DEFAULT_SERVER_KEY, PLAUD_SERVERS, PLAUD_USER_AGENT } from "./servers";
 import { resolveWorkspaceToken } from "./workspace";
 
@@ -216,7 +217,14 @@ export class PlaudClient {
                 throw plaudHttpError(response.status, upstreamMsg);
             }
 
-            return (await response.json()) as T;
+            // Use `safeParseJson` instead of bare `.json()` so an HTML
+            // body (Cloudflare challenge after a future WAF tightening)
+            // surfaces as a typed Plaud error rather than a raw
+            // `SyntaxError`. The outer `try/catch` below would catch the
+            // `SyntaxError` and map it to `PLAUD_UPSTREAM_ERROR` anyway,
+            // but `safeParseJson` produces the correct code+message in
+            // one step and includes a body snippet in `details`.
+            return await safeParseJson<T>(response);
         } catch (error) {
             if (
                 error instanceof TypeError &&

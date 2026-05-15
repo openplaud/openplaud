@@ -64,13 +64,20 @@ function mockResponse({ ok = true, status = 200, body }: MockResponseInit): {
     statusText: string;
     headers: { get: () => null };
     json: () => Promise<unknown>;
+    text: () => Promise<string>;
 } {
+    const serialised = JSON.stringify(body);
     return {
         ok,
         status,
         statusText: ok ? "OK" : "Error",
         headers: { get: () => null },
         json: () => Promise.resolve(body),
+        // Mirror the real `Response` interface — `safeParseJson` consumes
+        // the body via `.text()` and parses it manually so a non-JSON
+        // upstream body produces a typed `AppError` instead of a raw
+        // `SyntaxError`. See #142.
+        text: () => Promise.resolve(serialised),
     };
 }
 

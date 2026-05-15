@@ -69,12 +69,16 @@ const API_BASE = "https://api-apse1.plaud.ai";
 
 function mockJson(body: unknown, init?: { ok?: boolean; status?: number }) {
     const ok = init?.ok ?? true;
+    const serialised = JSON.stringify(body);
     return {
         ok,
         status: init?.status ?? (ok ? 200 : 400),
         statusText: ok ? "OK" : "Error",
         headers: { get: () => null },
         json: () => Promise.resolve(body),
+        // `safeParseJson` reads the body as text; mocks must mirror the
+        // real `Response` interface for both shapes to stay valid.
+        text: () => Promise.resolve(serialised),
     };
 }
 

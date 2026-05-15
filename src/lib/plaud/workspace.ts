@@ -24,6 +24,7 @@ import type {
     PlaudWorkspaceListResponse,
     PlaudWorkspaceTokenResponse,
 } from "@/types/plaud";
+import { safeParseJson } from "./parse";
 import { PLAUD_USER_AGENT } from "./servers";
 
 /**
@@ -90,7 +91,10 @@ export async function listPlaudWorkspaces(
         );
     }
 
-    const body = (await res.json()) as PlaudWorkspaceListResponse;
+    // Defensive parse — if Plaud ever returns 200 with an HTML body (or
+    // any other non-JSON shape), `safeParseJson` throws a typed `AppError`
+    // instead of the raw `SyntaxError` that would flatten to 500. See #142.
+    const body = await safeParseJson<PlaudWorkspaceListResponse>(res);
     if (body.status !== 0 || !body.data?.workspaces) {
         throw new AppError(
             ErrorCode.PLAUD_API_ERROR,
@@ -188,7 +192,7 @@ export async function mintPlaudWorkspaceToken(
         });
     }
 
-    const body = (await res.json()) as PlaudWorkspaceTokenResponse;
+    const body = await safeParseJson<PlaudWorkspaceTokenResponse>(res);
     if (body.status !== 0 || !body.data?.workspace_token) {
         // 2xx response with a business-level error (status != 0) most
         // commonly means the workspace is no longer valid for this user

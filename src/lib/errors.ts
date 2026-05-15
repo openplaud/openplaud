@@ -90,6 +90,13 @@ export enum ErrorCode {
     INTERNAL_ERROR = "INTERNAL_ERROR",
     SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE",
     RATE_LIMITED = "RATE_LIMITED",
+    /**
+     * Upstream (Plaud, AI provider, S3, mail relay, ...) returned a
+     * response we couldn't parse — typically an HTML body or empty
+     * payload where JSON was expected. Surfaced as 502 to distinguish
+     * "their problem" from `INTERNAL_ERROR` (our bug).
+     */
+    UPSTREAM_BAD_RESPONSE = "UPSTREAM_BAD_RESPONSE",
 }
 
 export interface AppErrorJSON {
@@ -144,6 +151,10 @@ export function createErrorResponse(error: AppError | Error | unknown): {
  */
 export function errorResponse(error: AppError | Error | unknown): NextResponse {
     const app = mapErrorToAppError(error);
+    if (app.statusCode >= 500) {
+        const errorId = attachErrorId(app);
+        console.error(`[api] [${errorId}]`, app.code, error);
+    }
     return NextResponse.json(app.toJSON(), { status: app.statusCode });
 }
 
@@ -182,11 +193,37 @@ export function apiHandler<Ctx = unknown>(
         } catch (error) {
             const app = mapErrorToAppError(error);
             if (app.statusCode >= 500) {
-                console.error("[api]", app.code, error);
+                const errorId = attachErrorId(app);
+                console.error(`[api] [${errorId}]`, app.code, error);
             }
             return NextResponse.json(app.toJSON(), { status: app.statusCode });
         }
     };
+}
+
+/**
+ * Generate a short, quotable correlation id and attach it to `app.details`
+ * so it appears in the JSON envelope. In-memory only — the value
+ * correlates a user-reported error with a single log line within a single
+ * process. Format: `err_` + 8 hex chars from `crypto.randomUUID()`.
+ *
+ * Only call on 5xx — 4xx responses are already actionable and an errorId
+ * would just add noise. Returns the id so the log line can include it.
+ *
+ * Idempotent: if the same `AppError` instance flows through this function
+ * twice (e.g. a route uses `errorResponse` in a `catch` and the same
+ * instance later reaches `apiHandler`), the existing id is preserved so
+ * the response envelope and log line agree. Re-stamping would silently
+ * desync them.
+ */
+function attachErrorId(app: AppError): string {
+    const existing = app.details?.errorId;
+    if (typeof existing === "string" && existing.startsWith("err_")) {
+        return existing;
+    }
+    const errorId = `err_${crypto.randomUUID().replace(/-/g, "").slice(0, 8)}`;
+    app.details = { ...(app.details ?? {}), errorId };
+    return errorId;
 }
 
 /**
@@ -210,6 +247,25 @@ export function mapErrorToAppError(error: unknown): AppError {
     }
 
     if (error instanceof Error) {
+        // Raw `SyntaxError` from `JSON.parse` / `Response.json()` means an
+        // upstream returned a body that wasn't valid JSON (HTML challenge
+        // page, empty body, truncated stream, ...). Classify as
+        // `UPSTREAM_BAD_RESPONSE` (502) rather than letting it fall through
+        // to the generic `INTERNAL_ERROR` (500) catch-all — "their problem"
+        // vs "our bug" is the whole point of having a 502/500 split.
+        //
+        // Domain-specific helpers (`safeParseJson` in `src/lib/plaud/parse.ts`)
+        // should throw structured `AppError`s directly and bypass this branch.
+        // This is the safety net for any third-party SDK / unhandled fetch
+        // site that lets a raw `SyntaxError` escape.
+        if (error instanceof SyntaxError && /json/i.test(error.message)) {
+            return new AppError(
+                ErrorCode.UPSTREAM_BAD_RESPONSE,
+                "An upstream service returned an unreadable response. Please try again later.",
+                502,
+            );
+        }
+
         if (error.message.includes("path traversal")) {
             return new AppError(
                 ErrorCode.PATH_TRAVERSAL_DETECTED,

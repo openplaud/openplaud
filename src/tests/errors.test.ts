@@ -175,12 +175,27 @@ describe("errorResponse", () => {
     });
 
     it("falls back to 500 INTERNAL_ERROR for unknown thrown values", async () => {
-        const res = errorResponse({ weird: "shape" });
-        expect(res.status).toBe(500);
-        expect(await res.json()).toEqual({
-            error: "An unexpected error occurred",
-            code: ErrorCode.INTERNAL_ERROR,
-        });
+        // Silence the expected 5xx log line so the test output stays
+        // clean; the log itself is asserted in the dedicated errorId test.
+        const consoleErrorSpy = vi
+            .spyOn(console, "error")
+            .mockImplementation(() => {});
+        try {
+            const res = errorResponse({ weird: "shape" });
+            expect(res.status).toBe(500);
+            const body = (await res.json()) as {
+                error: string;
+                code: string;
+                details?: { errorId?: string };
+            };
+            expect(body.error).toBe("An unexpected error occurred");
+            expect(body.code).toBe(ErrorCode.INTERNAL_ERROR);
+            // 5xx responses carry a correlation id; format checked in the
+            // dedicated errorId describe block below.
+            expect(body.details?.errorId).toMatch(/^err_[0-9a-f]{8}$/);
+        } finally {
+            consoleErrorSpy.mockRestore();
+        }
     });
 });
 
@@ -283,5 +298,99 @@ describe("apiHandler", () => {
         expect(body.code).toBe(ErrorCode.INTERNAL_ERROR);
         expect(JSON.stringify(body)).not.toContain("hunter2");
         expect(consoleErrorSpy).toHaveBeenCalled();
+    });
+});
+
+describe("errorId correlation", () => {
+    let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+        consoleErrorSpy = vi
+            .spyOn(console, "error")
+            .mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+        consoleErrorSpy.mockRestore();
+    });
+
+    it("attaches details.errorId on >=500 (apiHandler)", async () => {
+        const handler = apiHandler(async () => {
+            throw new AppError(ErrorCode.INTERNAL_ERROR, "Boom", 500);
+        });
+        const res = await handler(new Request("http://x"), undefined);
+        const body = (await res.json()) as {
+            details?: { errorId?: string };
+        };
+        expect(body.details?.errorId).toMatch(/^err_[0-9a-f]{8}$/);
+    });
+
+    it("does NOT attach errorId on <500 (apiHandler)", async () => {
+        const handler = apiHandler(async () => {
+            throw new AppError(ErrorCode.NOT_FOUND, "gone", 404);
+        });
+        const res = await handler(new Request("http://x"), undefined);
+        const body = (await res.json()) as {
+            details?: Record<string, unknown>;
+        };
+        // No errorId, and no `details` object at all when nothing else
+        // populates it — the response stays minimal for 4xx.
+        expect(body.details).toBeUndefined();
+    });
+
+    it("preserves existing details fields when attaching errorId", async () => {
+        const handler = apiHandler(async () => {
+            throw new AppError(
+                ErrorCode.PLAUD_UPSTREAM_ERROR,
+                "Plaud is unavailable",
+                502,
+                { plaudStatus: 503 },
+            );
+        });
+        const res = await handler(new Request("http://x"), undefined);
+        const body = (await res.json()) as {
+            details?: { plaudStatus?: number; errorId?: string };
+        };
+        expect(body.details?.plaudStatus).toBe(503);
+        expect(body.details?.errorId).toMatch(/^err_[0-9a-f]{8}$/);
+    });
+
+    it("log line includes the errorId (apiHandler)", async () => {
+        const handler = apiHandler(async () => {
+            throw new Error("boom");
+        });
+        await handler(new Request("http://x"), undefined);
+        expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+        const firstArg = consoleErrorSpy.mock.calls[0][0] as string;
+        expect(firstArg).toMatch(/^\[api\] \[err_[0-9a-f]{8}\]$/);
+    });
+
+    it("errorResponse also attaches errorId on >=500", async () => {
+        const res = errorResponse(new Error("boom"));
+        const body = (await res.json()) as {
+            details?: { errorId?: string };
+        };
+        expect(body.details?.errorId).toMatch(/^err_[0-9a-f]{8}$/);
+    });
+});
+
+describe("UPSTREAM_BAD_RESPONSE (SyntaxError backstop)", () => {
+    it("maps SyntaxError mentioning JSON to UPSTREAM_BAD_RESPONSE 502", () => {
+        const r = mapErrorToAppError(
+            new SyntaxError(
+                "Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON",
+            ),
+        );
+        expect(r.code).toBe(ErrorCode.UPSTREAM_BAD_RESPONSE);
+        expect(r.statusCode).toBe(502);
+    });
+
+    it("does NOT match a generic SyntaxError without 'JSON' in message", () => {
+        // Real-world JSON parse errors always include 'JSON' in the
+        // message; matching on it avoids accidentally classifying
+        // unrelated SyntaxErrors (e.g. from `eval`-shaped libraries) as
+        // upstream failures.
+        const r = mapErrorToAppError(new SyntaxError("unexpected token"));
+        expect(r.code).toBe(ErrorCode.INTERNAL_ERROR);
     });
 });

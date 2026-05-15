@@ -40,8 +40,8 @@
  */
 
 import {
-    type BodyInit as WreqBodyInit,
     fetch as impersonateFetch,
+    type BodyInit as WreqBodyInit,
 } from "wreq-js";
 import {
     getPlaudProxyUrl,

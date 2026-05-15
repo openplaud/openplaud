@@ -10,6 +10,14 @@ import type { NextConfig } from "next";
 // request time, in lockstep with `<RybbitAnalytics>`'s render gate.
 const nextConfig: NextConfig = {
     output: "standalone",
+    // `wreq-js` is a Rust napi addon used by `src/lib/plaud/fetch.ts` to
+    // emit a Chrome-shaped TLS handshake when calling Plaud through the
+    // Webshare proxy (see `src/lib/plaud/fetch.ts`). The package ships
+    // prebuilt `.node` binaries that Turbopack can't bundle into ESM
+    // chunks (`non-ecmascript placeable asset`). Externalise so Next
+    // leaves the require in place and node-file-trace pulls the binary
+    // into the standalone output at runtime.
+    serverExternalPackages: ["wreq-js"],
     // The `/install.sh` and `/[version]/install.sh` routes read
     // `scripts/install.sh` from disk at request time. The standalone
     // output only includes files reachable through the build graph, so

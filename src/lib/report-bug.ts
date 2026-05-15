@@ -108,11 +108,14 @@ export function buildReportBugMailto(opts: ReportBugOptions): string {
         .filter(Boolean)
         .join("\n");
 
-    const params = new URLSearchParams({
-        subject,
-        body,
-    });
-    return `mailto:${SUPPORT_EMAIL}?${params.toString()}`;
+    // RFC 6068 `mailto:` URIs require `%20` for spaces in the query.
+    // `URLSearchParams` emits `+` (application/x-www-form-urlencoded
+    // semantics), which several mail clients (notably some macOS Mail
+    // and Outlook builds) render literally instead of decoding to space,
+    // garbling the prefilled subject + body. Encode manually with the
+    // mailto-correct conventions.
+    const qs = `subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    return `mailto:${SUPPORT_EMAIL}?${qs}`;
 }
 
 /**

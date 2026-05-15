@@ -374,23 +374,22 @@ describe("errorId correlation", () => {
     });
 });
 
-describe("UPSTREAM_BAD_RESPONSE (SyntaxError backstop)", () => {
-    it("maps SyntaxError mentioning JSON to UPSTREAM_BAD_RESPONSE 502", () => {
+describe("raw SyntaxError handling", () => {
+    it("does NOT auto-map JSON SyntaxErrors at this layer", () => {
+        // A bare SyntaxError from `JSON.parse` / `Response.json()` /
+        // `Request.json()` is ambiguous: it could be a malformed
+        // upstream body OR a malformed client request body. Mapping it
+        // here would mis-classify one of them, so we deliberately let it
+        // fall through to `INTERNAL_ERROR` (500). Helpers that read
+        // upstream JSON wrap parsing in `safeParseJson` and throw a
+        // typed `AppError`; route handlers reading client bodies use
+        // `.catch(() => null)` and surface `MISSING_REQUIRED_FIELD`.
         const r = mapErrorToAppError(
             new SyntaxError(
                 "Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON",
             ),
         );
-        expect(r.code).toBe(ErrorCode.UPSTREAM_BAD_RESPONSE);
-        expect(r.statusCode).toBe(502);
-    });
-
-    it("does NOT match a generic SyntaxError without 'JSON' in message", () => {
-        // Real-world JSON parse errors always include 'JSON' in the
-        // message; matching on it avoids accidentally classifying
-        // unrelated SyntaxErrors (e.g. from `eval`-shaped libraries) as
-        // upstream failures.
-        const r = mapErrorToAppError(new SyntaxError("unexpected token"));
         expect(r.code).toBe(ErrorCode.INTERNAL_ERROR);
+        expect(r.statusCode).toBe(500);
     });
 });

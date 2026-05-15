@@ -247,24 +247,19 @@ export function mapErrorToAppError(error: unknown): AppError {
     }
 
     if (error instanceof Error) {
-        // Raw `SyntaxError` from `JSON.parse` / `Response.json()` means an
-        // upstream returned a body that wasn't valid JSON (HTML challenge
-        // page, empty body, truncated stream, ...). Classify as
-        // `UPSTREAM_BAD_RESPONSE` (502) rather than letting it fall through
-        // to the generic `INTERNAL_ERROR` (500) catch-all — "their problem"
-        // vs "our bug" is the whole point of having a 502/500 split.
-        //
-        // Domain-specific helpers (`safeParseJson` in `src/lib/plaud/parse.ts`)
-        // should throw structured `AppError`s directly and bypass this branch.
-        // This is the safety net for any third-party SDK / unhandled fetch
-        // site that lets a raw `SyntaxError` escape.
-        if (error instanceof SyntaxError && /json/i.test(error.message)) {
-            return new AppError(
-                ErrorCode.UPSTREAM_BAD_RESPONSE,
-                "An upstream service returned an unreadable response. Please try again later.",
-                502,
-            );
-        }
+        // Note: raw `SyntaxError`s (from `JSON.parse`, `Response.json()`,
+        // or `Request.json()`) are NOT auto-mapped here. The two callers
+        // are indistinguishable at the error level — a malformed *upstream*
+        // body (HTML challenge page) and a malformed *client* request body
+        // throw the identical exception shape — so any blanket mapping
+        // mis-classifies one of them. Helpers that read upstream JSON must
+        // wrap parsing themselves (see `safeParseJson` in
+        // `src/lib/plaud/parse.ts`) and throw a typed `AppError`
+        // (`UPSTREAM_BAD_RESPONSE`, `PLAUD_API_ERROR`, ...) before it
+        // reaches this layer. Route handlers reading client bodies must
+        // `.catch(() => null)` and surface `MISSING_REQUIRED_FIELD` /
+        // `INVALID_INPUT`. Anything that still escapes is genuinely
+        // unmapped and falls through to `INTERNAL_ERROR` (500) below.
 
         if (error.message.includes("path traversal")) {
             return new AppError(

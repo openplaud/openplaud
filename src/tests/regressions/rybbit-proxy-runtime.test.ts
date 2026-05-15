@@ -1,13 +1,13 @@
 /**
  * Regression test for the Rybbit analytics proxy 404 bug:
- *   https://openplaud.com/api/_int/s.js returned 404 even though
+ *   https://openplaud.com/api/_int/script.js returned 404 even though
  *   IS_HOSTED + RYBBIT_HOST + RYBBIT_SITE_ID were set on the host.
  *
  * Root cause: `next.config.ts` `rewrites()` is evaluated at `next build`.
  * The published Docker image (`ghcr.io/openplaud/openplaud:*`) is built
  * generically without those env vars, so the rewrite list was baked as
  * `[]` and never reinstated at runtime. <RybbitAnalytics> reads env at
- * request time and emitted <script src="/api/_int/s.js"> anyway -> 404.
+ * request time and emitted <script src="/api/_int/script.js"> anyway -> 404.
  *
  * Fix: replace the build-time rewrites with runtime route handlers under
  * src/app/api/_int/* that read env at request time, in lockstep with the
@@ -72,31 +72,38 @@ function installFetchMock(response: Response) {
     globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
 }
 
-describe("Rybbit proxy: /api/_int/s.js", () => {
+// `script.js` path is load-bearing: the Rybbit client splits its own
+// `src` on `/script.js` to derive `analyticsHost`. Serving from a
+// different path silently breaks event delivery.
+describe("Rybbit proxy: /api/_int/script.js", () => {
+    function getReq() {
+        return new Request("https://app.example.com/api/_int/script.js");
+    }
+
     it("returns 404 when IS_HOSTED is false (self-host)", async () => {
         // Even if a self-hoster happens to set RYBBIT_*, the proxy stays
         // off unless IS_HOSTED=true, matching <RybbitAnalytics>'s gate.
         mockEnv.IS_HOSTED = false;
         mockEnv.RYBBIT_HOST = "https://rybbit.example.com";
         mockEnv.RYBBIT_SITE_ID = "site-1";
-        const { GET } = await import("@/app/api/_int/s.js/route");
-        const res = await GET();
+        const { GET } = await import("@/app/api/_int/script.js/route");
+        const res = await GET(getReq());
         expect(res.status).toBe(404);
     });
 
     it("returns 404 when RYBBIT_HOST is missing", async () => {
         mockEnv.IS_HOSTED = true;
         mockEnv.RYBBIT_SITE_ID = "site-1";
-        const { GET } = await import("@/app/api/_int/s.js/route");
-        const res = await GET();
+        const { GET } = await import("@/app/api/_int/script.js/route");
+        const res = await GET(getReq());
         expect(res.status).toBe(404);
     });
 
     it("returns 404 when RYBBIT_SITE_ID is missing", async () => {
         mockEnv.IS_HOSTED = true;
         mockEnv.RYBBIT_HOST = "https://rybbit.example.com";
-        const { GET } = await import("@/app/api/_int/s.js/route");
-        const res = await GET();
+        const { GET } = await import("@/app/api/_int/script.js/route");
+        const res = await GET(getReq());
         expect(res.status).toBe(404);
     });
 
@@ -111,12 +118,12 @@ describe("Rybbit proxy: /api/_int/s.js", () => {
             }),
         );
 
-        const { GET } = await import("@/app/api/_int/s.js/route");
-        const res = await GET();
+        const { GET } = await import("@/app/api/_int/script.js/route");
+        const res = await GET(getReq());
 
         expect(fetchMock).toHaveBeenCalledWith(
             "https://rybbit.example.com/api/script.js",
-            expect.objectContaining({ cache: "no-store" }),
+            expect.objectContaining({ cache: "no-store", method: "GET" }),
         );
         expect(res.status).toBe(200);
         expect(res.headers.get("content-type")).toContain(
@@ -131,8 +138,8 @@ describe("Rybbit proxy: /api/_int/s.js", () => {
         mockEnv.RYBBIT_SITE_ID = "site-1";
         installFetchMock(new Response("ok", { status: 200 }));
 
-        const { GET } = await import("@/app/api/_int/s.js/route");
-        await GET();
+        const { GET } = await import("@/app/api/_int/script.js/route");
+        await GET(getReq());
 
         expect(fetchMock).toHaveBeenCalledWith(
             "https://rybbit.example.com/api/script.js",
@@ -146,8 +153,8 @@ describe("Rybbit proxy: /api/_int/s.js", () => {
         mockEnv.RYBBIT_SITE_ID = "site-1";
         installFetchMock(new Response("nope", { status: 500 }));
 
-        const { GET } = await import("@/app/api/_int/s.js/route");
-        const res = await GET();
+        const { GET } = await import("@/app/api/_int/script.js/route");
+        const res = await GET(getReq());
         expect(res.status).toBe(502);
     });
 });
@@ -279,5 +286,164 @@ describe("Rybbit proxy: /api/_int/identify", () => {
             "https://rybbit.example.com/api/identify",
             expect.objectContaining({ method: "POST" }),
         );
+    });
+});
+
+// The Rybbit client fetches `/api/site/tracking-config/:siteId` at
+// startup. Before this route existed it 404'd in the console and
+// session replay / web vitals silently defaulted off.
+describe("Rybbit proxy: /api/_int/site/tracking-config/:siteId", () => {
+    it("returns 404 when unconfigured", async () => {
+        const { GET } = await import(
+            "@/app/api/_int/site/tracking-config/[siteId]/route"
+        );
+        const res = await GET(
+            new Request(
+                "https://app.example.com/api/_int/site/tracking-config/site-1",
+            ),
+            { params: Promise.resolve({ siteId: "site-1" }) },
+        );
+        expect(res.status).toBe(404);
+    });
+
+    it("proxies to RYBBIT_HOST/api/site/tracking-config/:siteId", async () => {
+        mockEnv.IS_HOSTED = true;
+        mockEnv.RYBBIT_HOST = "https://rybbit.example.com";
+        mockEnv.RYBBIT_SITE_ID = "site-1";
+        installFetchMock(
+            new Response(JSON.stringify({ sessionReplay: false }), {
+                status: 200,
+                headers: { "content-type": "application/json" },
+            }),
+        );
+
+        const { GET } = await import(
+            "@/app/api/_int/site/tracking-config/[siteId]/route"
+        );
+        const res = await GET(
+            new Request(
+                "https://app.example.com/api/_int/site/tracking-config/site-1",
+            ),
+            { params: Promise.resolve({ siteId: "site-1" }) },
+        );
+
+        expect(res.status).toBe(200);
+        expect(fetchMock).toHaveBeenCalledWith(
+            "https://rybbit.example.com/api/site/tracking-config/site-1",
+            expect.objectContaining({ method: "GET" }),
+        );
+    });
+
+    it("URL-encodes the siteId path segment", async () => {
+        mockEnv.IS_HOSTED = true;
+        mockEnv.RYBBIT_HOST = "https://rybbit.example.com";
+        mockEnv.RYBBIT_SITE_ID = "site-1";
+        installFetchMock(new Response("{}", { status: 200 }));
+
+        const { GET } = await import(
+            "@/app/api/_int/site/tracking-config/[siteId]/route"
+        );
+        await GET(
+            new Request(
+                "https://app.example.com/api/_int/site/tracking-config/weird%20id",
+            ),
+            { params: Promise.resolve({ siteId: "weird id" }) },
+        );
+
+        const [url] = fetchMock.mock.calls[0] as [string];
+        expect(url).toBe(
+            "https://rybbit.example.com/api/site/tracking-config/weird%20id",
+        );
+    });
+});
+
+describe("Rybbit proxy: /api/_int/replay.js", () => {
+    it("proxies to RYBBIT_HOST/api/replay.js when configured", async () => {
+        mockEnv.IS_HOSTED = true;
+        mockEnv.RYBBIT_HOST = "https://rybbit.example.com";
+        mockEnv.RYBBIT_SITE_ID = "site-1";
+        installFetchMock(
+            new Response("/* replay */", {
+                status: 200,
+                headers: { "content-type": "application/javascript" },
+            }),
+        );
+
+        const { GET } = await import("@/app/api/_int/replay.js/route");
+        const res = await GET(
+            new Request("https://app.example.com/api/_int/replay.js"),
+        );
+
+        expect(res.status).toBe(200);
+        expect(fetchMock).toHaveBeenCalledWith(
+            "https://rybbit.example.com/api/replay.js",
+            expect.objectContaining({ method: "GET" }),
+        );
+    });
+
+    it("returns 404 when unconfigured", async () => {
+        const { GET } = await import("@/app/api/_int/replay.js/route");
+        const res = await GET(
+            new Request("https://app.example.com/api/_int/replay.js"),
+        );
+        expect(res.status).toBe(404);
+    });
+});
+
+describe("Rybbit proxy: /api/_int/session-replay/record/:siteId", () => {
+    it("returns 404 when unconfigured", async () => {
+        const { POST } = await import(
+            "@/app/api/_int/session-replay/record/[siteId]/route"
+        );
+        const res = await POST(
+            new Request(
+                "https://app.example.com/api/_int/session-replay/record/site-1",
+                { method: "POST", body: "[]" },
+            ),
+            { params: Promise.resolve({ siteId: "site-1" }) },
+        );
+        expect(res.status).toBe(404);
+    });
+
+    it("forwards body and XFF to RYBBIT_HOST/api/session-replay/record/:siteId", async () => {
+        mockEnv.IS_HOSTED = true;
+        mockEnv.RYBBIT_HOST = "https://rybbit.example.com";
+        mockEnv.RYBBIT_SITE_ID = "site-1";
+        installFetchMock(new Response("{}", { status: 202 }));
+
+        const payload = JSON.stringify([{ type: 2, data: {} }]);
+        const { POST } = await import(
+            "@/app/api/_int/session-replay/record/[siteId]/route"
+        );
+        const res = await POST(
+            new Request(
+                "https://app.example.com/api/_int/session-replay/record/site-1",
+                {
+                    method: "POST",
+                    headers: {
+                        "content-type": "application/json",
+                        "user-agent": "Mozilla/5.0 test",
+                        "x-forwarded-for": "203.0.113.7",
+                        cookie: "session=secret",
+                        authorization: "Bearer secret",
+                    },
+                    body: payload,
+                },
+            ),
+            { params: Promise.resolve({ siteId: "site-1" }) },
+        );
+
+        expect(res.status).toBe(202);
+        const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+        expect(url).toBe(
+            "https://rybbit.example.com/api/session-replay/record/site-1",
+        );
+        const headers = new Headers(init.headers);
+        expect(headers.get("x-forwarded-for")).toBe("203.0.113.7");
+        expect(headers.get("user-agent")).toBe("Mozilla/5.0 test");
+        expect(headers.get("cookie")).toBeNull();
+        expect(headers.get("authorization")).toBeNull();
+        const body = init.body as ArrayBuffer;
+        expect(new TextDecoder().decode(body)).toBe(payload);
     });
 });

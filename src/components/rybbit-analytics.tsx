@@ -13,12 +13,14 @@ let warnedMisconfig = false;
  * `RYBBIT_HOST` are set. Self-hosters never load it and never make a
  * request to Rybbit.
  *
- * The script is loaded from same-origin (`/api/_int/s.js`) via runtime
- * route handlers in `src/app/api/_int/*`. The Rybbit client derives its
- * tracking endpoint from its own `src`, so events POST back to
- * `/api/_int/track` (also same-origin), which the proxy forwards to
- * `${RYBBIT_HOST}/api/track`. This bypasses ad-blockers that filter
- * third-party analytics.
+ * The script is loaded from same-origin (`/api/_int/script.js`) via
+ * runtime route handlers in `src/app/api/_int/*`. The Rybbit client
+ * derives its `analyticsHost` by splitting its own `src` on
+ * `/script.js`, so the path segment is load-bearing: serving from
+ * `/api/_int/s.js` would leave the client unable to compute event
+ * URLs. Events POST back to `/api/_int/track` (same-origin), which the
+ * proxy forwards to `${RYBBIT_HOST}/api/track`. This bypasses
+ * ad-blockers that filter third-party analytics.
  */
 export function RybbitAnalytics() {
     if (!env.IS_HOSTED) return null;
@@ -35,7 +37,7 @@ export function RybbitAnalytics() {
 
     return (
         <Script
-            src="/api/_int/s.js"
+            src="/api/_int/script.js"
             data-site-id={env.RYBBIT_SITE_ID}
             strategy="afterInteractive"
         />
